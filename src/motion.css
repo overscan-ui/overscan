@@ -1,0 +1,501 @@
+/* ---- CASCADE LAYER ------------------------------------------------------
+ *
+ * Everything the kit ships sits in ONE layer named `overscan`, so a consumer's
+ * own CSS beats it without a specificity fight and without !important. That is
+ * close to mandatory for a distributed kit: an app should be able to restyle a
+ * panel by writing a plain rule.
+ *
+ * ⚠️ ONE layer, deliberately, NOT a sub-layer per file. Sub-layers look tidier
+ * and would silently reorder the kit against itself: layer order beats
+ * specificity, so a high-specificity rule in an early file that currently wins
+ * would start losing to a low-specificity rule in a later one. A single layer
+ * preserves source order exactly, so nothing inside the kit changes.
+ *
+ * Unlayered author CSS wins over all of it. That is the point.
+ */
+/* @property registrations stay OUTSIDE the layer: they register a custom
+ * property's type and initial value rather than participating in the
+ * cascade, so layering them buys nothing and risks engine quirks. */
+@property --ov-reveal {
+  syntax: "<percentage>";
+  initial-value: 100%;
+  inherits: true;
+}
+
+@property --ov-trace-angle {
+  syntax: "<angle>";
+  initial-value: 360deg;
+  inherits: false;
+}
+
+
+@layer overscan {
+/* Overscan motion.
+ *
+ * Three rules, and each exists because of something measured rather than
+ * because it looks good.
+ *
+ * 1. ARRIVAL REVEALS BY MASK, EXCEPT ON SCROLL, WHERE IT GROWS AND FADES.
+ *    ⚠️ THE EXCEPTION IS NEW, 2026-09-10, asked for after seeing
+ *    the mask version: `ov-reveal.js` now scales from 0.965 and fades from
+ *    zero. The honest cost is stated rather than buried, because the rest of
+ *    this rule is the argument against it: an element part-way through a fade
+ *    IS below its palette contrast for those frames. Two things bound it. The
+ *    opacity ramp is deliberately faster than the scale, so the low-contrast
+ *    window is a fraction of the arrival rather than all of it, and the
+ *    resting state remains fully opaque, so nothing is ever left faded.
+ *    ⭐ It is also the smoother of the two. Opacity and transform are
+ *    compositor properties; `mask-position` repaints the layer every frame,
+ *    which over a live WebGL field is where the stutter came from.
+ *    The mask rule still holds for `.ov-arrive`, below, which is the
+ *    load-time reveal and is unchanged.
+ *
+ *    ORIGINALLY, AND STILL TRUE OF `.ov-arrive`:
+ *    Contrast is time-dependent: an element fading in fails contrast while it
+ *    fades, and an audit that samples at a fixed delay reports colours that are
+ *    in no palette anywhere. A hard-edged mask wipe never paints a partial
+ *    colour, so every pixel is either fully there or absent and the delivered
+ *    contrast is correct at every frame of the animation.
+ *    It also composes with the panel's corner clip-path, which a second
+ *    clip-path could not.
+ *
+ *    APPLY IT TO A WRAPPER, NEVER TO .ov-panel ITSELF. A mask clips to the
+ *    border box exactly like a clip-path does, and the panel's label
+ *    deliberately sits outside that box, riding the top border. Put the class
+ *    on the panel and the reveal cuts the label in half. Same trap as the
+ *    corner clip, found the same way: by looking at the render.
+ *
+ * 2. STAGGER ENCODES SOMETHING, AND THE KIT WILL NOT INVENT WHAT.
+ *    Two things qualify, and nothing else does.
+ *    DATA FLOW, within a group: set --ov-stage to a panel's position in the
+ *    flow and it arrives when its input is ready, so the arrival order tells
+ *    you what feeds what. The kit cannot know that, so it asks. NO --ov-stage
+ *    MEANS NO STAGGER and everything in the group arrives together.
+ *    READING ORDER, down the page: ov-reveal.js arrives a block when you
+ *    scroll to it. That correlates with the reader's own position, which is
+ *    the test this rule actually applies. ⚠️ THIS CLAUSE IS NEW, added
+ *    2026-09-10 by request, and it replaces a flat statement that a
+ *    decorative cascade was deliberately impossible. The objection was never
+ *    stagger as such, it was "variation that correlates with nothing reads as
+ *    noise". Arrival on scroll correlates with where the reader is.
+ *    There is still no way to stagger by nothing at all.
+ *
+ * 3. PERPETUAL MOTION CANCELS FIRST.
+ *    A naive reduced-motion pass leaves exactly the wrong half running: the
+ *    status dot, the blinking cursor, the indeterminate bar. Those are the
+ *    first things off here, and the finite arrivals simply resolve.
+ */
+
+/* Fail safe: the resting state is REVEALED. If a browser will not animate the
+ * mask position, the content is simply visible rather than permanently hidden.
+ * Safari needed this: a reveal that hides by default and never runs is a blank
+ * panel, which is a much worse failure than no animation. */
+.ov-arrive { mask-position: 0 0; -webkit-mask-position: 0 0; }
+
+/* Scroll arrival, driven by ov-reveal.js.
+ *
+ * 🔴 THE HIDDEN HALF IS APPLIED BY SCRIPT AND ONLY BY SCRIPT. This class is
+ * never on an element in the delivered HTML: ov-reveal.js adds it, and only
+ * after it has confirmed it can animate it away. That is the whole safety
+ * argument. No script, no GSAP, reduced motion, a theme with zero duration:
+ * no class, and the page is simply visible.
+ *
+ * ⭐ THE CLASS DOES ALL THE HIDING, with no inline property to go with it.
+ * That is deliberate: an earlier version added the class and then set an inline
+ * custom property, and an element whose `style` was shadowed threw between the
+ * two, leaving the class on with nothing to animate it off. Adding a class
+ * cannot throw, and removing it cannot either.
+ *
+ * ⚠️ GROW AND FADE, which is a change to rule 1 above and is recorded there.
+ * Both properties are compositor-only, which is the other reason to prefer
+ * them here: the mask wipe this replaced animated `mask-position`, and that
+ * repaints the masked layer every frame. On the home page, where full-width
+ * bands sit over a live WebGL field, that is what the hiccups were. */
+/* ⭐ THE PRE-PAINT ARM. Measured on the home page: first contentful paint
+ * at 113ms, the reveal module at 120ms. So the page painted every element
+ * fully visible and then, twenty milliseconds later, hid them all to animate
+ * them in. That blink is what read as the reveal being broken, and no
+ * easing anywhere can fix it, because the content was already on screen.
+ *
+ * `data-ov-arm` is set by an inline classic script in the head, which runs
+ * during parsing and therefore BEFORE the first paint. ov-reveal.js takes
+ * the attribute off the moment it has the same elements under its own
+ * per-element control, and takes it off immediately in every path where it
+ * decides not to animate at all.
+ *
+ * 🔴 STILL SCRIPT-APPLIED, so the safety argument is unchanged: no script
+ * means no attribute means a visible page. The inline script also clears
+ * the attribute on a timer, so even a module that never loads at all costs
+ * a short delay rather than a blank page.
+ *
+ * ⚠️ This list must match TARGETS in ov-reveal.js exactly; api.py gates it. */
+[data-ov-arm] :is(
+  [data-ov-reveal],
+  .cw,
+  .th,
+  .ov-code,
+  .band > *,
+  .grid > *,
+  .cells > *,
+  section > *,
+  .body > *,
+  .toc > *,
+  .site-rail > *,
+  .site-rail__nav > *,
+  .hero__stage,
+  .hero__copy > *
+) {
+  opacity: 0;
+  transform: scale(var(--ov-reveal-scale, 0.965));
+}
+
+.ov-reveal--pending {
+  opacity: 0;
+  transform: scale(var(--ov-reveal-scale, 0.965));
+  /* 🔴 NO will-change HERE. This class goes on every element WAITING, and a
+   * page holds dozens below the fold, each of which will-change promoted to a
+   * composited layer of its own for as long as it waited.
+   * ov-reveal.js promotes an element when its arrival STARTS, and show()
+   * clears it when the arrival ends. */
+}
+
+/* Power-on. One sweep across the whole field before anything arrives, so the
+ * screen reads as coming up rather than as content appearing on a screen that
+ * was already on. */
+@keyframes ov-boot {
+  0%   { opacity: 0; }
+  8%   { opacity: 1; }
+  100% { opacity: 0; }
+}
+
+.ov-boot::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  pointer-events: none;
+  background: linear-gradient(
+    to bottom,
+    transparent 0%,
+    var(--ov-accent) 48%,
+    var(--ov-accent) 52%,
+    transparent 100%
+  );
+  opacity: 0;
+  animation: ov-boot var(--ov-boot) var(--ov-ease) 1;
+}
+
+/* ---- idle life, all perpetual, all first to go ------------------------- */
+
+@keyframes ov-blink { 0%, 49% { opacity: 1; } 50%, 100% { opacity: 0; } }
+
+.ov-cursor {
+  display: inline-block;
+  inline-size: 0.6em;
+  block-size: 1em;
+  vertical-align: text-bottom;
+  background: var(--ov-accent);
+  animation: ov-blink 1.06s steps(1) infinite;
+}
+
+@keyframes ov-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.35; } }
+
+.ov-dot--live { animation: ov-pulse 1.8s var(--ov-ease) infinite; }
+
+/* 🔴 A CSS ANIMATION NOBODY CAN SEE STILL COSTS A FRAME ON A TABLET.
+ *
+ * ⚠️ OUTSIDE the reduced-motion block below, on purpose: it was first placed
+ * inside it, where it would only ever have applied to a reader who had
+ * already asked for no motion, and done nothing for the device it was for.
+ * Measured on the reported iPad at the last two theme cards, with the shaders
+ * already down to 7ms of GPU: 29.5fps as the page stood, 65.3fps with the
+ * forty-six animations that were OFF SCREEN paused and nothing on screen
+ * touched. WebKit keeps ticking a running animation whatever its position,
+ * and the kit carries plenty of perpetual ones (text jitter, log and cursor
+ * blinks, schematic flow, annunciator flash).
+ *
+ * A page marks a block it knows is out of view with `data-ov-offscreen`, and
+ * everything inside it holds still. Paused, not removed, so an animation
+ * resumes exactly where it was: a blink does not restart, a flow does not
+ * jump. Nothing on screen can be affected, because nothing on screen carries
+ * the attribute. */
+[data-ov-offscreen],
+[data-ov-offscreen] *,
+[data-ov-offscreen] *::before,
+[data-ov-offscreen] *::after {
+  animation-play-state: paused !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  /* Perpetual first, and completely. */
+  .ov-cursor,
+  .ov-dot--live { animation: none; }
+  .ov-cursor { opacity: 1; }
+
+  /* Belt and braces: ov-reveal.js returns before it hides anything under
+     reduced motion, so this class should never appear here. If it somehow
+     does, the mask comes off rather than freezing a page half-wiped. */
+  .ov-reveal--pending,
+  [data-ov-arm] :is([data-ov-reveal], .cw, .th, .ov-code, .band > *, .grid > *, .cells > *, section > *, .body > *, .toc > *, .site-rail > *, .site-rail__nav > *, .hero__stage, .hero__copy > *) { opacity: 1; transform: none; will-change: auto; }
+
+  /* Finite animations resolve rather than run. Nothing is left mid-reveal. */
+  .ov-arrive {
+    animation: none;
+    mask-image: none;
+    -webkit-mask-image: none;
+  }
+  .ov-boot::before { animation: none; opacity: 0; }
+}
+
+
+/* =======================================================================
+ * The motion vocabulary.
+ *
+ * Everything below obeys the three rules above. Two things follow from them
+ * and are worth stating once rather than repeating:
+ *
+ * - Reveals are masks or clips, never opacity. A partial alpha is not a
+ *   palette colour, so a fading glyph spends the whole animation at a contrast
+ *   ratio that was never measured. A clip is binary: the glyph is fully painted
+ *   or absent, and delivered contrast is correct at every frame.
+ * - Colour MAY be animated between two tokens that both clear the gate, and
+ *   only between those. That is the sharper form of the rule: the problem was
+ *   never colour changing, it was passing through values no one measured.
+ * - Anything perpetual is listed in the reduced-motion block at the end. If
+ *   you add an effect here and it loops, it goes in that block. That is the
+ *   whole maintenance rule.
+ * ======================================================================= */
+
+/* ---- text -------------------------------------------------------------- */
+
+/* One animated variable drives both the reveal and the mark that rides its
+ * edge, so the two can never drift apart. Registered so it interpolates; the
+ * initial value is a completed reveal, so where @property is unsupported the
+ * text is simply present. Fail safe, like every other reveal here. */
+/* Deliberately not sized in `ch`. ch is the advance width of digit zero, so a
+ * ch-stepped reveal is wrong in every non-Latin script. A percentage is
+ * script-agnostic. */
+@keyframes ov-type { from { --ov-reveal: 0%; } to { --ov-reveal: 100%; } }
+@keyframes ov-wipe { from { --ov-reveal: 0%; } to { --ov-reveal: 100%; } }
+@keyframes ov-cut  { from { --ov-reveal: 0%; } to { --ov-reveal: 100%; } }
+
+/* Phosphor warming up: the line catches, drops out, catches again. Every frame
+ * is fully on or fully off, so it flickers without ever being half lit. */
+@keyframes ov-flicker-in {
+  0%       { --ov-reveal: 0%; }
+  18%      { --ov-reveal: 100%; }
+  24%      { --ov-reveal: 0%; }
+  33%      { --ov-reveal: 100%; }
+  41%      { --ov-reveal: 0%; }
+  52%, 100% { --ov-reveal: 100%; }
+}
+
+/* Arrives over-bright and settles. Both ends are palette tokens that clear the
+ * gate, which is what makes animating colour legitimate here. */
+@keyframes ov-burn { from { color: var(--ov-accent); } to { color: inherit; } }
+
+/* Lines pushing up as new output arrives. Geometry only. */
+@keyframes ov-rollup {
+  from { clip-path: inset(100% 0 0 0); transform: translateY(0.35em); }
+  to   { clip-path: inset(0 0 0 0); transform: none; }
+}
+
+/* A hard cut between two horizontal slices. No blur, no opacity: a glitch that
+ * fades is a dissolve, and this register does not dissolve. Fires several
+ * times per turn rather than once, because a tear you have to wait three
+ * seconds for is a tear nobody sees. */
+@keyframes ov-slice {
+  0%, 14%, 30%, 46%, 62%, 100% { clip-path: inset(0 0 0 0); transform: none; }
+  16% { clip-path: inset(0 0 58% 0); transform: translateX(-4px); }
+  19% { clip-path: inset(44% 0 0 0); transform: translateX(5px); }
+  32% { clip-path: inset(0 0 24% 0); transform: translateX(3px); }
+  64% { clip-path: inset(66% 0 0 0); transform: translateX(-6px); }
+  66% { clip-path: inset(0 0 70% 0); transform: translateX(2px); }
+}
+
+.ov-slice { animation: ov-slice 1.6s steps(1) infinite; }
+
+/* ---- the text output surface ------------------------------------------- */
+
+/* One class, and the THEME picks which animation it runs. `animation-name`
+ * takes a custom property, so a theme naming its keyframes is all the wiring
+ * this needs, and any element can override the token inline to mix.
+ *
+ * Two animations, not one: an ARRIVAL that runs once and an IDLE that loops,
+ * either of which a theme can leave empty.
+ *
+ * ⚠ The mark is why terminal and esper are different animations rather than
+ * two easings of one. A reveal is a reveal: what distinguishes typing from a
+ * scan is the thing riding its leading edge. Terminal puts a hard block cursor
+ * there and steps; esper puts a soft bright edge there and moves smoothly.
+ * Both read off --ov-reveal, so the mark cannot drift from the reveal.
+ */
+.ov-out {
+  position: relative;
+  display: inline-block;
+  animation-name: var(--ov-text-anim, ov-type), var(--ov-text-idle, none);
+  animation-duration: var(--ov-text-dur, 1200ms), var(--ov-text-idle-dur, 1.6s);
+  animation-timing-function: var(--ov-text-ease, steps(var(--ov-text-steps, 32))), steps(1);
+  animation-iteration-count: 1, infinite;
+  animation-fill-mode: both, none;
+  animation-delay: calc(var(--ov-cascade) * var(--ov-stage, 0)), 0s;
+}
+
+/* The text is clipped, not the host, so the mark can sit outside the clip and
+ * still be positioned by the same variable. */
+.ov-out > span {
+  display: inline-block;
+  clip-path: inset(0 calc(100% - var(--ov-reveal)) 0 0);
+}
+
+/* The cursor is part of the register, not a shared ornament. A terminal has a
+ * hard block, worn hardware has a heavy underscore, cyber has a thin bar that
+ * leans with everything else, an Esper has a bright read edge rather than a
+ * cursor at all, and antiseptic has nothing, because nobody operates a film
+ * loop. Every one of them rides --ov-reveal, so none can drift from the text. */
+.ov-out::after {
+  content: "";
+  position: absolute;
+  inset-block-end: var(--ov-text-mark-drop, 0);
+  inset-inline-start: var(--ov-reveal);
+  inline-size: var(--ov-text-mark-w, 0);
+  block-size: var(--ov-text-mark-h, 1em);
+  background: var(--ov-text-mark-bg, currentColor);
+  transform: skewX(calc(var(--ov-shear) * -1));
+  pointer-events: none;
+  animation: var(--ov-text-mark-anim, none)
+             var(--ov-text-mark-rate, 1.06s) steps(1) infinite;
+}
+
+/* ---- borders ----------------------------------------------------------- */
+
+/* Draws the border on around the perimeter. The initial value is a full turn,
+ * so where @property is unsupported the conic mask is invalid, the mask is
+ * dropped and the border is simply present. Fail safe, like the arrival mask:
+ * a decorative effect must never be the reason content is missing. */
+@keyframes ov-trace { from { --ov-trace-angle: 0deg; } to { --ov-trace-angle: 360deg; } }
+
+.ov-trace { position: relative; }
+
+.ov-trace::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  border: var(--ov-bezel) solid var(--ov-accent);
+  mask-image: conic-gradient(#000 var(--ov-trace-angle), transparent 0);
+  animation: ov-trace var(--ov-dur-slow) linear both;
+  animation-delay: calc(var(--ov-cascade) * var(--ov-stage, 0));
+}
+
+/* A lit segment running the perimeter. Perpetual, so it says "powered", never
+ * "progressing": an indeterminate runner that looks like progress is the
+ * status-dot mistake in another form. */
+@keyframes ov-runner { from { --ov-trace-angle: 0deg; } to { --ov-trace-angle: 360deg; } }
+
+.ov-runner { position: relative; }
+
+.ov-runner::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  border: var(--ov-bezel) solid var(--ov-accent);
+  mask-image: conic-gradient(
+    transparent var(--ov-trace-angle),
+    #000 var(--ov-trace-angle),
+    #000 calc(var(--ov-trace-angle) + 26deg),
+    transparent calc(var(--ov-trace-angle) + 26deg)
+  );
+  animation: ov-runner 2.4s linear infinite;
+}
+
+/* ---- labels ------------------------------------------------------------ */
+
+/* Reverse video sweeps across the label and leaves. Finite, and it swaps the
+ * lit pair rather than fading, so both states are real palette colours. */
+@keyframes ov-sweep {
+  from { clip-path: inset(0 100% 0 0); }
+  60%  { clip-path: inset(0 0 0 0); }
+  to   { clip-path: inset(0 0 0 100%); }
+}
+
+.ov-sweep { position: relative; }
+
+.ov-sweep::after {
+  content: attr(data-ov-text);
+  position: absolute;
+  inset: 0;
+  padding: inherit;
+  background: var(--ov-accent);
+  color: var(--ov-field);
+  animation: ov-sweep var(--ov-dur-slow) var(--ov-ease) both;
+  animation-delay: calc(var(--ov-cascade) * var(--ov-stage, 0));
+}
+
+/* ---- procedural panel -------------------------------------------------- */
+
+/* A bar travelling down the panel. Perpetual.
+ *
+ * The bar is kept in bounds by its own travel rather than by clipping the
+ * container. `overflow: hidden` here cropped the panel label, which rides the
+ * top border and therefore sits outside the border box: the fourth time in
+ * this kit that a container-level clip has eaten something deliberately placed
+ * outside it. A decorative overlay should not be able to remove content, so
+ * the fix is that the bar never leaves rather than that the box hides it. */
+@keyframes ov-scan {
+  from { inset-block-start: -10%; }
+  to   { inset-block-start: 90%; }
+}
+
+.ov-scan { position: relative; }
+
+.ov-scan::after {
+  content: "";
+  position: absolute;
+  inset-inline: 0;
+  inset-block-start: -10%;
+  block-size: 10%;
+  pointer-events: none;
+  background: linear-gradient(to bottom, transparent, var(--ov-accent), transparent);
+  opacity: 0.16;
+  animation: ov-scan 5.5s linear infinite;
+}
+
+/* Drifting hatch. Perpetual, and the drift is slow enough to read as a surface
+ * rather than as something happening. */
+@keyframes ov-hatch { to { background-position: 44px 44px; } }
+
+.ov-hatch { position: relative; }
+
+.ov-hatch::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background-image: repeating-linear-gradient(
+    45deg,
+    var(--ov-line) 0 1px,
+    transparent 1px 11px
+  );
+  opacity: 0.5;
+  animation: ov-hatch 9s linear infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  /* Every looping effect in the vocabulary. Add one above, add it here. */
+  .ov-slice,
+  .ov-out::after,
+  .ov-runner::after,
+  .ov-scan::after,
+  .ov-hatch::before { animation: none; }
+
+  /* Finite ones resolve to their settled state. */
+  .ov-type { animation: none; clip-path: none; }
+  .ov-out { animation: none; color: inherit; }
+  .ov-out > span { clip-path: none; }
+  .ov-out::after { display: none; }
+  .ov-trace::after { animation: none; mask-image: none; }
+  .ov-sweep::after { animation: none; display: none; }
+}
+}

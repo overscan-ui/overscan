@@ -1,0 +1,253 @@
+/* ---- CASCADE LAYER ------------------------------------------------------
+ *
+ * Everything the kit ships sits in ONE layer named `overscan`, so a consumer's
+ * own CSS beats it without a specificity fight and without !important. That is
+ * close to mandatory for a distributed kit: an app should be able to restyle a
+ * panel by writing a plain rule.
+ *
+ * ⚠️ ONE layer, deliberately, NOT a sub-layer per file. Sub-layers look tidier
+ * and would silently reorder the kit against itself: layer order beats
+ * specificity, so a high-specificity rule in an early file that currently wins
+ * would start losing to a low-specificity rule in a later one. A single layer
+ * preserves source order exactly, so nothing inside the kit changes.
+ *
+ * Unlayered author CSS wins over all of it. That is the point.
+ */
+
+@layer overscan {
+/* Form controls.
+ *
+ * Every one of these is a real native control with its appearance replaced,
+ * never a div pretending. The semantics, the keyboard behaviour and the
+ * announcement all come free that way, and it is easy to find what happens when
+ * they do not: a focusable div has NO accessible name however much text is
+ * inside it, because role `generic` does not support name-from-content.
+ */
+
+/* ---- checkbox and radio ------------------------------------------------ */
+
+.ov-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  cursor: pointer;
+  color: var(--ov-dim);
+  text-transform: var(--ov-case);
+}
+
+.ov-check input {
+  appearance: none;
+  margin: 0;
+  inline-size: 14px;
+  block-size: 14px;
+  flex: 0 0 auto;
+  background: var(--ov-panel);
+  border: var(--ov-bezel) solid var(--ov-line-strong);
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+}
+
+.ov-check input[type="radio"] { border-radius: 50%; }
+
+.ov-check input::before {
+  content: "";
+  inline-size: 6px;
+  block-size: 6px;
+  background: var(--ov-accent);
+  transform: scale(0);
+  transition: transform var(--ov-dur-fast) var(--ov-ease);
+}
+
+.ov-check input[type="radio"]::before { border-radius: 50%; }
+.ov-check input:checked::before { transform: scale(1); }
+.ov-check input:checked { border-color: var(--ov-accent); }
+.ov-check:has(input:checked) { color: var(--ov-ink); }
+
+.ov-check input:focus-visible {
+  outline: 2px solid var(--ov-accent);
+  outline-offset: 1px;
+}
+
+/* aria-disabled, never the native attribute: native removes the control from
+ * the tab order and announces nothing. */
+.ov-check[aria-disabled="true"] { color: var(--ov-faint); cursor: not-allowed; }
+
+/* ---- select ------------------------------------------------------------ */
+
+.ov-select {
+  appearance: none;
+  font: inherit;
+  letter-spacing: inherit;
+  text-transform: var(--ov-case);
+  color: var(--ov-ink);
+  background-color: var(--ov-panel);
+  border: var(--ov-bezel) solid var(--ov-line-strong);
+  padding: 8px 30px 8px 12px;
+  cursor: pointer;
+  /* The arrow, then the cut edge. See "the cut edge" in chrome.css: a clip
+     removes and never draws, so the diagonal has to be painted. */
+  --ov-cut-w: var(--ov-bezel);
+  --ov-cut-br: var(--ov-ctl-corner);
+  background-image: linear-gradient(45deg, transparent 50%, currentColor 50%),
+                    linear-gradient(135deg, currentColor 50%, transparent 50%),
+                    var(--ov-cut-img);
+  background-position: right 14px top 50%, right 9px top 50%,
+                       var(--ov-cut-pos);
+  background-size: 5px 5px, 5px 5px, var(--ov-cut-size);
+  background-repeat: no-repeat;
+  clip-path: polygon(
+    0 0, 100% 0,
+    100% calc(100% - var(--ov-ctl-corner)),
+    calc(100% - var(--ov-ctl-corner)) 100%,
+    0 100%);
+}
+
+/* ---- progress ---------------------------------------------------------- */
+
+.ov-progress {
+  position: relative;
+  block-size: 10px;
+  background: var(--ov-panel);
+  border: var(--ov-rule) solid var(--ov-line-strong);
+  overflow: hidden;
+}
+
+.ov-progress__fill {
+  block-size: 100%;
+  inline-size: var(--ov-progress, 0%);
+  background: var(--ov-accent);
+  transition: inline-size var(--ov-dur-base) var(--ov-ease);
+}
+
+/* An indeterminate bar is PERPETUAL MOTION THAT SAYS "WORKING", and it must
+ * never be read as progress. Two things enforce that rather than trusting the
+ * reader: it carries no aria-valuenow, which is the correct ARIA signal for
+ * indeterminate and is what a screen reader uses to decide whether to announce
+ * a percentage; and its stripe cancels first under reduced motion, like every
+ * other loop in the kit. Same rule .ov-runner is written to, and for the same
+ * reason: a loop that looks like it is measuring something is worse than one
+ * that plainly is not. */
+@keyframes ov-indeterminate {
+  from { transform: translateX(-100%); }
+  to   { transform: translateX(400%); }
+}
+
+.ov-progress[data-ov-indeterminate] .ov-progress__fill {
+  inline-size: 25%;
+  animation: ov-indeterminate 1.5s linear infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ov-progress[data-ov-indeterminate] .ov-progress__fill {
+    animation: none;
+    inline-size: 100%;
+    opacity: 0.4;
+  }
+}
+
+/* ---- menu -------------------------------------------------------------- */
+
+ov-menu { display: block; }
+
+.ov-menu__bar { display: flex; gap: 2px; }
+
+.ov-menu__item {
+  font: inherit;
+  letter-spacing: inherit;
+  text-transform: var(--ov-case);
+  background: none;
+  border: 0;
+  padding: 7px 14px;
+  color: var(--ov-dim);
+  cursor: pointer;
+}
+
+.ov-menu__item[aria-expanded="true"],
+.ov-menu__item:hover { background: var(--ov-lit-bg); color: var(--ov-lit-fg); }
+
+.ov-menu__item:focus-visible { outline: 2px solid var(--ov-accent); outline-offset: -2px; }
+
+.ov-menu__list[hidden] { display: none; }
+
+.ov-menu__list {
+  position: absolute;
+  z-index: 40;
+  min-inline-size: 180px;
+  margin: 0;
+  padding: 4px 0;
+  list-style: none;
+  background: var(--ov-raised);
+  border: var(--ov-bezel) solid var(--ov-line-strong);
+}
+
+.ov-menu__list [role="menuitem"] {
+  display: flex;
+  gap: 18px;
+  justify-content: space-between;
+  padding: 6px 14px;
+  color: var(--ov-ink);
+  text-transform: var(--ov-case);
+  cursor: pointer;
+}
+
+.ov-menu__list [role="menuitem"]:hover,
+.ov-menu__list [role="menuitem"]:focus-visible {
+  background: var(--ov-lit-bg);
+  color: var(--ov-lit-fg);
+  outline: none;
+}
+
+.ov-menu__list [role="menuitem"] span { color: var(--ov-faint); }
+
+.ov-menu__list [aria-disabled="true"] { color: var(--ov-faint); cursor: not-allowed; }
+
+/* ---- modal ------------------------------------------------------------- */
+
+ov-modal { display: contents; }
+
+/* A real <dialog>, opened with showModal(), so it lives in the top layer.
+ * Nothing below is a workaround for stacking: there is nothing left to stack
+ * against. */
+.ov-modal__box {
+  position: fixed;
+  margin: auto;
+  min-inline-size: 320px;
+  max-inline-size: min(560px, 92vw);
+  background-color: var(--ov-panel);
+  color: var(--ov-ink);
+  font-family: var(--ov-font-mono);
+  font-size: var(--ov-size-2);
+  letter-spacing: var(--ov-track);
+  border: var(--ov-bezel) solid var(--ov-line-strong);
+  --ov-cut-w: var(--ov-bezel);
+  --ov-cut-br: var(--ov-corner);
+  background-image: var(--ov-cut-img);
+  background-size: var(--ov-cut-size);
+  background-position: var(--ov-cut-pos);
+  padding: calc(var(--ov-pad) + 6px);
+  padding-inline-end: calc(var(--ov-pad) + 6px + var(--ov-corner));
+  clip-path: polygon(
+    0 0, 100% 0,
+    100% calc(100% - var(--ov-corner)),
+    calc(100% - var(--ov-corner)) 100%,
+    0 100%);
+}
+
+.ov-modal__box[open] {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ov-gap);
+}
+
+.ov-modal__box::backdrop { background: rgb(0 0 0 / 0.66); }
+
+.ov-modal__title {
+  font-size: var(--ov-size-1);
+  letter-spacing: calc(var(--ov-track) + 1.4px);
+  text-transform: uppercase;
+  color: var(--ov-accent);
+}
+
+.ov-modal__foot { display: flex; gap: 10px; justify-content: flex-end; margin-block-start: 6px; }
+}

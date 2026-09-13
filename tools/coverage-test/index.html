@@ -1,0 +1,110 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>ov-coverage harness</title>
+<link rel="stylesheet" href="../../src/tokens.css">
+<link rel="stylesheet" href="../../src/coverage.css">
+<style>
+  body { background: #06060a; color: #cfe; font: 13px ui-monospace, monospace; padding: 20px; }
+  #stage { display: grid; grid-template-columns: repeat(auto-fill, 420px); gap: 16px; }
+  pre { white-space: pre-wrap; }
+</style>
+<div id="stage" data-ov-theme="cyber"></div>
+<pre id="out">running...</pre>
+<script type="module">
+import '../../src/ov-coverage.js';
+// The demo's own scene file, so the harness checks the data the page shows.
+const estate = async () => (await fetch('../../demo/models/coverage-estate.json')).json();
+/* The same estate as the usual heatmap would paint it: green for any rule. */
+function asHeatmapWouldSee(e) {
+  let green = 0;
+  const seen = new Set();
+  for (const ta of e.tactics) for (const id of ta.techniques) if (!seen.has(id)) { seen.add(id); if ((e.techniques[id] || {}).rules) green += 1; }
+  return { green, total: seen.size };
+}
+await customElements.whenDefined('ov-coverage');
+
+const stage = document.getElementById('stage');
+const results = [];
+const ok = (name, cond, got) => results.push({ name, pass: !!cond, got });
+const controls = [];
+const control = (name, cond, got) => controls.push({ name, pass: !!cond, got });
+const fresh = (data, attrs = {}) => {
+  const el = document.createElement('ov-coverage');
+  for (const [k, v] of Object.entries(attrs)) el.setAttribute(k, v);
+  stage.append(el);
+  el.coverage = data;
+  return el;
+};
+const text = (el) => el.querySelector('.ov-coverage__readout')?.textContent || el.textContent;
+const cellsOf = (el, id) => [...el.querySelectorAll(`.ov-coverage__grid .ov-coverage__cell[data-id="${id}"]`)];
+const stateOf = (el, id) => el.report().byId[id];
+// A one-row grid for pinpoint cases.
+const one = (t, attrs) => fresh({ asOf: '2026-09-01', tactics: [{ name: 'Execution', techniques: ['TX'] }], techniques: { TX: t } }, attrs);
+
+// 1. The estate.
+const E = await estate();
+const a = fresh(E);
+const rep = a.report();
+ok('a rule and no test is UNKNOWN, hatched, not validated', stateOf(a, 'T1059') === 'unknown' && cellsOf(a, 'T1059')[0].classList.contains('is-rule'), stateOf(a, 'T1059'));
+ok('a status handed in is counted and not used', rep.handed === 1 && /status given for 1: not used/.test(text(a)) && stateOf(a, 'T1059') !== 'validated', text(a));
+ok('a recent detected test is VALIDATED', stateOf(a, 'T1078') === 'validated', stateOf(a, 'T1078'));
+ok('the latest dated test decides: a miss then a pass is VALIDATED', stateOf(a, 'T1566') === 'validated', stateOf(a, 'T1566'));
+ok('a pass older than max-age decays to UNKNOWN, and says so', stateOf(a, 'T1486') === 'unknown' && /last validated over 90d ago: unknown/.test(text(a)), stateOf(a, 'T1486'));
+ok('a miss is FAILED', stateOf(a, 'T1003') === 'failed', stateOf(a, 'T1003'));
+ok('a miss 400 days old is still FAILED: age never improves a miss', stateOf(a, 'T1490') === 'failed', stateOf(a, 'T1490'));
+ok('an undated test is not credited', stateOf(a, 'T1021') === 'unknown' && /1 test undated: not credited/.test(text(a)), stateOf(a, 'T1021'));
+ok('a test dated after as-of is not credited', stateOf(a, 'T1105') === 'unknown' && /1 dated after as-of: not credited/.test(text(a)), stateOf(a, 'T1105'));
+ok('a technique under four tactics is drawn four times and counted once', cellsOf(a, 'T1078').length === 4 && rep.cells > rep.total && /cells, \d+ techniques: each counted once/.test(text(a)), [cellsOf(a, 'T1078').length, rep.cells, rep.total]);
+ok('the counts add up to the techniques, once each', Object.values(rep.count).reduce((x, y) => x + y, 0) === rep.total, rep.count);
+ok('the legend counts match the report', [...a.querySelectorAll('.ov-coverage__key')].map((k) => +k.textContent.match(/(\d+)$/)[1]).join() === Object.values(rep.count).join(), rep.count);
+const heat = asHeatmapWouldSee(E);
+ok('the only percentage is validated over all, far below what a rule heatmap would claim', new RegExp(`${rep.count.validated} of ${rep.total} techniques validated in the last 90d \\(${Math.round(100 * rep.count.validated / rep.total)}%\\)`).test(text(a)) && heat.green > rep.count.validated * 1.5, [text(a), heat]);
+ok('no coverage percentage that counts rules appears anywhere', !a.textContent.includes(`${Math.round(100 * heat.green / heat.total)}%`) || Math.round(100 * heat.green / heat.total) === Math.round(100 * rep.count.validated / rep.total), heat);
+ok('each row counts its own validated cells', [...a.querySelectorAll('.ov-coverage__row')].every((row) => +row.querySelector('.ov-coverage__n').textContent.split('/')[0] === row.querySelectorAll('.ov-coverage__cell.is-validated').length), '');
+ok('as of the date given, stated', /as of 2026-09-01/.test(text(a)), text(a));
+ok('role img, and the name carries the claim', a.getAttribute('role') === 'img' && /technique coverage, \d+ of \d+ techniques validated/.test(a.getAttribute('aria-label')), a.getAttribute('aria-label'));
+
+// 2. Freshness: the fill drains with age.
+const f10 = one({ rules: 1, tests: [{ date: '2026-08-22', result: 'detected' }] });
+const f80 = one({ rules: 1, tests: [{ date: '2026-06-13', result: 'detected' }] });
+const fillOf = (el) => Number(el.querySelector('.ov-coverage__grid .ov-coverage__cell').style.getPropertyValue('--ov-coverage-fresh'));
+ok('a validated cell tested 10d ago is fuller than one tested 80d ago', fillOf(f10) > 0.85 && fillOf(f80) < 0.2 && fillOf(f80) > 0, [fillOf(f10), fillOf(f80)]);
+ok('max-age is the author\'s: at 60d the 80-day pass is UNKNOWN', (f80.setAttribute('max-age', '60'), stateOf(f80, 'TX') === 'unknown') && (f80.setAttribute('max-age', '120'), stateOf(f80, 'TX') === 'validated'), '');
+
+// 3. Pinpoint states.
+ok('partial within max-age is PARTIAL', stateOf(one({ rules: 1, tests: [{ date: '2026-08-01', result: 'partial' }] }), 'TX') === 'partial', '');
+ok('no rule and no test is NONE', stateOf(one({ name: 'x' }), 'TX') === 'none', '');
+ok('a result the grid does not understand is UNKNOWN, said', (() => { const el = one({ rules: 1, tests: [{ date: '2026-08-01', result: 'ok' }] }); return stateOf(el, 'TX') === 'unknown' && /result not understood/.test(text(el)); })(), '');
+ok('a status of green with no evidence is not green', stateOf(one({ color: 'green', covered: true, score: 100 }), 'TX') === 'none', '');
+const miss = fresh({ asOf: '2026-09-01', tactics: [{ name: 'Execution', techniques: ['TX', 'TY'] }], techniques: { TX: { rules: 1 } } });
+ok('a technique listed with no record is UNKNOWN, said', stateOf(miss, 'TY') === 'unknown' && /1 listed with no record/.test(text(miss)), text(miss));
+
+// 4. Nothing, and back.
+const n = fresh(null);
+ok('no data is the kit\'s unknown', n.getAttribute('data-ov-refusal') === 'unknown' && /NO DATA/.test(n.textContent), '');
+n.coverage = E;
+ok('a refusal clears when data arrives', !n.hasAttribute('data-ov-refusal') && n.querySelectorAll('.ov-coverage__row').length === 12, n.getAttribute('data-ov-refusal'));
+n.coverage = { tactics: [] };
+ok('an empty tactic list is refused, not drawn empty', n.getAttribute('data-ov-refusal') === 'unknown', '');
+ok('same width refused as drawn (the demo card measures once)', n.getBoundingClientRect().width === a.getBoundingClientRect().width, [n.getBoundingClientRect().width, a.getBoundingClientRect().width]);
+const live = fresh({ tactics: [{ name: 'Execution', techniques: ['TX'] }], techniques: { TX: { rules: 1 } } });
+ok('with no asOf it measures from now, and says so', /as of now/.test(text(live)), text(live));
+
+// CONTROLS: false claims that a working harness must reject.
+control('a rule-only cell is drawn as validated', cellsOf(a, 'T1059').some((c) => c.classList.contains('is-validated')), '');
+control('a stale pass is drawn as validated', cellsOf(a, 'T1486').some((c) => c.classList.contains('is-validated')), '');
+control('the grid reports the heatmap\'s rule count as validated', rep.count.validated === heat.green, [rep.count.validated, heat.green]);
+
+const passed = results.filter((x) => x.pass).length;
+const failed = results.length - passed;
+const controlsFailed = controls.filter((x) => !x.pass).length;
+const gate = failed === 0 && controlsFailed === controls.length && controls.length > 0;
+const out = document.getElementById('out');
+out.textContent = [
+  ...results.map((x) => `${x.pass ? 'PASS' : 'FAIL'}  ${x.name}${x.pass ? '' : '  got ' + JSON.stringify(x.got)}`),
+  ...controls.map((x) => `${x.pass ? 'CONTROL PASSED (BAD)' : 'CONTROL FAILED (good)'}  ${x.name}`),
+  '', `${passed} passed, ${failed} failed, ${controlsFailed}/${controls.length} controls failed as required`,
+  `GATE: ${gate ? 'PASS' : 'FAIL'}`,
+].join('\n');
+out.setAttribute('data-gate', gate ? 'pass' : 'fail');
+</script>

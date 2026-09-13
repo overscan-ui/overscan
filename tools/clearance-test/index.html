@@ -1,0 +1,159 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>ov-clearance harness</title>
+<!-- The refusal gate for ov-clearance. Serve the repo root (tools/serve.py)
+     and open /tools/clearance-test/. The last line must read GATE: PASS, and
+     every CONTROL must fail. ?src=mut/<name>.js runs it against a copy with
+     one refusal broken, which must turn it red. -->
+<link rel="stylesheet" href="../../src/tokens.css">
+<link rel="stylesheet" href="../../src/chrome.css">
+<link rel="stylesheet" href="../../src/clearance.css">
+<style>
+  body { background: #06060a; color: #cfe; font: 13px ui-monospace, monospace; padding: 20px; }
+  pre { white-space: pre-wrap; }
+  #stage { max-inline-size: 560px; container-type: inline-size; }
+</style>
+<div id="stage" data-ov-theme="aegis"></div>
+<pre id="out" data-gate="pending">running...</pre>
+<script>
+  window.__raf = 0;
+  const raf = window.requestAnimationFrame.bind(window);
+  window.requestAnimationFrame = (f) => { window.__raf++; return raf(f); };
+  // 🔴 A THROW IS A RED GATE, NOT A HANG.
+  const fatal = (what) => {
+    const out = document.getElementById('out');
+    if (out) { out.textContent = `THREW: ${what}\n\nGATE: FAIL`; out.dataset.gate = 'fail'; }
+  };
+  addEventListener('error', (e) => fatal(e.error?.stack || e.message || e));
+  addEventListener('unhandledrejection', (e) => fatal(e.reason?.stack || e.reason));
+</script>
+<script type="module">
+const SRC = new URLSearchParams(location.search).get('src') || '../../src/ov-clearance.js';
+await import(new URL(SRC, location.href).href);
+
+const stage = document.getElementById('stage');
+const results = [], controls = [];
+const ok = (n, c, g) => results.push({ name: n, pass: !!c, got: g });
+const control = (n, c, g) => controls.push({ name: n, pass: !!c, got: g });
+const settle = () => new Promise((r) => setTimeout(r, 0));
+const shows = (el) => { if (!el) return false; if (!el.isConnected) throw new Error('shows() on a detached element'); return getComputedStyle(el).display !== 'none'; };
+
+const make = (attrs = {}) => {
+  const el = document.createElement('ov-clearance');
+  for (const [k, v] of Object.entries(attrs)) el.setAttribute(k, v);
+  stage.replaceChildren(el);
+  return el;
+};
+const q = (c, s) => (c ? c.querySelector(s) : null);
+const text = (c, s) => q(c, s)?.textContent ?? null;
+const val = (c) => text(c, '.ov-clearance__value');
+const why = (c) => text(c, '.ov-clearance__why');
+const breach = (c) => text(c, '.ov-clearance__breach');
+
+/* The PAZIFIK, BSU 241/18. Zone C is ±500 m, which is 0.27 nm, so a charted
+ * 0.80 nm CPA to Banta is really 0.53 nm and the isolated danger's 0.70 is
+ * really 0.43 - the report's own two figures. */
+const BANTA = { charted: 0.80, zoc: 'C', surveyed: '1994-03', danger: 'Banta island' };
+const DANGER = { charted: 0.70, zoc: 'C', surveyed: '1994-03', danger: 'isolated danger' };
+let c;
+
+// ---- 1. The headline: the survey widens the clearance -------------------
+c = make({ label: 'BANTA', unit: 'nm', margin: '0.5' });
+c.pick = { ...BANTA };
+await settle();
+ok('a qualified pick reads as a clearance', c.getAttribute('data-ov-state') === 'qualified', c.getAttribute('data-ov-state'));
+ok('⭐ the headline number is the WORST CASE, not the charted figure', val(c) === '0.53', val(c));
+ok('...which is the BSU’s own figure for this pick', c.report.worst.toFixed(2) === '0.53', c.report.worst);
+ok('...and the charted figure is kept, plainly labelled', text(c, '.ov-clearance__charted') === '0.80 nm', text(c, '.ov-clearance__charted'));
+ok('...with the zone and its accuracy said in words', /ZONE C · ±500 m/.test(why(c)), why(c));
+ok('the tag says what was subtracted and why', /CHARTED 0\.80 nm LESS THE SURVEY'S ±500 m/.test(text(c, '.ov-clearance__tag')), text(c, '.ov-clearance__tag'));
+ok('the host is a group, not an img (its rows must stay readable)', c.getAttribute('role') === 'group', c.getAttribute('role'));
+ok('the band is the only aria-hidden part', q(c, '.ov-clearance__plot').getAttribute('aria-hidden') === 'true' && c.getAttribute('aria-hidden') === null, c.getAttribute('aria-hidden'));
+ok('the band is drawn, and has width: the width IS the doubt', shows(q(c, '.ov-clearance__band')) && parseFloat(getComputedStyle(q(c, '.ov-clearance__band')).width) > 4, getComputedStyle(q(c, '.ov-clearance__band')).width);
+control('CONTROL: the charted figure is the headline (must fail)', val(c) === '0.80', val(c));
+
+// ---- 2. A worst case inside the margin, where the charted one clears ----
+c = make({ label: 'ISOLATED DANGER', unit: 'nm', margin: '0.5' });
+c.pick = { ...DANGER };
+await settle();
+ok('⭐ the charted 0.70 clears a 0.50 margin', c.report.chartedClears === true, c.report.chartedClears);
+ok('⭐ ...and the honest 0.43 does not, so it is flagged', c.report.breaches === true && c.hasAttribute('data-ov-breach'), [c.report.breaches, c.hasAttribute('data-ov-breach')]);
+ok('...the flag says both numbers, so the reader can see the trap', /WORST CASE 0\.43 nm IS INSIDE THE 0\.50 nm MARGIN — THE CHARTED 0\.70 nm CLEARS IT/.test(breach(c)), breach(c));
+ok('...and it reaches the accessible name', /inside the 0\.50 nm margin/.test(c.getAttribute('aria-label')), c.getAttribute('aria-label'));
+control('CONTROL: only the charted figure is judged against the margin (must fail)', !c.hasAttribute('data-ov-breach'), c.hasAttribute('data-ov-breach'));
+
+// ---- 3. No zone of confidence, no clearance ----------------------------
+c = make({ label: 'BANTA', unit: 'nm', margin: '0.5' });
+c.pick = { charted: 0.80 };
+await settle();
+ok('⭐ a chart that does not say how good its survey is yields NO clearance', c.getAttribute('data-ov-state') === 'unqualified' && val(c) === 'NOT QUALIFIED', [c.getAttribute('data-ov-state'), val(c)]);
+ok('...and it is a refusal, marked as one', c.getAttribute('data-ov-refusal') === 'unqualified', c.getAttribute('data-ov-refusal'));
+ok('...saying what is missing', /the chart does not say how good the survey is/.test(why(c)), why(c));
+ok('⭐ ...and it does NOT fall back to the charted distance', val(c) !== '0.80' && text(c, '.ov-clearance__worst') === 'NOT QUALIFIED', text(c, '.ov-clearance__worst'));
+ok('...the charted figure is still shown, as what it is', text(c, '.ov-clearance__charted') === '0.80 nm', text(c, '.ov-clearance__charted'));
+ok('...and no band is drawn for a doubt nobody has sized', !shows(q(c, '.ov-clearance__plot')), getComputedStyle(q(c, '.ov-clearance__plot')).display);
+control('CONTROL: an unqualified pick falls back to the charted figure (must fail)', val(c) === '0.80', val(c));
+
+// ---- 4. Unassessed is not surveyed -------------------------------------
+c = make({ label: 'UNSURVEYED', unit: 'nm', margin: '0.5' });
+c.pick = { charted: 0.80, zoc: 'U', accuracy: 900 };
+await settle();
+ok('⭐ zone U is treated as D and says so, never as surveyed', /UNASSESSED AND TREATED AS D/.test(why(c)) && c.report.asD === true, why(c));
+control('CONTROL: U is taken at face value (must fail)', !/TREATED AS D/.test(why(c)), why(c));
+
+// ---- 5. Where two zones meet, the lesser applies ------------------------
+c = make({ label: 'BOUNDARY', unit: 'nm', margin: '0.5' });
+c.pick = { charted: 0.80, zoc: ['A2', 'C'] };
+await settle();
+ok('⭐ a clearance spanning two zones takes the WORSE of them', c.report.zone === 'C' && c.report.accuracy === 500, [c.report.zone, c.report.accuracy]);
+ok('...and says which two it spanned', /LESSER OF A2 AND C/.test(why(c)), why(c));
+ok('...so the answer is the C answer, not the A2 one', val(c) === '0.53', val(c));
+control('CONTROL: the better zone wins (must fail)', c.report.zone === 'A2', c.report.zone);
+
+// ---- 6. A zone's accuracy is quoted, never guessed ----------------------
+c = make({ label: 'ZONE B', unit: 'nm', margin: '0.5' });
+c.pick = { charted: 0.80, zoc: 'B' };
+await settle();
+ok('⭐ a zone this kit has no READ figure for is refused, not guessed', c.getAttribute('data-ov-state') === 'nofigure', c.getAttribute('data-ov-state'));
+ok('...saying that neither the kit nor the pick report has one', /NO ACCURACY FOR THIS ZONE IN THE KIT, AND NONE IN THE PICK REPORT/.test(why(c)), why(c));
+control('CONTROL: an unread zone figure is invented (must fail)', c.getAttribute('data-ov-state') === 'qualified', c.getAttribute('data-ov-state'));
+c.pick = { charted: 0.80, zoc: 'B', accuracy: 50 };
+await settle();
+ok('...and the pick report’s own accuracy is accepted where it has one', c.getAttribute('data-ov-state') === 'qualified' && /FROM THE PICK REPORT/.test(why(c)), why(c));
+ok('...which beats any table', c.report.accuracy === 50, c.report.accuracy);
+
+// ---- 7. The survey's own gap -------------------------------------------
+c = make({ label: 'BANTA', unit: 'nm', margin: '0.5' });
+c.pick = { ...BANTA };
+await settle();
+ok('a survey date is printed when the pick has one', text(c, '.ov-clearance__survey') === 'SURVEYED 1994-03', text(c, '.ov-clearance__survey'));
+c.pick = { charted: 0.80, zoc: 'C' };
+await settle();
+ok('⭐ and its absence is stated, because CATZOC does not carry it', text(c, '.ov-clearance__survey') === 'SURVEY DATE NOT GIVEN' && q(c, '.ov-clearance__survey').hasAttribute('data-ov-missing'), text(c, '.ov-clearance__survey'));
+control('CONTROL: a missing survey date passes silently (must fail)', !q(c, '.ov-clearance__survey').hasAttribute('data-ov-missing'), 'missing marker');
+
+// ---- 8. Nothing, and what it must not do -------------------------------
+c = make({ label: 'BANTA', unit: 'nm' });
+await settle();
+ok('with no pick report the element says so', c.getAttribute('data-ov-state') === 'empty' && /NO PICK REPORT/.test(why(c)), why(c));
+ok('...and with no margin declared it judges no breach', c.report.breaches === false && /NO MARGIN/.test(text(c, '.ov-clearance__rulebox')), text(c, '.ov-clearance__rulebox'));
+const srcText = await (await fetch(new URL(SRC, location.href).href)).text();
+ok('the element never asks for an animation frame', !/requestAnimationFrame/.test(srcText), /requestAnimationFrame/.test(srcText));
+control('CONTROL: the element draws on a frame (must fail)', /requestAnimationFrame/.test(srcText), 'source');
+ok('...and starts no timer at all: a clearance changes with the pick, not the clock', !/setInterval/.test(srcText), /setInterval/.test(srcText));
+
+// ---- report ----
+const bad = results.filter((r) => !r.pass);
+const live = controls.filter((x) => x.pass);
+const lines = [];
+for (const r of results) lines.push(`${r.pass ? 'ok  ' : 'FAIL'} ${r.name}${r.pass ? '' : `\n       got: ${JSON.stringify(r.got)}`}`);
+lines.push('');
+for (const x of controls) lines.push(`${x.pass ? 'CONTROL DID NOT FAIL' : 'control failed as required'}  ${x.name}${x.pass ? `\n       got: ${JSON.stringify(x.got)}` : ''}`);
+lines.push('');
+lines.push(`${results.length - bad.length}/${results.length} checks, ${controls.length - live.length}/${controls.length} controls failed as required`);
+const pass = bad.length === 0 && live.length === 0;
+lines.push(pass ? 'GATE: PASS' : 'GATE: FAIL');
+const out = document.getElementById('out');
+out.textContent = lines.join('\n');
+out.dataset.gate = pass ? 'pass' : 'fail';
+</script>

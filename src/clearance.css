@@ -1,0 +1,125 @@
+@layer overscan {
+/* A clearance is only as good as the survey under it. See ov-clearance.js for
+ * the refusal.
+ *
+ * 🔴 THE BAND'S WIDTH IS THE DOUBT, and that is the whole picture: a single
+ * number hides it, which is what the PAZIFIK's ECDIS did. The charted edge is
+ * solid because somebody drew it; the worst-case edge is dashed because it is
+ * derived from the zone's accuracy; the margin is dotted because it is a rule
+ * rather than a measurement. Nothing rests on colour: each edge has its own
+ * form and its own word.
+ */
+
+ov-clearance {
+  --ov-cl-glow: calc(var(--ov-bloom, .2) * 10px);
+  display: grid;
+  gap: 8px;
+  min-inline-size: 0;
+  font-family: var(--ov-font-mono);
+  font-size: var(--ov-size-1, 10px);
+  color: var(--ov-ink);
+}
+
+
+/* The worst case is the headline, because it is the number that is true. */
+
+/* ⚠️ NO HEAD BAR HERE. Six elements opened with the same name-and-rules row and
+   the set read as a template rather than as instruments; `.ov-head` in
+   chrome.css is that row for the elements it genuinely suits. This one has a
+   loud readout of its own, so the NAME sits inside it and the declared rules
+   go underneath, where they are a footnote to the reading rather than a
+   heading above it. */
+.ov-clearance__label {
+  grid-column: 1 / -1;
+  font-size: var(--ov-size-1, 10px);
+  letter-spacing: .18em;
+  text-transform: uppercase;
+  opacity: .75;
+}
+.ov-clearance__rulebox {
+  color: var(--ov-faint);
+  letter-spacing: .08em;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+.ov-clearance__value {
+  font-size: calc(var(--ov-size-2, 12px) * 2.2); letter-spacing: .06em;
+  font-variant-numeric: tabular-nums; text-shadow: 0 0 var(--ov-cl-glow) currentColor;
+}
+.ov-clearance__unit { color: var(--ov-faint); }
+.ov-clearance__tag, .ov-clearance__why { grid-column: 1 / -1; letter-spacing: .08em; overflow-wrap: anywhere; }
+.ov-clearance__tag:empty, .ov-clearance__why:empty, .ov-clearance__foot:empty, .ov-clearance__breach:empty { display: none; }
+
+ov-clearance:not([data-ov-state="qualified"]) .ov-clearance__value {
+  font-size: calc(var(--ov-size-2, 12px) * 1.5); letter-spacing: .14em;
+}
+
+/* ---- the band ---------------------------------------------------------- */
+
+.ov-clearance__plot { position: relative; block-size: 68px; }
+.ov-clearance__plot[hidden] { display: none; }
+.ov-clearance__axis {
+  position: absolute; inset-inline: 0; inset-block-start: 26px;
+  border-block-start: var(--ov-rule, 1px) solid var(--ov-line-strong);
+}
+.ov-clearance__band {
+  position: absolute; inset-block: 20px auto; block-size: 13px;
+  background: repeating-linear-gradient(135deg,
+    color-mix(in srgb, var(--ov-accent) 45%, transparent) 0 1.5px, transparent 1.5px 5px);
+  border-inline: var(--ov-rule, 1px) solid color-mix(in srgb, var(--ov-accent) 70%, transparent);
+}
+ov-clearance[data-ov-breach] .ov-clearance__band {
+  background: repeating-linear-gradient(135deg,
+    color-mix(in srgb, var(--ov-alarm) 55%, transparent) 0 1.5px, transparent 1.5px 5px);
+  border-inline-color: var(--ov-alarm);
+}
+
+.ov-clearance__mark { position: absolute; inset-block: 8px 0; inline-size: 0; }
+.ov-clearance__mark[hidden] { display: none; }
+.ov-clearance__mark::before {
+  content: ""; position: absolute; inset-block: 0 18px; inline-size: 0;
+  border-inline-start: 2px solid var(--ov-accent);
+}
+.ov-clearance__mark b {
+  position: absolute; inset-block-end: 0; translate: -50% 0;
+  /* Raised into a second lane when the mark before it is too close: see
+     paintBand(). Only the LABEL moves; the mark itself stays where it is. */
+  font-size: 8px; font-weight: normal; letter-spacing: .08em; white-space: nowrap;
+  padding: 0 3px; background: color-mix(in srgb, var(--ov-case, #000) 82%, transparent);
+  font-variant-numeric: tabular-nums;
+}
+.ov-clearance__mark[data-lane="1"] b { inset-block-end: 13px; }
+.ov-clearance__mark[data-lane="1"]::before { inset-block-end: 31px; }
+
+/* Charted: solid, because somebody drew it. */
+.ov-clearance__mark--charted b { color: var(--ov-ink); }
+/* Worst case: dashed, because it is derived from the zone's accuracy. */
+.ov-clearance__mark--worst::before { border-inline-start-style: dashed; border-inline-start-color: var(--ov-alarm); }
+.ov-clearance__mark--worst b { color: var(--ov-alarm); }
+/* The margin: dotted, because it is a rule and not a measurement. */
+.ov-clearance__mark--margin::before { border-inline-start: 2px dotted var(--ov-dim); }
+.ov-clearance__mark--margin b { color: var(--ov-dim); }
+
+/* ---- the facts, in text ------------------------------------------------ */
+
+.ov-clearance__facts { margin: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 7px; }
+.ov-clearance__facts > div { display: grid; gap: 1px; padding-inline-start: 7px; border-inline-start: 3px solid var(--ov-line); }
+.ov-clearance__facts dt { color: var(--ov-faint); letter-spacing: .14em; }
+.ov-clearance__facts dd { margin: 0; letter-spacing: .04em; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.ov-clearance__facts > div:nth-child(1) { border-inline-start-color: var(--ov-line-strong); }
+.ov-clearance__facts > div:nth-child(2) { border-inline-start-color: var(--ov-alarm); border-inline-start-style: dashed; }
+/* A survey with no date is the system's own stated gap, so it is marked. */
+.ov-clearance__survey[data-ov-missing] { color: var(--ov-alarm); }
+.ov-clearance__facts > div:nth-child(3):has([data-ov-missing]) { border-inline-start-style: dotted; border-inline-start-color: var(--ov-alarm); }
+
+.ov-clearance__breach {
+  padding: 5px 9px; border: var(--ov-rule, 1px) dashed var(--ov-alarm);
+  color: var(--ov-alarm); letter-spacing: .1em; line-height: 1.4; overflow-wrap: anywhere;
+}
+.ov-clearance__foot { color: var(--ov-alarm); letter-spacing: .08em; }
+
+@container (max-width: 380px) {
+  .ov-clearance__value { font-size: calc(var(--ov-size-2, 12px) * 1.6); }
+  .ov-clearance__facts { grid-template-columns: 1fr; }
+}
+}

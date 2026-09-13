@@ -1,0 +1,119 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>ov-gl harness: theme tokens</title>
+<link rel="stylesheet" href="../../src/tokens.css">
+<link rel="stylesheet" href="../../src/field.css">
+<style>
+  body { background: #06060a; color: #cfe; font: 13px ui-monospace, monospace; padding: 20px; }
+  #wrap { position: relative; inline-size: 240px; block-size: 140px; border: 1px solid #345; }
+  pre { white-space: pre-wrap; }
+</style>
+<div id="wrap" data-ov-theme="terminal"><ov-field shader="beam"></ov-field></div>
+<pre id="out">running...</pre>
+<script type="module">
+/* A GL element reads its theme tokens into uniforms. The computed style it
+ * reads them from is LIVE, so every getPropertyValue after any DOM write
+ * forced a style recalc, every frame, per element, even with the style object
+ * cached (~33 a second on the home page). Tokens are now read once
+ * per resolved style, and a data-ov-theme change drops the cache at once, so
+ * a theme swap still reaches the shader on its next frame.
+ *
+ * Both checks need a drawing GL element, which needs WebGL and animation
+ * frames; a harness without them says so rather than passing. */
+await import('../../src/ov-gl.js');
+await import('../../src/ov-field.js');
+
+const results = [];
+const ok = (name, cond, got) => results.push({ name, pass: !!cond, got });
+const notRun = [];
+const frame = () => new Promise((r) => requestAnimationFrame(() => r(true)));
+const frames = (n) => Promise.race([
+  (async () => { for (let i = 0; i < n; i++) await frame(); return true; })(),
+  new Promise((r) => setTimeout(() => r(false), 3000)),
+]);
+const el = document.querySelector('ov-field');
+const wrap = document.getElementById('wrap');
+
+/* ⚠️ WAIT FOR THE CONDITION, NOT FOR TEN FRAMES. Nothing live starts until the
+ * page has arrived (ov-core's arrival gate), and on a page with no reveal that
+ * is the load fallback rather than the next frame: ten frames came and went
+ * with the element not yet drawing, and the harness declared itself notRun
+ * while the element was perfectly healthy a moment later. A harness that gives
+ * up early reports "could not test this" about working code, which reads as a
+ * missing test rather than as a passing one. */
+/* ⚠️ POLLED ON A TIMER, NOT ON FRAMES, AND INSIDE THE GATE'S BUDGET. The
+ * frame-based version waited up to eight seconds, which is longer than
+ * gates.sh gives a page, and under --virtual-time-budget there are no
+ * animation frames at all, so it printed NOTHING and the gate could not go red
+ * for any reason. Timers advance under virtual time; the arrival gate this is
+ * waiting for is itself a timer. */
+const settled = await new Promise((done) => {
+  const t0 = Date.now();
+  const look = () => {
+    if (el._style) return done(true);
+    if (Date.now() - t0 > 2500) return done(false);
+    setTimeout(look, 50);
+  };
+  look();
+});
+const drawing = settled && !!el._style;
+if (!drawing) {
+  notRun.push('no drawing GL element here (no WebGL, or no animation frames)');
+} else {
+  // 1. Frames read no tokens off the live style once they have been read.
+  const gpv = CSSStyleDeclaration.prototype.getPropertyValue;
+  let reads = 0;
+  CSSStyleDeclaration.prototype.getPropertyValue = function (n) {
+    if (this === el._style) reads += 1;
+    return gpv.call(this, n);
+  };
+  // Dirty the page every frame, the way live readouts do, so a read WOULD
+  // force a recalc.
+  for (let i = 0; i < 30; i++) { wrap.dataset.tick = i; await frame(); }
+  CSSStyleDeclaration.prototype.getPropertyValue = gpv;
+  ok('30 frames read theme tokens off the live style zero times', reads === 0, reads);
+
+  // 2. A theme swap reaches the shader's tokens on the next frame.
+  const read = () => { try { return el.rgb(el.computed(), '--ov-accent').join(','); } catch (e) { return 'threw: ' + e.message; } };
+  const before = read();
+  wrap.dataset.ovTheme = 'esper';
+  await frame();
+  const after = read();
+  const truth = (() => {
+    const hex = getComputedStyle(el).getPropertyValue('--ov-accent').trim().replace('#', '');
+    const n = parseInt(hex, 16);
+    return [(n >> 16 & 255) / 255, (n >> 8 & 255) / 255, (n & 255) / 255].join(',');
+  })();
+  ok('the two themes differ in accent (the case is real)', before !== truth, { before, truth });
+  ok('after a data-ov-theme swap the cached accent is the new theme\'s, next frame', after === truth, { after, truth });
+
+  // 3. A lost context comes back. iOS takes WebGL contexts away under memory
+  //    pressure; the loss has to be cancelled for a restore to be allowed,
+  //    and the restore has to relink programs, or every field stays blank.
+  const glc = el.gl;
+  const ext = glc && glc.getExtension('WEBGL_lose_context'); // null once lost, so fetched first
+  if (!ext) {
+    notRun.push('context loss: WEBGL_lose_context is not available here');
+  } else {
+    const lost = new Promise((r) => glc.canvas.addEventListener('webglcontextlost', r, { once: true }));
+    ext.loseContext();
+    await lost;
+    await new Promise((r) => setTimeout(r, 0)); // restore on a later task, after the loss event ran
+    const restored = new Promise((r) => glc.canvas.addEventListener('webglcontextrestored', () => r(true), { once: true }));
+    let threw = null;
+    try { ext.restoreContext(); } catch (e) { threw = e.message; }
+    const back = await Promise.race([restored, new Promise((r) => setTimeout(() => r(false), 2000))]);
+    await frames(5);
+    ok('a lost context is restored', back && !glc.isContextLost(), { back, threw, stillLost: glc.isContextLost() });
+    ok('and the field has a working program on it again', !!el.prog && glc.isProgram(el.prog), el.prog ? 'program' : null);
+  }
+}
+
+// 3. 🔴 The gate has to be able to fail.
+const control = { name: 'CONTROL (must fail)', pass: results.length === 999, got: 'deliberate' };
+
+const passed = results.filter((x) => x.pass).length;
+const report = { total: results.length, passed, failed: results.filter((x) => !x.pass), notRun, controlDidFail: control.pass === false };
+document.getElementById('out').textContent = JSON.stringify(report, null, 1);
+window.__gl = report;
+</script>

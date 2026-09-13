@@ -1,0 +1,104 @@
+/* ---- CASCADE LAYER ------------------------------------------------------
+ *
+ * Everything the kit ships sits in ONE layer named `overscan`, so a consumer's
+ * own CSS beats it without a specificity fight and without !important. That is
+ * close to mandatory for a distributed kit: an app should be able to restyle a
+ * panel by writing a plain rule.
+ *
+ * ⚠️ ONE layer, deliberately, NOT a sub-layer per file. Sub-layers look tidier
+ * and would silently reorder the kit against itself: layer order beats
+ * specificity, so a high-specificity rule in an early file that currently wins
+ * would start losing to a low-specificity rule in a later one. A single layer
+ * preserves source order exactly, so nothing inside the kit changes.
+ *
+ * Unlayered author CSS wins over all of it. That is the point.
+ */
+
+@layer overscan {
+/* A cursor-addressed terminal screen. */
+
+ov-term {
+  display: grid;
+  /* 🔴 THE TRACK MAY BE NARROWER THAN THE SCREEN. An `auto` track is at least
+   * the screen's min-content, which is every column at full width, so in a
+   * narrow cell the whole element (status line included) overflowed its
+   * container and scrolled the page sideways: 62 columns in a 324px home page
+   * cell on an iPad. The screen already caps itself at 100%; this lets it. */
+  grid-template-columns: minmax(0, max-content);
+  gap: 6px;
+  font-family: var(--ov-font-mono);
+  font-size: var(--ov-size-2);
+  color: var(--ov-ink);
+}
+
+.ov-term__screen {
+  position: relative;
+  line-height: 1.3;
+  padding: 8px 10px;
+  background: var(--ov-field);
+  border: var(--ov-bezel) solid var(--ov-line-strong);
+  /* ⚠️ SCROLLS, NEVER CLIPS. A terminal has a fixed column count, so a screen
+   * narrower than its columns keeps them all and scrolls within itself. Hidden
+   * would cut columns off with nothing to say they exist. */
+  overflow: hidden;
+  overflow-x: auto;
+  inline-size: max-content;
+  max-inline-size: 100%;
+}
+
+.ov-term__row {
+  display: flex;
+  white-space: pre;
+  inline-size: calc(var(--ov-term-unit) * var(--ov-term-cols));
+}
+
+/* One glyph per cell, as in ov-grid, so nothing accumulates drift. */
+.ov-term__c {
+  display: inline-block;
+  flex: 0 0 auto;
+  inline-size: calc(var(--ov-term-unit) * var(--c, 1));
+  font-style: normal;
+  text-align: center;
+}
+.ov-term__c.is-frame { color: var(--ov-line-strong); }
+.ov-term__c.is-frame[class*="ov-ansi--"] { color: inherit; }
+
+.ov-term__c.is-cursor {
+  background: var(--ov-accent);
+  color: var(--ov-field);
+  animation: ov-term-blink 1.06s steps(1) infinite;
+}
+@keyframes ov-term-blink { 50% { background: transparent; color: inherit; } }
+@media (prefers-reduced-motion: reduce) {
+  .ov-term__c.is-cursor { animation: none; }
+}
+
+/* Where a refused sequence arrived. An outline, not a glyph: it must not take
+ * a cell, or the refusal would itself move the text it is warning about. */
+.ov-term__c.is-refused { box-shadow: inset 0 0 0 1px var(--ov-alarm); }
+
+.ov-term__void {
+  display: grid;
+  place-items: center;
+  min-block-size: 6em;
+  min-inline-size: 20ch;
+  color: var(--ov-alarm);
+  text-transform: uppercase;
+}
+
+.ov-term__status {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 20px;
+  font-size: var(--ov-size-1);
+  letter-spacing: 1px;
+  color: var(--ov-dim);
+}
+.ov-term__status:empty { display: none; }
+.ov-term__status .is-refused { color: var(--ov-alarm); }
+
+/* BEL: the screen flashes once. Never sound-only, and never motion when the
+ * reader asked for none: then it is a border change, held briefly. */
+ov-term.is-bell .ov-term__screen { animation: ov-term-bell 0.25s steps(1) 1; }
+@keyframes ov-term-bell { 0% { border-color: var(--ov-alarm); } }
+}

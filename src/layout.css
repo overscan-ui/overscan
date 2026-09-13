@@ -1,0 +1,218 @@
+/* ---- CASCADE LAYER ------------------------------------------------------
+ *
+ * Everything the kit ships sits in ONE layer named `overscan`, so a consumer's
+ * own CSS beats it without a specificity fight and without !important. That is
+ * close to mandatory for a distributed kit: an app should be able to restyle a
+ * panel by writing a plain rule.
+ *
+ * ⚠️ ONE layer, deliberately, NOT a sub-layer per file. Sub-layers look tidier
+ * and would silently reorder the kit against itself: layer order beats
+ * specificity, so a high-specificity rule in an early file that currently wins
+ * would start losing to a low-specificity rule in a later one. A single layer
+ * preserves source order exactly, so nothing inside the kit changes.
+ *
+ * Unlayered author CSS wins over all of it. That is the point.
+ */
+
+@layer overscan {
+/* Screen layout: rails around a viewport.
+ *
+ * The corner rule finally applies at the scale it was written for. It
+ * reads "corner treatment says WHERE a panel sits, never which panel it
+ * is": body panels cut one diagonal, EDGE BARS CUT THE EDGE THEY HOLD, and the
+ * viewport cuts all four. Until now this kit only had body panels, so only half
+ * the rule was in use.
+ */
+
+.ov-screen {
+  /* Padding is added OUTSIDE a height of 100dvh without this, so the last
+   * grid row sits below the fold and the status bar is clipped. */
+  box-sizing: border-box;
+  /* 🔴 THE SCREEN IS ITS FIELD'S CONTAINING BLOCK. `<ov-field>` is absolute
+   * with `inset: 0`, and without this it sized itself to the nearest positioned
+   * ancestor instead. A screen that fills the window hides that; the home page's
+   * 430px console did not, where the field grew to the whole section and its
+   * canvas painted over the section's heading and lede. */
+  position: relative;
+  display: grid;
+  grid-template:
+    "top    top   top  " auto
+    "left   body  right" minmax(0, 1fr)
+    "foot   foot  foot " auto
+    / auto minmax(0, 1fr) auto;
+  gap: var(--ov-gap);
+  block-size: 100dvh;
+  padding: var(--ov-gap);
+  background: var(--ov-field);
+  color: var(--ov-ink);
+  font-family: var(--ov-font-mono);
+  font-size: var(--ov-size-2);
+  letter-spacing: var(--ov-track);
+}
+
+.ov-screen__top { grid-area: top; }
+.ov-screen__left { grid-area: left; inline-size: var(--ov-rail-w, 190px); }
+.ov-screen__right { grid-area: right; inline-size: var(--ov-rail-w, 190px); }
+.ov-screen__foot { grid-area: foot; }
+.ov-screen__body { grid-area: body; min-inline-size: 0; min-block-size: 0; }
+
+/* ---- rails ------------------------------------------------------------- */
+
+.ov-rail {
+  position: relative;
+  /* 🔴 WITHOUT THIS, EVERY RAIL OVERFLOWS ITS GRID CELL BY ITS OWN PADDING.
+     `block-size: 100%` resolves against the cell, then padding and border are
+     added OUTSIDE it, so the rail hangs past the row it was given. `.ov-screen`
+     sets box-sizing on itself and nothing passed it down. ⚠️ The overflow is
+     THEME-DEPENDENT, because --ov-pad and --ov-bezel are tokens: measured 38px
+     industrial, 32px esper and machina, 30px antiseptic and holo, 26px
+     terminal/cyber/neo/vector, 22px aegis. At 100dvh there is slack to hide
+     it; on the home page's 430px screen it cut the feed log's footer off and
+     let the top rail paint over the viewport's label. */
+  box-sizing: border-box;
+  block-size: 100%;
+  background: var(--ov-panel);
+  border: var(--ov-bezel) solid var(--ov-line-strong);
+  /* A rail cuts the edge it holds, so it reserves on that edge. */
+  padding: var(--ov-pad);
+  display: flex;
+  flex-direction: column;
+  gap: var(--ov-gap);
+  min-block-size: 0;
+  overflow: auto;
+}
+
+.ov-rail > *:not(ov-field):not(.ov-panel__label) { position: relative; z-index: 1; }
+
+/* Each bar cuts the edge it holds, and only that edge. Reading the corners
+ * tells you where you are on the screen. */
+.ov-screen__top .ov-rail { padding-block-start: calc(var(--ov-pad) + var(--ov-corner) / 2); }
+.ov-screen__foot .ov-rail { padding-block-end: calc(var(--ov-pad) + var(--ov-corner) / 2); }
+.ov-screen__left .ov-rail { padding-inline-start: calc(var(--ov-pad) + var(--ov-corner) / 2); }
+.ov-screen__right .ov-rail { padding-inline-end: calc(var(--ov-pad) + var(--ov-corner) / 2); }
+
+.ov-screen__top .ov-rail {
+  clip-path: polygon(
+    var(--ov-corner) 0, calc(100% - var(--ov-corner)) 0,
+    100% 100%, 0 100%);
+}
+.ov-screen__foot .ov-rail {
+  clip-path: polygon(
+    0 0, 100% 0,
+    calc(100% - var(--ov-corner)) 100%, var(--ov-corner) 100%);
+}
+.ov-screen__left .ov-rail {
+  clip-path: polygon(
+    0 var(--ov-corner), 100% 0,
+    100% 100%, 0 calc(100% - var(--ov-corner)));
+}
+.ov-screen__right .ov-rail {
+  clip-path: polygon(
+    0 0, 100% var(--ov-corner),
+    100% calc(100% - var(--ov-corner)), 0 100%);
+}
+
+/* 🔴 `.ov-viewport__foot` WAS MARKUP THE KIT EMITTED AND CSS THE KIT DID NOT
+ * DEFINE. demo/screen.html and the home page each carried these two rules in
+ * their own page style, so a composite screen only held together on a page
+ * that knew to redefine it. Anyone copying the markup out of the demo got a
+ * viewport foot that fell out of the bottom: measured at y=1253 in a screen
+ * ending at y=686. The foot is the kit's own class, so its layout is the
+ * kit's job.
+ * ⚠️ The numbers are INHERITED from those page styles, not chosen here. They
+ * are the values both pages already rendered with, moved rather than
+ * redesigned, so that this change cannot alter how anything looks. Tokenising
+ * them is a separate decision. */
+.ov-viewport { display: flex; flex-direction: column; justify-content: flex-end; }
+.ov-viewport__foot { padding: 0 14px 12px; }
+
+/* The viewport cuts all four, because it is the thing everything else frames. */
+.ov-screen__body .ov-viewport {
+  position: relative;
+  block-size: 100%;
+  background-color: var(--ov-panel);
+  border: var(--ov-bezel) solid var(--ov-line-strong);
+  /* All four cuts get their diagonal drawn. See "the cut edge" in chrome.css.
+     The chamfer token carries all four at once, so the viewport needs one
+     declaration and not four. */
+  --ov-cut-w: var(--ov-bezel);
+  --ov-cut-tl: var(--ov-corner);
+  --ov-cut-tr: var(--ov-corner);
+  --ov-cut-bl: var(--ov-corner);
+  --ov-cut-br: var(--ov-corner);
+  background-image: var(--ov-cut-img);
+  background-size: var(--ov-cut-size);
+  background-position: var(--ov-cut-pos);
+  clip-path: polygon(
+    var(--ov-corner) 0, calc(100% - var(--ov-corner)) 0,
+    100% var(--ov-corner), 100% calc(100% - var(--ov-corner)),
+    calc(100% - var(--ov-corner)) 100%, var(--ov-corner) 100%,
+    0 calc(100% - var(--ov-corner)), 0 var(--ov-corner));
+}
+
+/* 🔴 THIS RULE CAN DEFEAT A COMPONENT'S OWN POSITIONING, SO THE EXCLUSION LIST
+ * IS LOAD-BEARING. ov-field and .ov-panel__label are here because they are
+ * absolute overlays that must not be pulled into flow. ov-reticle is a third
+ * one that was missed for months: reticle.css declares
+ * `ov-reticle { position: absolute; inset: 0 }` and its SVG is
+ * `preserveAspectRatio="none"`, with maths in ov-reticle.js written
+ * specifically to keep brackets square in a box that is not. Relative and in
+ * flow, that SVG falls back to its intrinsic square instead: 906x906 inside a
+ * 908x316 letterbox on the home page, so two thirds of it hung above the
+ * viewport and the clip-path above sliced the target brackets in half. The
+ * component never received the box it was written for.
+ * ⚠️ Anything else that positions itself absolutely belongs on this list. */
+.ov-viewport > *:not(ov-field):not(.ov-panel__label):not(ov-reticle) { position: relative; z-index: 1; }
+
+/* ---- inside a rail ----------------------------------------------------- */
+
+.ov-rail__head {
+  font-size: var(--ov-size-1);
+  letter-spacing: calc(var(--ov-track) + 1px);
+  text-transform: uppercase;
+  color: var(--ov-faint);
+}
+
+/* ---- body grid --------------------------------------------------------- */
+
+.ov-cluster {
+  display: grid;
+  gap: var(--ov-gap);
+  grid-template-columns: repeat(var(--ov-cluster-cols, 2), minmax(0, 1fr));
+  block-size: 100%;
+  min-block-size: 0;
+}
+
+.ov-cluster > * { min-inline-size: 0; min-block-size: 0; }
+
+/* ---- split panes ------------------------------------------------------- */
+
+ov-split {
+  display: flex;
+  flex-direction: var(--ov-split-dir, row);
+  gap: 0;
+  block-size: 100%;
+  min-block-size: 0;
+}
+
+ov-split > *:not(.ov-split__gutter) { min-inline-size: 0; min-block-size: 0; }
+ov-split > *:first-child { flex: 0 0 var(--ov-split-a, 50%); }
+ov-split > *:last-child { flex: 1 1 0; }
+
+.ov-split__gutter {
+  flex: 0 0 var(--ov-gap);
+  background: var(--ov-line);
+  cursor: col-resize;
+  align-self: stretch;
+}
+
+ov-split[direction="vertical"] .ov-split__gutter { cursor: row-resize; }
+
+.ov-split__gutter:hover { background: var(--ov-line-strong); }
+
+/* Inset, like every other focus ring in the kit. */
+.ov-split__gutter:focus-visible {
+  outline: 2px solid var(--ov-accent);
+  outline-offset: -2px;
+}
+}

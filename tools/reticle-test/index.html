@@ -1,0 +1,88 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>ov-reticle harness</title>
+<link rel="stylesheet" href="../../src/tokens.css">
+<link rel="stylesheet" href="../../src/reticle.css">
+<style>
+  body { background: #06060a; color: #cfe; font: 13px ui-monospace, monospace; padding: 20px; }
+  #box { position: relative; inline-size: 400px; block-size: 200px; border: 1px solid #345; }
+  pre { white-space: pre-wrap; }
+</style>
+<div id="box"></div>
+<pre id="out">running...</pre>
+<script type="module">
+/* ov-reticle's brackets are drawn in a 100x100 viewBox stretched over a box
+ * that is not square, so the x arm is scaled by the box's aspect to draw equal
+ * on screen. The aspect used to be read with getBoundingClientRect() on EVERY
+ * frame, which forced a layout per frame per reticle. It now comes
+ * from one read at connect and a ResizeObserver after that. */
+const impl = new URLSearchParams(location.search).get('impl') || '../../src/ov-reticle.js';
+await import(impl);
+
+const results = [];
+const ok = (name, cond, got) => results.push({ name, pass: !!cond, got });
+const notRun = [];
+const box = document.getElementById('box');
+const el = document.createElement('ov-reticle');
+box.append(el);
+
+// A track put straight into the element, not through a source: sources tick on
+// animation frames, and a harness with no frames would then never see one.
+const track = () => el.tracks.set('a', { id: 'a', x: 50, y: 50, w: 20, h: 20, confidence: 0.9, label: 'A', at: performance.now() });
+// Arm lengths off the first bracket: "M{x+armX},{y} L{x},{y} L{x},{y+armY}".
+const arms = () => {
+  const d = el.querySelector('.ov-reticle__bracket')?.getAttribute('d') || '';
+  const n = (d.match(/-?\d+(\.\d+)?/g) || []).map(Number);
+  return n.length >= 6 ? { x: Math.abs(n[0] - n[2]), y: Math.abs(n[5] - n[3]) } : null;
+};
+const close = (a, b) => Math.abs(a - b) < 0.02;
+
+// 1. Right from connect, before any observer has reported.
+ok('aspect is the box\'s at connect (200/400)', close(el.aspect, 0.5), el.aspect);
+
+// 2. The x arm is compensated by that aspect.
+track();
+el.frame();
+let a = arms();
+ok('x arm / y arm equals the aspect', a && close(a.x / a.y, 0.5), a);
+
+// 3. Drawing a frame reads no geometry.
+const gbcr = Element.prototype.getBoundingClientRect;
+let reads = 0;
+Element.prototype.getBoundingClientRect = function () { reads += 1; return gbcr.call(this); };
+for (let i = 0; i < 10; i++) { track(); el.frame(); }
+Element.prototype.getBoundingClientRect = gbcr;
+ok('ten frames read the box\'s geometry zero times', reads === 0, reads);
+
+// 4. The aspect follows a resize. This needs the ResizeObserver, which only
+//    reports when the page renders; a harness that never renders cannot run
+//    it, and says so rather than passing it.
+box.style.inlineSize = '200px';
+box.style.blockSize = '400px';
+const rendered = await Promise.race([
+  new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(() => r(true)))),
+  new Promise((r) => setTimeout(() => r(false), 1500)),
+]);
+if (rendered) {
+  ok('after a resize the aspect is the new box\'s (400/200)', close(el.aspect, 2), el.aspect);
+  track(); el.frame(); a = arms();
+  ok('and the arms follow it', a && close(a.x / a.y, 2), a);
+} else {
+  notRun.push('resize: this harness renders no frames, so the ResizeObserver never reported');
+}
+
+// 5. 🔴 The gate has to be able to fail.
+const control = { name: 'CONTROL (must fail)', pass: close(el.aspect, 7), got: 'deliberate' };
+
+const passed = results.filter((x) => x.pass).length;
+const report = {
+  impl,
+  total: results.length,
+  passed,
+  failed: results.filter((x) => !x.pass),
+  notRun,
+  controlDidFail: control.pass === false,
+};
+document.getElementById('out').textContent = JSON.stringify(report, null, 1);
+window.__reticle = report;
+</script>

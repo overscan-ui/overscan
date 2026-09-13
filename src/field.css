@@ -1,0 +1,59 @@
+/* ---- CASCADE LAYER ------------------------------------------------------
+ *
+ * Everything the kit ships sits in ONE layer named `overscan`, so a consumer's
+ * own CSS beats it without a specificity fight and without !important. That is
+ * close to mandatory for a distributed kit: an app should be able to restyle a
+ * panel by writing a plain rule.
+ *
+ * ⚠️ ONE layer, deliberately, NOT a sub-layer per file. Sub-layers look tidier
+ * and would silently reorder the kit against itself: layer order beats
+ * specificity, so a high-specificity rule in an early file that currently wins
+ * would start losing to a low-specificity rule in a later one. A single layer
+ * preserves source order exactly, so nothing inside the kit changes.
+ *
+ * Unlayered author CSS wins over all of it. That is the point.
+ */
+
+@layer overscan {
+/* The field shader sits BEHIND everything on its surface. */
+
+ov-field {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  display: block;
+  pointer-events: none;
+  overflow: hidden;
+}
+
+/* A field on a surface that is the whole DOCUMENT should track the VIEWPORT
+ * instead. Two reasons, and the second is the one that bites:
+ *
+ * 1. A field is the screen's phosphor, not a backdrop that scrolls away. It
+ *    should stay put under the content, which is what it does on a CRT.
+ * 2. `position: absolute; inset: 0` on a page-tall surface asks for a drawing
+ *    buffer as tall as the DOCUMENT. Narrow the window, the cards stack, the
+ *    page grows to twelve thousand pixels, and the buffer is clamped and
+ *    stretched, which smears the grain. Viewport-sized keeps it crisp at any
+ *    width and costs a fraction of the memory.
+ *
+ * ⚠️ `.ov-finish` sets `isolation: isolate`, which creates a stacking context
+ * but NOT a containing block, so `fixed` still resolves against the viewport
+ * here. A `transform`, `filter` or `will-change` on an ancestor WOULD capture
+ * it; there is none on this path, and if one is ever added this breaks
+ * silently, so it is written down. */
+ov-field.ov-field--viewport {
+  position: fixed;
+}
+
+ov-field canvas {
+  inline-size: 100%;
+  block-size: 100%;
+  display: block;
+}
+
+/* The CSS finish still runs over the top. The two are not alternatives: the
+ * shader paints the field, the finish paints the surface of the screen, and
+ * only the finish can sit over the interface at all. The stacking rule for
+ * siblings lives in finish.css, which owns that layer. */
+}

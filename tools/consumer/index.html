@@ -1,0 +1,84 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>overscan consumer test</title>
+<!-- Run by tools/consumer-test.sh over http://localhost:8842/tmp/consumer/.
+     This is a consumer with NO BUILD STEP: an import map pointing into the
+     installed package, and nothing else. It asserts what PAINTS, not what an
+     attribute says, because an element can carry a perfect attribute and draw
+     nothing (seen in ov-mosaic, 2026-09-12). -->
+<!-- 🔴 THE FULL FILENAME, AND THE SHORT SPELLING IS NOT AVAILABLE HERE.
+     package.json lets a bundler write `overscan/chart`, and the obvious way
+     to mirror that in a browser is a prefix ending in `ov-`. It is not legal:
+     an import map key ending in `/` MUST map to an address ending in `/`, so
+     `{"overscan/": ".../src/ov-"}` is dropped as invalid and every specifier
+     in the page then fails to resolve. This test is how that was found, with
+     the page stuck on "running..." and no module ever executing.
+
+     A browser can have the short spelling only by listing every element as
+     its own key, which is 77 entries of generated JSON. Not worth it: the
+     no-build spelling is the file's real name, README.md says so, and this
+     page runs it so the claim is tested rather than asserted. -->
+<script type="importmap">
+{ "imports": { "overscan/": "./node_modules/overscan/src/" } }
+</script>
+<link rel="stylesheet" href="./node_modules/overscan/src/tokens.css">
+<link rel="stylesheet" href="./node_modules/overscan/src/chart.css">
+<link rel="stylesheet" href="./node_modules/overscan/src/segment.css">
+<style>
+  body { background: #06060a; color: #cfe; font: 13px ui-monospace, monospace; padding: 20px; }
+  pre { white-space: pre-wrap; }
+  #stage { display: flex; gap: 20px; align-items: flex-start; }
+  ov-chart { inline-size: 260px; block-size: 90px; }
+</style>
+<div id="stage" data-ov-theme="terminal">
+  <ov-chart id="chart" values="41,43,44,46,48,47,49"></ov-chart>
+  <ov-segment id="seg" digits="6" value="48120" unit="USD"></ov-segment>
+  <ov-segment id="ref" digits="6" value="null" unit="USD"></ov-segment>
+</div>
+<pre id="out">running...</pre>
+<script type="module">
+import 'overscan/ov-chart.js';
+import 'overscan/ov-segment.js';
+
+const results = [];
+const ok = (name, cond, got) => results.push({ name, pass: !!cond, got });
+
+await customElements.whenDefined('ov-chart');
+await customElements.whenDefined('ov-segment');
+
+const chart = document.getElementById('chart');
+const seg = document.getElementById('seg');
+const ref = document.getElementById('ref');
+
+// 1. The package's own entry points work from a bare specifier.
+ok('ov-chart upgraded from an import map specifier', chart.constructor !== HTMLElement, chart.constructor.name);
+ok('ov-segment upgraded too', seg.constructor !== HTMLElement, seg.constructor.name);
+
+// 2. It PAINTS. An upgraded element that draws nothing is the failure mode a
+//    DOM assertion cannot see.
+const box = chart.getBoundingClientRect();
+ok('the chart has a box on screen', box.width > 40 && box.height > 20, [box.width, box.height]);
+ok('...and drew an svg into it', !!chart.querySelector('svg'), chart.innerHTML.slice(0, 40));
+ok('...and is not display:none', getComputedStyle(chart).display !== 'none', getComputedStyle(chart).display);
+const lit = seg.querySelectorAll('[data-on]').length;
+ok('the segment lit its segments', lit > 0, lit);
+
+// 3. The CSS layer arrived: tokens resolve, so the theme is real.
+const accent = getComputedStyle(document.getElementById('stage')).getPropertyValue('--ov-accent').trim();
+ok('theme tokens resolve from the packaged CSS', accent.length > 0, accent);
+
+// 4. ⭐ The refusal protocol survived packaging. A dropout must refuse, and
+//    must say so in its accessible name.
+ok('a null value is refused, not drawn as a number', ref.getAttribute('data-ov-refusal') === 'unknown', ref.getAttribute('data-ov-refusal'));
+ok('...and the refusal reaches the accessible name', /no reading/i.test(ref.getAttribute('aria-label') || ''), ref.getAttribute('aria-label'));
+
+const passed = results.filter((x) => x.pass).length;
+const failed = results.length - passed;
+const lines = [
+  ...results.map((x) => `${x.pass ? 'PASS' : 'FAIL'}  ${x.name}${x.pass ? '' : '  got ' + JSON.stringify(x.got)}`),
+  '',
+  `${passed} passed, ${failed} failed`,
+  `GATE: ${failed === 0 ? 'PASS' : 'FAIL'}`,
+];
+document.getElementById('out').textContent = lines.join('\n');
+</script>

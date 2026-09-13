@@ -1,0 +1,226 @@
+@layer overscan {
+/* The command verification stack. See ov-verifier.js for the refusal.
+ *
+ * 🔴 FILLED MEANS A REPORT PASSED IT, AND ONLY THAT. Every stage state is its
+ * own shape as well as its own word: PASS filled; TM hollow with a centre dot
+ * (a telemetry match, not credited); LATE filled with a notch cut out;
+ * PENDING hollow, draining as its window runs out; T/O dashed and empty
+ * (neither a pass nor a fail); FAIL crossed; SUPD struck through; not yet
+ * open, dotted. No state is told by colour alone.
+ */
+
+ov-verifier {
+  --ov-verifier-cell: 8.5ch;
+  --ov-verifier-id-w: 5ch;
+  --ov-verifier-label-w: 20ch;
+  --ov-verifier-mark: 9px;
+  /* Block-level so it takes the width it is GIVEN (the narrow check measures
+   * that), capped at its natural width so it still shrink-wraps. */
+  display: grid;
+  max-inline-size: max-content;
+  gap: 6px;
+  font-family: var(--ov-font-mono);
+  font-size: 11px;
+  letter-spacing: .06em;
+  color: var(--ov-ink);
+}
+
+.ov-verifier__sum { color: var(--ov-faint); font-size: 10px; letter-spacing: .1em; }
+ov-verifier[data-ov-verifier="failed"] .ov-verifier__sum,
+ov-verifier[data-ov-verifier="timeout"] .ov-verifier__sum { color: var(--ov-alarm); }
+
+.ov-verifier__table { display: grid; gap: 3px; }
+.ov-verifier__rows { display: grid; gap: 3px; }
+
+.ov-verifier__head,
+.ov-verifier__row {
+  display: grid;
+  grid-template-columns: var(--ov-verifier-id-w) var(--ov-verifier-label-w)
+    calc(var(--ov-verifier-n, 7) * var(--ov-verifier-cell)) minmax(26ch, max-content);
+  grid-template-areas: "id label marks verdict";
+  align-items: center;
+  column-gap: 8px;
+  padding: 4px 8px;
+  white-space: nowrap;
+}
+.ov-verifier__head {
+  /* ⚠️ The head keeps the ROW font size: every track is sized in ch, and a
+   * 9px head resolved them narrower than the 11px rows, so the stage names
+   * drifted left of their columns. Only the head's text is small. The stage
+   * names sit in the same marks sub-grid the rows use. */
+  color: var(--ov-faint);
+  padding-block: 0;
+}
+/* Not `.ov-verifier__head span`: the marks sub-grid is a span too, and
+ * shrinking ITS font shrank its ch tracks, the same drift one level down. */
+.ov-verifier__head > .ov-verifier__id,
+.ov-verifier__head > .ov-verifier__label,
+.ov-verifier__head > .ov-verifier__verdict,
+.ov-verifier__head .ov-verifier__stage { font-size: 8.5px; letter-spacing: .04em; overflow: hidden; }
+.ov-verifier__head .ov-verifier__id { grid-area: id; }
+.ov-verifier__head .ov-verifier__label { grid-area: label; }
+.ov-verifier__head .ov-verifier__verdict { grid-area: verdict; }
+.ov-verifier__row {
+  border: var(--ov-rule, 1px) solid var(--ov-line);
+  background: var(--ov-panel);
+}
+.ov-verifier__row .ov-verifier__id { grid-area: id; color: var(--ov-faint); }
+/* 🔴 THE COMMAND IS NEVER CLIPPED. An ellipsis here cut "AHU-2 DAMPER 40%
+ * @AHU2" to "AHU-2 DAMPER 40% …", hiding the commanded value and the target,
+ * and the target is what decides whether a telemetry change may be credited.
+ * The label wraps inside its column instead (the row grows; the head's column
+ * stays the ruler for the narrow check), a word too long for the column
+ * breaks rather than overflows, and the target moves to a new line whole. */
+.ov-verifier__row .ov-verifier__label {
+  grid-area: label;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  min-inline-size: 0;
+}
+.ov-verifier__target {
+  color: var(--ov-faint);
+  /* One unit: never split across lines unless it alone is wider than the
+   * column, and then it still breaks rather than hides. */
+  display: inline-block;
+  max-inline-size: 100%;
+}
+.ov-verifier__marks {
+  grid-area: marks;
+  display: grid;
+  grid-template-columns: repeat(var(--ov-verifier-n, 7), var(--ov-verifier-cell));
+}
+.ov-verifier__row .ov-verifier__verdict { grid-area: verdict; letter-spacing: .08em; }
+
+/* ---- a stage: mark + word ------------------------------------------- */
+.ov-verifier__cell { display: flex; align-items: center; gap: 3px; min-inline-size: 0; }
+.ov-verifier__word { font-size: 9.5px; color: var(--ov-faint); overflow: hidden; }
+.ov-verifier__mark {
+  flex: none;
+  inline-size: var(--ov-verifier-mark);
+  block-size: var(--ov-verifier-mark);
+  box-sizing: border-box;
+  border: 1px dotted var(--ov-line-strong);
+}
+
+/* Passed by a report naming this command: filled. */
+.ov-verifier__cell[data-ov-state="pass"] .ov-verifier__mark { background: var(--ov-accent); border: 1px solid var(--ov-accent); }
+.ov-verifier__cell[data-ov-state="pass"] .ov-verifier__word { color: var(--ov-ink); }
+/* Passed by a telemetry match: hollow, centre dot. Not credited. */
+.ov-verifier__cell[data-ov-state="pass"][data-ov-evidence="tm"] .ov-verifier__mark {
+  background: radial-gradient(circle, var(--ov-accent) 0 1.6px, transparent 2px);
+  border: 1px solid var(--ov-accent);
+}
+/* A TM pass the element could credit (a change it saw inside the window,
+ * no rival command): half-filled. Between a report's full fill and an
+ * uncredited match's centre dot. */
+.ov-verifier__cell[data-ov-state="pass"][data-ov-credited] .ov-verifier__mark {
+  background: linear-gradient(to top, var(--ov-accent) 50%, transparent 50%);
+}
+.ov-verifier__row[data-ov-state="tmcredited"] .ov-verifier__verdict { color: var(--ov-ink); }
+/* Passed after its window closed: filled, a corner cut out. */
+.ov-verifier__cell[data-ov-state="late"] .ov-verifier__mark {
+  background: linear-gradient(135deg, transparent 40%, var(--ov-accent) 40%);
+  border: 1px solid var(--ov-accent);
+}
+.ov-verifier__cell[data-ov-state="late"] .ov-verifier__word { color: var(--ov-ink); }
+/* Inside its window: hollow, draining from the top as the window runs out.
+ * The fill is a background SIZE, not an alpha: shape changes, colour never
+ * passes through a value the palette gate has not measured. It animates over
+ * the stage's real window (set by the element, with a negative delay for the
+ * time already spent), so the motion is the clock itself; under reduced
+ * motion the static --ov-verifier-left steps once a second instead. */
+.ov-verifier__cell[data-ov-state="pending"] .ov-verifier__mark {
+  border: 1px solid var(--ov-accent);
+  background: linear-gradient(color-mix(in srgb, var(--ov-accent) 45%, transparent),
+    color-mix(in srgb, var(--ov-accent) 45%, transparent)) bottom / 100% calc(var(--ov-verifier-left, 1) * 100%) no-repeat;
+  animation: ov-verifier-drain var(--ov-verifier-window, 10s) linear var(--ov-verifier-elapsed, 0ms) 1 both;
+}
+@keyframes ov-verifier-drain { from { background-size: 100% 100%; } to { background-size: 100% 0%; } }
+
+/* The moment a stage resolves: one outline, fully on, then fully off. Never
+ * a fade, never a loop; the same for PASS as for FAIL (the shape and word
+ * already say which). Its length is the theme's own --ov-dur-slow, so a
+ * theme with zero durations has no cue. */
+.ov-verifier__cell[data-ov-cue] {
+  animation: ov-verifier-cue calc(var(--ov-dur-slow, 420ms) * 2) steps(1, end) var(--ov-verifier-cue, 0ms) 1 both;
+}
+@keyframes ov-verifier-cue {
+  0% { outline: 1px solid var(--ov-ink); outline-offset: 1px; }
+  100% { outline: 0 none transparent; outline-offset: 1px; }
+}
+.ov-verifier__cell[data-ov-state="pending"] .ov-verifier__word { color: var(--ov-accent); }
+/* Timed out: dashed and empty. Neither a pass nor a fail. */
+.ov-verifier__cell[data-ov-state="timeout"] .ov-verifier__mark { border: 1px dashed var(--ov-alarm); }
+.ov-verifier__cell[data-ov-state="timeout"] .ov-verifier__word { color: var(--ov-alarm); }
+/* Failed: crossed. */
+.ov-verifier__cell[data-ov-state="fail"] .ov-verifier__mark {
+  border: 1px solid var(--ov-alarm);
+  background:
+    linear-gradient(45deg, transparent 42%, var(--ov-alarm) 42% 58%, transparent 58%),
+    linear-gradient(-45deg, transparent 42%, var(--ov-alarm) 42% 58%, transparent 58%);
+}
+.ov-verifier__cell[data-ov-state="fail"] .ov-verifier__word { color: var(--ov-alarm); }
+/* Superseded: struck through once, faint. */
+.ov-verifier__cell[data-ov-state="superseded"] .ov-verifier__mark {
+  border: 1px solid var(--ov-line-strong);
+  background: linear-gradient(135deg, transparent 44%, var(--ov-faint) 44% 56%, transparent 56%);
+}
+/* Never reached (after a FAIL): no mark at all. */
+.ov-verifier__cell[data-ov-state="unreached"] .ov-verifier__mark { border-color: transparent; }
+
+/* ---- row verdicts ---------------------------------------------------- */
+.ov-verifier__row[data-ov-state="complete"] .ov-verifier__verdict { color: var(--ov-ink); }
+.ov-verifier__row[data-ov-state="pending"] .ov-verifier__verdict { color: var(--ov-accent); }
+.ov-verifier__row[data-ov-state="uncredited"],
+.ov-verifier__row[data-ov-gap] { border-style: dashed; border-color: var(--ov-line-strong); }
+.ov-verifier__row[data-ov-state="uncredited"] .ov-verifier__verdict,
+.ov-verifier__row[data-ov-state="superseded"] .ov-verifier__verdict { color: var(--ov-faint); }
+.ov-verifier__row[data-ov-state="failed"],
+.ov-verifier__row[data-ov-state="timeout"] { border-color: var(--ov-alarm); }
+.ov-verifier__row[data-ov-state="failed"] .ov-verifier__verdict,
+.ov-verifier__row[data-ov-state="timeout"] .ov-verifier__verdict { color: var(--ov-alarm); }
+
+/* A timeout declared to fail the command (stages="NAME:s:fail"): the T/O
+ * edge, crossed, so it reads as a failure without pretending an answer came. */
+.ov-verifier__cell[data-ov-fatal] .ov-verifier__mark {
+  border: 1px dashed var(--ov-alarm);
+  background:
+    linear-gradient(45deg, transparent 42%, var(--ov-alarm) 42% 58%, transparent 58%),
+    linear-gradient(-45deg, transparent 42%, var(--ov-alarm) 42% 58%, transparent 58%);
+}
+.ov-verifier__head .ov-verifier__stage[data-ov-fatal] { color: var(--ov-alarm); }
+.ov-verifier__legend { color: var(--ov-faint); font-size: 9.5px; letter-spacing: .08em; }
+
+.ov-verifier__note { margin: 0; color: var(--ov-alarm); font-size: 10px; letter-spacing: .06em; max-inline-size: 60ch; }
+
+/* ---- NARROW: stacked rows. See watchWidth() in ov-verifier.js. ------- */
+ov-verifier[data-ov-narrow] .ov-verifier__head {
+  /* Hidden but still laid out at full width: it is the ruler. */
+  block-size: 0;
+  padding-block: 0;
+  overflow: hidden;
+  visibility: hidden;
+}
+ov-verifier[data-ov-narrow] .ov-verifier__row {
+  grid-template-columns: var(--ov-verifier-id-w) minmax(0, 1fr);
+  grid-template-areas: "id label" "marks marks" "verdict verdict";
+  row-gap: 4px;
+  white-space: normal;
+}
+/* Narrow cells drop their words (every stage is still its own shape, and the
+ * row's verdict says the rest), so seven fit a 226px wall cell. */
+ov-verifier[data-ov-narrow] .ov-verifier__marks {
+  grid-template-columns: repeat(var(--ov-verifier-n, 7), max-content);
+  column-gap: 4px;
+}
+ov-verifier[data-ov-narrow] .ov-verifier__word { display: none; }
+ov-verifier[data-ov-narrow] .ov-verifier__mark { --ov-verifier-mark: 12px; }
+
+/* Reduced motion: the drain steps once a second (the static fill the element
+ * sets) and there is no cue. Nothing is lost: every state is still its shape
+ * and its word. */
+@media (prefers-reduced-motion: reduce) {
+  .ov-verifier__cell[data-ov-state="pending"] .ov-verifier__mark,
+  .ov-verifier__cell[data-ov-cue] { animation: none; }
+}
+}

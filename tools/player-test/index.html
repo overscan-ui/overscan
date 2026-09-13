@@ -1,0 +1,360 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>ov-player harness</title>
+<!-- The refusal gate for ov-player. Serve the repo root
+     (tools/serve.py) and open /tools/player-test/. The last line must read
+     GATE: PASS, and every CONTROL (an assertion false on purpose) must fail. -->
+<link rel="stylesheet" href="../../src/tokens.css">
+<!-- The same sheets as the demo: a harness that loads fewer than the page it
+     vouches for passes rules the page breaks (icons showed in the words version). -->
+<link rel="stylesheet" href="../../src/chrome.css">
+<link rel="stylesheet" href="../../src/control.css">
+<link rel="stylesheet" href="../../src/player.css">
+<link rel="stylesheet" href="../../src/player-icons.css">
+<style>
+  body { background: #06060a; color: #cfe; font: 13px ui-monospace, monospace; padding: 20px; }
+  pre { white-space: pre-wrap; }
+  #stage { inline-size: 520px; }
+</style>
+<div id="stage" data-ov-theme="terminal"></div>
+<pre id="out">running...</pre>
+<script type="module">
+const SRC = new URLSearchParams(location.search).get('src') || '../../src/ov-player.js';
+const { OvPlayer } = await import(new URL(SRC, location.href).href);
+await new Promise((r) => window.Overscan.whenArrived(r));
+
+const stage = document.getElementById('stage');
+const results = [];
+const ok = (name, cond, got) => results.push({ name, pass: !!cond, got });
+const controls = [];
+const control = (name, cond, got) => controls.push({ name, pass: !!cond, got });
+const settle = (ms = 0) => new Promise((r) => setTimeout(r, ms));
+
+let NOW = 1_800_000_000_000;
+OvPlayer.now = () => NOW;
+
+/* A stand-in with HTMLMediaElement's shape. The page owns it; the element
+ * only reads it, exactly as it reads a real <video>. */
+const TR = (list) => ({ length: list.length, start: (i) => list[i][0], end: (i) => list[i][1] });
+class FakeMedia extends EventTarget {
+  constructor(o = {}) {
+    super();
+    Object.assign(this, {
+      localName: 'video', paused: true, ended: false, seeking: false, error: null, readyState: 4,
+      currentTime: 0, duration: 184, playbackRate: 1, volume: 1, muted: false, loop: false, textTracks: [],
+      buffered: TR([]), played: TR([]), seekable: TR([[0, 184]]),
+      quality: { droppedVideoFrames: 0, totalVideoFrames: 0 }, refuse: null,
+    }, o);
+  }
+  getVideoPlaybackQuality() { return this.quality; }
+  play() {
+    if (this.refuse) return Promise.reject(Object.assign(new Error('no'), { name: this.refuse }));
+    this.paused = false; this.fire('play'); if (this.readyState >= 3) this.fire('playing');
+    return Promise.resolve();
+  }
+  pause() { this.paused = true; this.fire('pause'); }
+  fire(t) { this.dispatchEvent(new Event(t)); }
+  tick(dt = 0.25, frames = 6) {
+    NOW += dt * 1000;
+    this.currentTime += dt;
+    this.quality = { ...this.quality, totalVideoFrames: this.quality.totalVideoFrames + frames };
+    this.fire('timeupdate');
+  }
+}
+const fresh = (o = {}, attrs = {}) => {
+  const el = document.createElement('ov-player');
+  el.setAttribute('label', 'CAM 2');
+  for (const [k, v] of Object.entries(attrs)) el.setAttribute(k, v);
+  stage.replaceChildren(el);
+  const m = new FakeMedia(o);
+  el.media = m;
+  return [el, m];
+};
+const st = (el) => el.getAttribute('data-ov-media');
+const why = (el) => el.querySelector('.ov-player__why').textContent;
+const q = (el, c) => el.querySelector(`.ov-player__${c}`);
+// A button's word (its icon carries no text); anything else, its text.
+const txt = (el, c) => { const n = q(el, c); const w = n.querySelector(':scope > .ov-player__word'); return (w || n).textContent; };
+const iconOf = (el, c) => q(el, c).querySelector('.ov-player__icon').dataset.ovIcon;
+const segW = (el, cls) => [...el.querySelectorAll(`.${cls}`)].map((i) => parseFloat(i.style.width));
+const sum = (a) => a.reduce((x, y) => x + y, 0);
+// Computed display only: .hidden said "hidden" while the CSS drew the button anyway.
+const shown = (node) => !!node && getComputedStyle(node).display !== 'none';
+let el, m;
+
+// 1. Real playback: asked for, data ahead, clock moving.
+[el, m] = fresh({ played: TR([[0, 30]]), buffered: TR([[0, 120]]), currentTime: 30 });
+await m.play(); m.tick(); m.tick();
+ok('playback that is moving says PLAYING, with the pause glyph', st(el) === 'playing' && txt(el, 'play') === '▮▮ PAUSE', [st(el), txt(el, 'play')]);
+ok('...and the pause icon, in the default icon version', el.dataset.ovControls === 'icons' && iconOf(el, 'play') === 'pause', [el.dataset.ovControls, iconOf(el, 'play')]);
+const playWord = q(el, 'play').querySelector('.ov-player__word');
+ok('icons hide the words visually but keep them', getComputedStyle(playWord).clipPath !== 'none' && playWord.textContent === '▮▮ PAUSE', getComputedStyle(playWord).clipPath);
+const unnamed = [...el.querySelectorAll('.ov-player__controls button')].filter((b) => !(b.getAttribute('aria-label') || b.textContent.trim())).map((b) => b.className);
+ok('every control button has a name, spoken or shown', unnamed.length === 0, unnamed);
+ok('overlay asked for with no picture falls back to icons', (() => { el.setAttribute('controls', 'overlay'); return el.dataset.ovControls === 'icons'; })(), el.dataset.ovControls);
+el.setAttribute('controls', 'words');
+ok('the words version shows words and no icons', el.dataset.ovControls === 'words' && getComputedStyle(q(el, 'play').querySelector('.ov-player__icon')).display === 'none', el.dataset.ovControls);
+ok('...and nothing is said to be wrong', why(el) === '' && txt(el, 'veil') === '', why(el));
+
+// 2. ⭐ Buffered is not played.
+[el, m] = fresh({ played: TR([[0, 46]]), buffered: TR([[0, 138]]), currentTime: 46 });
+el.draw();
+const pw = sum(segW(el, 'ov-player__seg'));
+const bw = sum(segW(el, 'ov-player__buf'));
+ok('⭐ played is drawn to where it was played (25%), buffered separately (75%)', Math.abs(pw - 25) < 0.01 && Math.abs(bw - 75) < 0.01, [pw, bw]);
+ok('...in a different form: hatched, not filled', getComputedStyle(el.querySelector('.ov-player__buf')).backgroundImage.includes('gradient')
+  && getComputedStyle(el.querySelector('.ov-player__seg')).backgroundImage === 'none', null);
+control('CONTROL: the played fill reaches the end of the buffer (must fail)', Math.abs(pw - bw) < 0.01, [pw, bw]);
+[el, m] = fresh({ played: TR([[0, 20], [92, 100]]), buffered: TR([[0, 46], [92, 138]]), currentTime: 100 });
+el.draw();
+ok('disjoint ranges are drawn as disjoint segments, gaps left empty', segW(el, 'ov-player__buf').length === 2 && segW(el, 'ov-player__seg').length === 2, [segW(el, 'ov-player__buf'), segW(el, 'ov-player__seg')]);
+
+// 2b. ⭐ Hovering the bar says what is there.
+[el, m] = fresh({ played: TR([[0, 30]]), buffered: TR([[0, 120]]), currentTime: 30 });
+el.draw();
+const rect = q(el, 'bar').getBoundingClientRect();
+const hoverAt = (f) => { q(el, 'bar').dispatchEvent(new PointerEvent('pointermove', { clientX: rect.left + rect.width * f, bubbles: true })); return txt(el, 'tip'); };
+ok('hover over played says PLAYED, with the time', hoverAt(0.1) === '0:18 · PLAYED', txt(el, 'tip'));
+ok('hover over the buffer says BUFFERED', hoverAt(0.5) === '1:32 · BUFFERED', txt(el, 'tip'));
+const far = hoverAt(0.9);
+ok('⭐ hover past the buffer says NOT BUFFERED', far === '2:45 · NOT BUFFERED' && shown(q(el, 'tip')), far);
+control('CONTROL: past the buffer reads as buffered (must fail)', / BUFFERED$/.test(far) && !/NOT/.test(far), far);
+
+// 3. ⭐ A frozen clock is not playback.
+[el, m] = fresh({ currentTime: 10 }, { freeze: '2' });
+await m.play(); m.tick();
+ok('moving first', st(el) === 'playing', st(el));
+NOW += 3000; el.draw();
+ok('⭐ not paused, data ahead, clock still for 3s: FROZEN, not PLAYING', st(el) === 'frozen' && /^FROZEN · NOT PAUSED, THE CLOCK STOPPED AT 0:10 · SINCE \d\d:\d\d:\d\d$/.test(why(el)), [st(el), why(el)]);
+ok('...no pause glyph over it, the button offers to cancel', txt(el, 'play') === '× CANCEL PLAY' && q(el, 'play').dataset.ovPending === 'yes', txt(el, 'play'));
+ok('...the playhead is marked not moving', q(el, 'head-mark').dataset.ovMoving === 'no', null);
+ok('⭐ ...and in the icon version the pause icon is not drawn: a dashed cancel ring instead', iconOf(el, 'play') === 'pending'
+  && q(el, 'play').getAttribute('aria-label') === 'cancel play', [iconOf(el, 'play'), q(el, 'play').getAttribute('aria-label')]);
+control('CONTROL: the pause icon is drawn over a frozen clock (must fail)', iconOf(el, 'play') === 'pause', iconOf(el, 'play'));
+control('CONTROL: a frozen clock still reads PLAYING (must fail)', st(el) === 'playing', st(el));
+m.tick();
+ok('the clock moving again brings back PLAYING', st(el) === 'playing', st(el));
+ok('...and the freeze was counted as a stall, timed from when it froze', el.report.stalls === 1 && Math.abs(el.report.stallSeconds - 1.25) < 0.01, el.report);
+
+// 4. ⭐ A picture that stopped while the clock runs.
+[el, m] = fresh({ currentTime: 10 }, { freeze: '2' });
+await m.play(); m.tick();
+for (let i = 0; i < 12; i++) m.tick(0.25, 0);
+ok('⭐ clock moving, no new frames for 3s: PICTURE FROZEN', st(el) === 'picture-frozen' && /^PICTURE FROZEN · THE CLOCK RUNS/.test(why(el)), [st(el), why(el)]);
+ok('...and the band names it', txt(el, 'veil') === 'PICTURE FROZEN', txt(el, 'veil'));
+
+// 5. Buffering and stalled come from the media, not a guess.
+[el, m] = fresh({ currentTime: 10 });
+await m.play(); m.tick();
+m.readyState = 2; m.fire('waiting');
+ok('waiting with too little data is BUFFERING, and says where the data ends', st(el) === 'buffering' && why(el) === 'BUFFERING · PLAY ASKED FOR, NO DATA PAST 0:10', why(el));
+m.fire('stalled');
+ok('the network stalling is STALLED', st(el) === 'stalled' && /NETWORK HAS STOPPED/.test(why(el)), st(el));
+NOW += 9000; el.draw();
+ok('⭐ an open stall is said as OPEN, with the time it began, never a seconds figure that stops counting',
+  /STALLS 1 · 1 OPEN$/.test(txt(el, 'counts')) && /SINCE \d\d:\d\d:\d\d$/.test(why(el)) && !/\d\.\ds/.test(txt(el, 'counts') + why(el)), [txt(el, 'counts'), why(el)]);
+control('CONTROL: the open stall shows a running seconds figure (must fail)', /\d\.\ds/.test(txt(el, 'counts')), txt(el, 'counts'));
+m.fire('progress');
+ok('data arriving again is back to BUFFERING', st(el) === 'buffering', st(el));
+NOW += 4000; m.readyState = 4; m.fire('playing'); m.tick();
+ok('⭐ the stall, once closed, is counted with its time', el.report.stalls === 1 && Math.abs(el.report.stallSeconds - 13) < 0.01 && /STALLS 1 · 13\.0s$/.test(txt(el, 'counts')), [el.report, txt(el, 'counts')]);
+control('CONTROL: no stall was counted (must fail)', el.report.stalls === 0, el.report.stalls);
+[el, m] = fresh({ currentTime: 0, readyState: 2 });
+await m.play(); m.fire('waiting');
+ok('waiting before playback ever began is BUFFERING', st(el) === 'buffering', st(el));
+NOW += 2000; m.readyState = 4; m.fire('playing'); m.tick();
+ok('⭐ ...but is not counted as a stall: nothing playing was interrupted', el.report.stalls === 0 && st(el) === 'playing', el.report);
+
+// 6. Dropped frames, as reported, or said to be unreported.
+[el, m] = fresh({ quality: { droppedVideoFrames: 12, totalVideoFrames: 4210 } });
+el.draw();
+ok('⭐ dropped frames are printed as the media reports them', /^DROPPED 12 \/ 4210/.test(txt(el, 'counts')) && el.hasAttribute('data-ov-dropping'), txt(el, 'counts'));
+control('CONTROL: dropped frames are hidden (must fail)', !/DROPPED/.test(txt(el, 'counts')), txt(el, 'counts'));
+[el, m] = fresh();
+m.getVideoPlaybackQuality = undefined; el.draw();
+ok('a video with no quality API says FRAMES NOT REPORTED, not zero', /^FRAMES NOT REPORTED/.test(txt(el, 'counts')), txt(el, 'counts'));
+
+// 7. ⭐ Behind the live edge is not live.
+const live = (o = {}) => fresh({ duration: Infinity, seekable: TR([[100, 400]]), buffered: TR([[300, 400]]), played: TR([[300, 340]]), ...o }, { 'target-duration': '6' });
+[el, m] = live({ currentTime: 339.75 });
+await m.play(); m.tick();
+ok('⭐ playing 1:00 behind the edge is NOT LIVE, and says by how much', !el.hasAttribute('data-ov-live-claim') && txt(el, 'live') === 'NOT LIVE · −1:00' && /^BEHIND THE LIVE EDGE BY 1:00 · THIS IS NOT LIVE/.test(why(el)), [txt(el, 'live'), why(el)]);
+ok('...and offers GO TO LIVE', shown(q(el, 'golive')), null);
+{
+  const [vod] = fresh({ currentTime: 30 });
+  vod.draw();
+  ok('⭐ a recording never draws GO TO LIVE, by computed display', !shown(q(vod, 'golive')) && !shown(q(vod, 'pip')), [getComputedStyle(q(vod, 'golive')).display]);
+  [el, m] = live({ currentTime: 339.75 });
+  await m.play(); m.tick();
+}
+control('CONTROL: LIVE is claimed a minute behind (must fail)', el.hasAttribute('data-ov-live-claim'), null);
+q(el, 'golive').click();
+ok('GO TO LIVE seeks to three target durations behind the edge', m.currentTime === 382, m.currentTime);
+ok('a live stream offers no loop', !shown(q(el, 'loop')), null);
+[el, m] = live({ currentTime: 385 });
+await m.play(); m.tick();
+ok('near the edge and playing claims LIVE, with its distance printed', el.hasAttribute('data-ov-live-claim') && /^LIVE −0:14$/.test(txt(el, 'live')), txt(el, 'live'));
+m.pause();
+ok('⭐ a paused live stream at the edge is not live', !el.hasAttribute('data-ov-live-claim') && why(el) === 'PAUSED · FALLING BEHIND THE LIVE EDGE', why(el));
+[el, m] = live({ currentTime: 385, seekable: TR([]) });
+await m.play(); m.tick();
+ok('⭐ no seekable range: LIVE EDGE UNKNOWN, no claim, no bar, no skip buttons', !el.hasAttribute('data-ov-live-claim') && txt(el, 'live') === 'LIVE EDGE UNKNOWN'
+  && q(el, 'track').hidden && !shown(q(el, 'back')) && !shown(q(el, 'fwd')), txt(el, 'live'));
+[el, m] = live({ currentTime: 385 });
+await m.play(); m.tick();
+for (let i = 0; i < 80; i++) m.tick(0.25);
+ok('⭐ an edge that has not moved for three target durations makes no claim', !el.hasAttribute('data-ov-live-claim') && /^LIVE EDGE NOT MOVING/.test(why(el)), why(el));
+
+// 8. No duration, no bar (ov-transport's rule).
+[el, m] = fresh({ duration: NaN, readyState: 1 });
+el.draw();
+ok('no duration: no bar, and the refusal is said', q(el, 'track').hidden && q(el, 'bar').dataset.ovRefusal === 'no duration: nothing to seek within', q(el, 'bar').dataset.ovRefusal);
+
+// 9. The rest of the states.
+[el, m] = fresh({ refuse: 'NotAllowedError' });
+await el.requestPlay(); await settle();
+ok('⭐ play refused by the browser is PLAY REFUSED, never PLAYING', st(el) === 'blocked' && /^PLAY REFUSED BY THE BROWSER \(NotAllowedError\)/.test(why(el)) && txt(el, 'play') === '▶ PLAY', [st(el), why(el)]);
+ok('...and is not a stall', el.report.stalls === 0, el.report);
+ok('simulated media with no picture draws no empty picture well', q(el, 'frame').hidden, null);
+[el, m] = fresh({ error: { code: 3, message: '' } });
+el.draw();
+ok('a media error is named', st(el) === 'error' && why(el) === 'MEDIA ERROR: DECODE', why(el));
+[el, m] = fresh({ currentTime: 184, ended: true, paused: true });
+m.fire('ended');
+ok('ended is ENDED', st(el) === 'ended', st(el));
+[el, m] = fresh({ currentTime: 20 });
+await m.play(); m.tick(); m.seeking = true; m.fire('seeking');
+ok('seeking is SEEKING, not playing', st(el) === 'seeking', st(el));
+[el, m] = fresh({ readyState: 0, duration: NaN });
+el.draw();
+ok('nothing loaded says so', st(el) === 'empty', st(el));
+el = document.createElement('ov-player'); stage.replaceChildren(el);
+ok('no media at all is NO MEDIA, with a disabled play button', st(el) === 'none' && q(el, 'play').disabled, st(el));
+
+// 10. The controls. Each asks the media, and the player reads the answer back.
+[el, m] = fresh({ currentTime: 30, seekable: TR([[0, 184]]) });
+el.draw();
+q(el, 'fwd').click();
+ok('+10 moves the media forward ten seconds', m.currentTime === 40, m.currentTime);
+m.currentTime = 4; q(el, 'back').click();
+ok('−10 near the start stops at the start of the seekable range', m.currentTime === 0, m.currentTime);
+[el, m] = fresh({ currentTime: 50, seekable: TR([[0, 60], [100, 184]]) });
+el.draw();
+q(el, 'fwd').click();
+ok('a skip into a hole in the seekable ranges lands on the nearest seekable point', m.currentTime === 60, m.currentTime);
+[el, m] = fresh({ currentTime: 10 });
+el.draw();
+for (let i = 0; i < 3; i++) q(el, 'rate').click();
+ok('the rate button steps the media rate (1 → 1.25 → 1.5 → 2)', m.playbackRate === 2 && txt(el, 'rate') === '×2', [m.playbackRate, txt(el, 'rate')]);
+ok('⭐ a rate other than ×1 is printed beside the time', txt(el, 'time') === '0:10 / 3:04 · ×2', txt(el, 'time'));
+q(el, 'rate').click();
+ok('...and wraps to ×0.5', m.playbackRate === 0.5, m.playbackRate);
+q(el, 'loop').click();
+ok('loop asks the media to loop, and says LOOP ON', m.loop === true && txt(el, 'loop') === 'LOOP ON', txt(el, 'loop'));
+q(el, 'mute').click();
+ok('mute asks the media, and says MUTED, with the crossed speaker', m.muted === true && txt(el, 'mute') === 'MUTED' && iconOf(el, 'mute') === 'muted', [txt(el, 'mute'), iconOf(el, 'mute')]);
+const vol = q(el, 'vol'); vol.value = '0.3'; vol.dispatchEvent(new Event('input'));
+ok('raising the volume unmutes and says the level', m.muted === false && Math.abs(m.volume - 0.3) < 1e-9 && txt(el, 'mute') === 'VOL 30', txt(el, 'mute'));
+ok('⭐ with no caption track there is no CC button, and it says NO CAPTIONS', !shown(q(el, 'cc')) && shown(q(el, 'nocc')), [q(el, 'cc').hidden, q(el, 'nocc').hidden]);
+control('CONTROL: a CC button is offered with no captions (must fail)', shown(q(el, 'cc')), null);
+const tracks = [{ kind: 'metadata', mode: 'hidden' }, { kind: 'captions', language: 'en', mode: 'disabled' }, { kind: 'subtitles', language: 'fr', mode: 'disabled' }];
+[el, m] = fresh({ textTracks: tracks });
+el.draw();
+ok('with caption tracks it offers CC OFF, and not NO CAPTIONS', shown(q(el, 'cc')) && txt(el, 'cc') === 'CC OFF' && !shown(q(el, 'nocc')), txt(el, 'cc'));
+q(el, 'cc').click();
+ok('CC turns on the first caption track and names it, with the filled icon', tracks[1].mode === 'showing' && txt(el, 'cc') === 'CC EN' && iconOf(el, 'cc') === 'ccOn', [txt(el, 'cc'), iconOf(el, 'cc')]);
+q(el, 'cc').click();
+ok('...then the next', tracks[1].mode === 'disabled' && tracks[2].mode === 'showing' && txt(el, 'cc') === 'CC FR', txt(el, 'cc'));
+q(el, 'cc').click();
+ok('...then off, never touching a metadata track', tracks[2].mode === 'disabled' && tracks[0].mode === 'hidden' && txt(el, 'cc') === 'CC OFF', txt(el, 'cc'));
+ok('picture-in-picture is absent for media that cannot do it', !shown(q(el, 'pip')), null);
+const fsOk = document.fullscreenEnabled === true;
+ok('full screen is offered exactly when the browser allows it', shown(q(el, 'full')) === fsOk, [fsOk, shown(q(el, 'full'))]);
+
+// 10b. The keyboard.
+[el, m] = fresh({ currentTime: 30 });
+el.draw();
+const key = (k) => el.dispatchEvent(new KeyboardEvent('keydown', { key: k, bubbles: true, cancelable: true }));
+key(' '); await settle();
+ok('space asks to play', el._intent === true && m.paused === false, [el._intent, m.paused]);
+key('l');
+ok('L goes forward ten seconds', m.currentTime === 40, m.currentTime);
+key('ArrowLeft');
+ok('left arrow goes back five', m.currentTime === 35, m.currentTime);
+key('m');
+ok('M mutes', m.muted === true, m.muted);
+key('k');
+ok('K pauses', m.paused === true && el._intent === false, m.paused);
+
+// 11. The waveform: drawn only from the file decoded, only on a bar with a scale.
+// Decoding is handed known samples (a ramp, quiet to loud): headless virtual
+// time never finishes a real decode. The real file is checked in a real browser.
+const realDecode = OvPlayer.decode;
+let decoded = 0;
+OvPlayer.decode = async (src) => {
+  decoded++;
+  if (/missing/.test(src)) throw new Error('HTTP 404');
+  return { data: new Float32Array(8000).map((_, i) => Math.sin(i / 3) * (i / 8000)), seconds: 96 };
+};
+const audioOpts = (o = {}) => ({ localName: 'audio', src: '/media/pad.m4a', currentSrc: '/media/pad.m4a', duration: 96,
+  seekable: TR([[0, 96]]), getVideoPlaybackQuality: undefined, ...o });
+const waveD = (el) => q(el, 'wave').firstChild.getAttribute('d') || '';
+[el, m] = fresh(audioOpts(), { waveform: '' });
+await settle(10);
+const d = waveD(el);
+const y0 = Number((d.match(/^M0 (\S+?)L/) || [])[1]);
+const y399 = Number((d.match(/L399 (\S+?)L/) || [])[1]);
+ok('⭐ the waveform is the decoded file\'s own shape: quiet at the start, loud at the end', decoded === 1 && shown(q(el, 'wave')) && y0 > 19.5 && y399 < 1.5, [decoded, y0, y399]);
+control('CONTROL: the waveform is flat, the same at both ends (must fail)', Math.abs(y0 - y399) < 1, [y0, y399]);
+ok('...an audio player has no picture well, no frame count and no caption readout', q(el, 'frame').hidden && !/FRAMES|DROPPED/.test(txt(el, 'counts')) && !shown(q(el, 'nocc')), txt(el, 'counts'));
+m.duration = NaN; m.fire('durationchange');
+ok('⭐ with no duration there is no bar, so no waveform either', waveD(el) === '' && q(el, 'track').hidden, waveD(el).length);
+[el, m] = fresh(audioOpts({ duration: Infinity, seekable: TR([[0, 300]]) }), { waveform: '' });
+await settle(10);
+ok('a live stream draws no waveform: there is no whole file for it to be', waveD(el) === '', waveD(el).length);
+[el, m] = fresh(audioOpts({ src: '/media/missing.m4a', currentSrc: '/media/missing.m4a' }), { waveform: '' });
+await settle(10);
+ok('a file that cannot be read draws no waveform and says WAVEFORM UNAVAILABLE', waveD(el) === '' && /WAVEFORM UNAVAILABLE/.test(txt(el, 'counts')), txt(el, 'counts'));
+const before = decoded;
+[el, m] = fresh(audioOpts());
+await settle(10);
+ok('without the waveform attribute nothing is fetched or decoded', decoded === before && waveD(el) === '', decoded - before);
+OvPlayer.decode = realDecode;
+
+// 12. Events and the demo mark.
+[el, m] = fresh({ currentTime: 5 });
+const seen = [];
+el.addEventListener('ov:player', (e) => seen.push(`${e.detail.previous}>${e.detail.state}`));
+await m.play(); m.tick(); m.pause();
+ok('ov:player fires per change of state', seen.join(',') === 'paused>playing,playing>paused', seen);
+[el, m] = fresh({}, { demo: '' });
+ok('a demonstration says so on its face', txt(el, 'demo') === 'DEMONSTRATION MEDIA · NOT A LIVE FEED', txt(el, 'demo'));
+
+// 13. ⭐ No frame loop: the silence itself is timed by one timer.
+[el, m] = fresh({ currentTime: 10 }, { freeze: '0.05' });
+await m.play(); m.tick();
+ok('a playing player holds exactly one pending timer, and no leftover arrival hook', el._timer !== null && el._unarrive === null, [el._timer, typeof el._unarrive]);
+NOW += 1000;
+await settle(150);
+ok('⭐ the timer alone turns a silent clock into FROZEN, with no draw() called', st(el) === 'frozen', st(el));
+el.remove();
+ok('...released when the player leaves the page', el._timer === null && el._unarrive === null, el._timer);
+const src = await (await fetch(new URL(SRC, location.href).href)).text();
+ok('the element never asks for an animation frame or repeats a timer', !/requestAnimationFrame|setInterval/.test(src), true);
+control('CONTROL: the element draws on a frame (must fail)', /requestAnimationFrame/.test(src), 'source');
+
+const passed = results.filter((x) => x.pass).length;
+const failed = results.length - passed;
+const controlsFailed = controls.filter((x) => !x.pass).length;
+const gate = failed === 0 && controlsFailed === controls.length && controls.length > 0;
+const lines = [
+  ...results.map((x) => `${x.pass ? 'PASS' : 'FAIL'}  ${x.name}${x.pass ? '' : '  got ' + JSON.stringify(x.got)}`),
+  ...controls.map((x) => `${x.pass ? 'CONTROL PASSED (BAD)' : 'CONTROL FAILED (good)'}  ${x.name}`),
+  '',
+  `${passed} passed, ${failed} failed, ${controlsFailed}/${controls.length} controls failed as required`,
+  `GATE: ${gate ? 'PASS' : 'FAIL'}`,
+];
+const out = document.getElementById('out');
+out.textContent = lines.join('\n');
+out.setAttribute('data-gate', gate ? 'pass' : 'fail');
+</script>

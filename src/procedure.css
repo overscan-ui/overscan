@@ -1,0 +1,180 @@
+@layer overscan {
+/* The procedure. See ov-procedure.js for the refusal.
+ *
+ * 🔴 OPERATOR AND SENSOR ARE TWO COLUMNS AND STAY TWO. Nothing here collapses
+ * them into one mark: a row's state word names both halves, and the columns
+ * are styled independently, so a claimed-but-unsensed row reads as a lit
+ * operator cell beside a dark sensor cell, which is exactly what it is.
+ */
+
+ov-procedure {
+  --ov-procedure-label-w: 18ch;
+  /* Block-level so it takes the width it is GIVEN (which is what the narrow
+   * check measures), capped at its natural width so it still shrink-wraps. */
+  display: grid;
+  max-inline-size: max-content;
+  gap: 6px;
+  font-family: var(--ov-font-mono);
+  color: var(--ov-ink);
+  font-size: 11px;
+  letter-spacing: .06em;
+}
+
+.ov-procedure__status {
+  padding: 8px 12px;
+  border: 2px solid var(--ov-line-strong);
+  background: var(--ov-panel);
+  color: var(--ov-faint);
+  font-size: 12px;
+  letter-spacing: .12em;
+}
+ov-procedure[data-ov-procedure="held"] .ov-procedure__status {
+  border-color: var(--ov-alarm);
+  color: var(--ov-alarm);
+}
+ov-procedure[data-ov-procedure="complete"] .ov-procedure__status {
+  border-color: var(--ov-accent);
+  background: var(--ov-accent);
+  color: var(--ov-field);
+}
+/* Complete on a claim is not complete: outlined, never filled. */
+ov-procedure[data-ov-procedure="on-claim"] .ov-procedure__status {
+  border: 2px dashed var(--ov-accent);
+  color: var(--ov-accent);
+}
+
+/* Real widths, not percentages (see the annunciator's note on shrink-wrap). */
+.ov-procedure__head,
+.ov-procedure__step {
+  display: grid;
+  /* ⚠️ `ch` is relative to the font size, so the head keeps the rows' size
+   * and shrinks only its text: a smaller head font put every column heading
+   * a few characters left of its column. */
+  grid-template-columns: 3ch var(--ov-procedure-label-w) 11ch 14ch 25ch;
+  align-items: center;
+  column-gap: 10px;
+  white-space: nowrap;
+}
+.ov-procedure__head {
+  padding: 0 calc(10px + var(--ov-rule, 1px));
+  color: var(--ov-faint);
+}
+.ov-procedure__head > span { font-size: 9px; letter-spacing: .14em; }
+
+.ov-procedure__steps {
+  display: grid;
+  gap: 3px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.ov-procedure__step {
+  position: relative;
+  padding: 6px 10px;
+  border: var(--ov-rule, 1px) solid var(--ov-line);
+  background: var(--ov-panel);
+  color: var(--ov-faint);
+}
+.ov-procedure__n { color: var(--ov-faint); }
+.ov-procedure__label { color: var(--ov-ink); text-transform: uppercase; }
+.ov-procedure__step[data-ov-state="waiting"] .ov-procedure__label { color: var(--ov-faint); }
+
+/* OPERATOR column. */
+.ov-procedure__claim {
+  inline-size: 100%;
+  padding: 4px 6px;
+  border: 1px solid var(--ov-line-strong);
+  background: var(--ov-field);
+  color: var(--ov-ink);
+  font: inherit;
+  letter-spacing: .1em;
+  cursor: pointer;
+}
+.ov-procedure__claim[aria-disabled="true"] { cursor: not-allowed; color: var(--ov-faint); border-style: dashed; }
+.ov-procedure__claim[aria-pressed="true"] {
+  border: 1px solid var(--ov-ink);
+  background: var(--ov-ink);
+  color: var(--ov-field);
+  border-style: solid;
+  cursor: default;
+}
+.ov-procedure__claim:focus-visible { outline: 2px solid var(--ov-ink); outline-offset: 2px; }
+
+/* SENSOR column. */
+.ov-procedure__sensor {
+  padding: 4px 6px;
+  border: 1px solid var(--ov-line);
+  text-align: center;
+  letter-spacing: .1em;
+}
+.ov-procedure__sensor[data-ov-sense="yes"] { border-color: var(--ov-accent); background: var(--ov-accent); color: var(--ov-field); }
+.ov-procedure__sensor[data-ov-sense="no"] { color: var(--ov-faint); }
+.ov-procedure__sensor[data-ov-sense="unknown"] { border-style: dashed; border-color: var(--ov-faint); color: var(--ov-faint); }
+.ov-procedure__sensor[data-ov-sense="none"] { border-style: dotted; color: var(--ov-faint); }
+
+/* STATE column: names both halves. */
+.ov-procedure__state { letter-spacing: .08em; }
+.ov-procedure__step[data-ov-state="verified"] .ov-procedure__state { color: var(--ov-accent); }
+.ov-procedure__step[data-ov-state="claimed"],
+.ov-procedure__step[data-ov-state="claimed-nodata"],
+.ov-procedure__step[data-ov-state="lost"],
+.ov-procedure__step[data-ov-state="sensed"] { border-color: var(--ov-alarm); }
+.ov-procedure__step[data-ov-state="claimed"] .ov-procedure__state,
+.ov-procedure__step[data-ov-state="claimed-nodata"] .ov-procedure__state,
+.ov-procedure__step[data-ov-state="lost"] .ov-procedure__state,
+.ov-procedure__step[data-ov-state="sensed"] .ov-procedure__state { color: var(--ov-alarm); }
+.ov-procedure__step[data-ov-state="lost"] {
+  background:
+    repeating-linear-gradient(135deg,
+      color-mix(in srgb, var(--ov-alarm) 14%, transparent) 0 3px, transparent 3px 8px),
+    var(--ov-panel);
+}
+.ov-procedure__step[data-ov-state="claim-only"] .ov-procedure__state { color: var(--ov-ink); }
+.ov-procedure__step[data-ov-state="claim-only"] { border-style: dashed; border-color: var(--ov-line-strong); }
+
+/* ---- NARROW: stacked rows. See watchWidth() in ov-procedure.js. ---- */
+ov-procedure[data-ov-narrow] .ov-procedure__head {
+  /* Hidden but still laid out at full width: it is the ruler. */
+  block-size: 0;
+  overflow: hidden;
+  visibility: hidden;
+}
+ov-procedure[data-ov-narrow] .ov-procedure__step {
+  grid-template-columns: 3ch minmax(0, 1fr) minmax(0, 1fr);
+  grid-template-areas: "n label label" ". op sensor" ". state state" ". why why";
+  row-gap: 4px;
+  white-space: normal;
+}
+ov-procedure[data-ov-narrow] .ov-procedure__n { grid-area: n; }
+ov-procedure[data-ov-narrow] .ov-procedure__label { grid-area: label; }
+ov-procedure[data-ov-narrow] .ov-procedure__op { grid-area: op; }
+ov-procedure[data-ov-narrow] .ov-procedure__sensor { grid-area: sensor; }
+ov-procedure[data-ov-narrow] .ov-procedure__state { grid-area: state; }
+ov-procedure[data-ov-narrow] .ov-procedure__why { grid-area: why; }
+ov-procedure[data-ov-narrow] .ov-procedure__status { font-size: 11px; }
+
+/* The reason a step cannot be claimed yet, shown before the press. */
+.ov-procedure__why {
+  grid-column: 2 / -1;
+  white-space: normal;
+  color: var(--ov-faint);
+  font-size: 9.5px;
+  letter-spacing: .06em;
+}
+.ov-procedure__why:empty { display: none; }
+
+.ov-procedure__note { margin: 0; color: var(--ov-alarm); font-size: 10px; letter-spacing: .06em; }
+
+/* A refused press: one short pulse on the row, and the reason was already
+ * written there. */
+.ov-procedure__step[data-ov-refused] { animation: ov-procedure-refuse 700ms steps(2, end) 1; }
+@keyframes ov-procedure-refuse {
+  0% { border-color: var(--ov-alarm); }
+  100% { border-color: var(--ov-line); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ov-procedure__step[data-ov-refused] { animation: none; outline: 1px solid var(--ov-alarm); }
+}
+}

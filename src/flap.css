@@ -1,0 +1,79 @@
+/* ---- CASCADE LAYER ------------------------------------------------------
+ *
+ * Everything the kit ships sits in ONE layer named `overscan`, so a consumer's
+ * own CSS beats it without a specificity fight and without !important. That is
+ * close to mandatory for a distributed kit: an app should be able to restyle a
+ * panel by writing a plain rule.
+ *
+ * ⚠️ ONE layer, deliberately, NOT a sub-layer per file. Sub-layers look tidier
+ * and would silently reorder the kit against itself: layer order beats
+ * specificity, so a high-specificity rule in an early file that currently wins
+ * would start losing to a low-specificity rule in a later one. A single layer
+ * preserves source order exactly, so nothing inside the kit changes.
+ *
+ * Unlayered author CSS wins over all of it. That is the point.
+ */
+
+@layer overscan {
+/* Split-flap board. */
+
+ov-flap {
+  display: inline-flex;
+  gap: 3px;
+  vertical-align: middle;
+}
+
+.ov-flap__cell {
+  position: relative;
+  inline-size: var(--ov-flap-width, 30px);
+  block-size: var(--ov-flap-height, 44px);
+  display: grid;
+  place-items: center;
+  background: var(--ov-raised);
+  border: var(--ov-rule) solid var(--ov-line);
+  color: var(--ov-accent);
+  font-size: var(--ov-size-6);
+  overflow: hidden;
+}
+
+/* The seam. A split-flap is two halves of a card, and the line across the
+ * middle is the whole reason the format is recognisable. */
+.ov-flap__cell::after {
+  content: "";
+  position: absolute;
+  inset-inline: 0;
+  inset-block-start: calc(50% - var(--ov-rule) / 2);
+  block-size: var(--ov-rule);
+  background: var(--ov-field);
+}
+
+.ov-flap__char { line-height: 1; }
+
+@keyframes ov-flap-step {
+  from { transform: rotateX(-82deg); }
+  to   { transform: rotateX(0); }
+}
+
+.ov-flap__cell.is-flipping .ov-flap__char {
+  transform-origin: 50% 0;
+  animation: ov-flap-step 55ms linear;
+}
+
+ov-flap[data-ov-refusal] .ov-flap__cell { color: var(--ov-alarm); }
+ov-flap[data-ov-qualified] .ov-flap__cell { color: var(--ov-faint); }
+
+ov-flap[data-ov-refusal]::after,
+ov-flap[data-ov-qualified]::after {
+  align-self: center;
+  margin-inline-start: 10px;
+  font-size: var(--ov-size-1);
+  letter-spacing: 1.2px;
+  text-transform: uppercase;
+}
+ov-flap[data-ov-refusal]::after { content: attr(data-ov-refusal); color: var(--ov-alarm); }
+ov-flap[data-ov-qualified]::after { content: attr(data-ov-qualifier-text); color: var(--ov-faint); }
+
+@media (prefers-reduced-motion: reduce) {
+  .ov-flap__cell.is-flipping .ov-flap__char { animation: none; }
+}
+}

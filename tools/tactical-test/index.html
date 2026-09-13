@@ -1,0 +1,196 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>ov-tactical harness</title>
+<!-- The refusal gate for ov-tactical. Serve the repo root (tools/serve.py) and
+     open /tools/tactical-test/. The last line must read GATE: PASS, and every
+     CONTROL (an assertion false on purpose) must fail. ?src= loads a mutant. -->
+<link rel="stylesheet" href="../../src/tokens.css">
+<link rel="stylesheet" href="../../src/chrome.css">
+<link rel="stylesheet" href="../../src/tactical.css">
+<style>
+  body { background: #06060a; color: #cfe; font: 13px ui-monospace, monospace; padding: 20px; }
+  pre { white-space: pre-wrap; }
+  #stage { inline-size: 720px; }
+</style>
+<div id="stage" data-ov-theme="aegis"></div>
+<pre id="out">running...</pre>
+<script type="module">
+const out = document.getElementById('out');
+const results = [];
+const ok = (name, cond, got) => results.push({ name, pass: !!cond, got });
+const controls = [];
+const control = (name, cond, got) => controls.push({ name, pass: !!cond, got });
+const settle = (ms = 0) => new Promise((r) => setTimeout(r, ms));
+
+function report(error) {
+  const passed = results.filter((x) => x.pass).length;
+  const failed = results.length - passed;
+  const controlsFailed = controls.filter((x) => !x.pass).length;
+  const gate = !error && failed === 0 && controls.length > 0 && controlsFailed === controls.length;
+  out.textContent = [
+    ...results.map((x) => `${x.pass ? 'PASS' : 'FAIL'}  ${x.name}${x.pass ? '' : '  got ' + JSON.stringify(x.got)}`),
+    ...controls.map((x) => `${x.pass ? 'CONTROL PASSED (BAD)' : 'CONTROL FAILED (good)'}  ${x.name}`),
+    ...(error ? ['', `THREW: ${error && error.stack || error}`] : []),
+    '', `${passed} passed, ${failed} failed, ${controlsFailed}/${controls.length} controls failed as required`,
+    `GATE: ${gate ? 'PASS' : 'FAIL'}`,
+  ].join('\n');
+  out.setAttribute('data-gate', gate ? 'pass' : 'fail');
+}
+
+try {
+  const SRC = new URLSearchParams(location.search).get('src') || '../../src/ov-tactical.js';
+  const { OvTactical } = await import(new URL(SRC, location.href).href);
+  const { default: COUNTRIES } = await import('../../src/ov-countries.js');
+  await new Promise((r) => window.Overscan.whenArrived(r));
+
+  let NOW = Date.UTC(2026, 8, 13, 12, 0, 0);
+  OvTactical.now = () => NOW;
+  OvTactical.countries = null;
+
+  const stage = document.getElementById('stage');
+  const fresh = (attrs = {}) => {
+    const el = document.createElement('ov-tactical');
+    const all = { lat: '35.47', lon: '-97.52', range: '2400', pitch: '0', bearing: '0', ring: '800', ...attrs };
+    for (const [k, v] of Object.entries(all)) if (v !== null) el.setAttribute(k, v);
+    stage.replaceChildren(el);
+    return el;
+  };
+  const key = (el) => el.querySelector('.ov-tactical__key').textContent;
+  const circle = (el) => {
+    const t = el.querySelector('.ov-tactical__circle')?.textContent || '';
+    const n = t.match(/N ([\d,]+) km/), e = t.match(/E ([\d,]+) km/);
+    return { n: n ? +n[1].replace(/,/g, '') : null, e: e ? +e[1].replace(/,/g, '') : null, t };
+  };
+  const box = (el, sel) => el.querySelector(sel).getBBox();
+  const track = (el, id) => el.querySelector(`.ov-tactical__track[data-ov-id="${id}"]`);
+  const label = (el, id) => [...el.querySelectorAll('.ov-tactical__label')].find((t) => t.firstChild.textContent === id)?.textContent || '';
+  const runs = (d) => {
+    const rs = [];
+    for (const m of (d || '').matchAll(/([ML])\s*(-?[\d.]+)[ ,]+(-?[\d.]+)/g)) {
+      if (m[1] === 'M' || !rs.length) rs.push([]);
+      rs[rs.length - 1].push([+m[2], +m[3]]);
+    }
+    return rs;
+  };
+  let el;
+
+  // 1. The finding: a range ring is not a circle once the camera is pitched.
+  el = fresh({ pitch: '0' });
+  let c = circle(el);
+  ok('looking straight down, the screen circle reaches the ring north (within 3%)', Math.abs(c.n - 800) / 800 < 0.03, c.t);
+  ok('...and east (within 3%)', Math.abs(c.e - 800) / 800 < 0.03, c.t);
+  let b = box(el, '.ov-tactical__true');
+  ok('...and the ring on the ground draws round', Math.abs(b.height / b.width - 1) < 0.05, [b.width, b.height]);
+
+  el = fresh({ pitch: '45', bearing: '-18' });
+  c = circle(el);
+  b = box(el, '.ov-tactical__true');
+  ok('pitched 45, the ring on the ground draws as an ellipse', b.height / b.width < 0.85, [b.width, b.height]);
+  ok('...and the screen circle falls short east by more than 10%, and says so', c.e !== null && c.e < 720, c.t);
+  ok('...the key says how far off it is', /off by up to [\d,]+ km/.test(c.t), c.t);
+  control('CONTROL: at 45 the screen circle still reaches 800 km east (must fail)', c.e !== null && Math.abs(c.e - 800) < 20, c.t);
+  ok('the accessible name carries the measurement', /reaches \d+ km north and \d+ km east/.test(el.getAttribute('aria-label')), el.getAttribute('aria-label'));
+
+  el = fresh({ pitch: '70' });
+  ok('pitch never goes past 45', /PITCH 45°/.test(key(el)), key(el));
+  el = fresh({ ring: null });
+  ok('no ring asked for, no ring and no screen circle drawn', !el.querySelector('.ov-tactical__true, .ov-tactical__naive'), '');
+
+  // 2. Tracks.
+  el = fresh({ fresh: '60' });
+  const picture = (moveA) => [
+    { id: 'A', lat: 35.47, lon: -97.52 + moveA, hdg: 90, spd: 600, alt: 30000, at: NOW },
+    { id: 'S', lat: 36, lon: -99, hdg: 45, spd: 300, at: NOW - 600e3 },
+    { id: 'N', lat: 34, lon: -96, spd: 300, at: NOW },
+    { id: 'L', lat: null, lon: -96, at: NOW },
+    { id: 'F', lat: -40, lon: 100, hdg: 0, spd: 100, at: NOW },
+    { id: 'DELTA', kind: 'site', lat: 35, lon: -97, note: 'ELEV 397 FT' },
+  ];
+  el.data = picture(0);
+  ok('one fresh report is HELD and says NOT MOVED', track(el, 'A')?.dataset.ovState === 'held' && /NOT MOVED/.test(label(el, 'A')), [track(el, 'A')?.dataset.ovState, label(el, 'A')]);
+  const lead = el.querySelector('[data-ov-id="A"] .ov-tactical__lead');
+  ok('a fresh fix with heading and speed draws its heading line', !!lead, '');
+  const [[p0, p1]] = runs(lead?.getAttribute('d'));
+  const W = Math.round(el.clientWidth);
+  const km = Math.hypot(p1[0] - p0[0], p1[1] - p0[1]) / ((W / 2) / 2400);
+  ok('...a ten-minute lead at the reported speed, measured on the ground (185 km, within 4%)', Math.abs(km - 185.2) / 185.2 < 0.04, km);
+  ok('a stale track is STALE, says how old, and that its heading is not shown',
+    track(el, 'S')?.dataset.ovState === 'stale' && /LAST FIX 10 MIN AGO, HEADING NOT SHOWN/.test(label(el, 'S')), label(el, 'S'));
+  ok('...and draws no heading line', !el.querySelector('[data-ov-id="S"] .ov-tactical__lead'), '');
+  ok('...its mark is dashed, not only recoloured', getComputedStyle(el.querySelector('[data-ov-id="S"] .ov-tactical__mark')).strokeDasharray !== 'none', '');
+  control('CONTROL: a stale track drawing its heading (must fail)', !!el.querySelector('[data-ov-id="S"] .ov-tactical__lead'), '');
+  ok('a track with no heading says NO HEADING and draws no line', /NO HEADING/.test(label(el, 'N')) && !el.querySelector('[data-ov-id="N"] .ov-tactical__lead'), label(el, 'N'));
+  ok('a track off this view and one with no position are counted', /1 OFF THIS VIEW · 1 WITHOUT A POSITION/.test(key(el)), key(el));
+  ok('...and nothing is drawn at NaN', !el.innerHTML.includes('NaN'), '');
+  ok('a site is not judged for freshness', track(el, 'DELTA')?.dataset.ovState === 'site' && /ELEV 397 FT/.test(label(el, 'DELTA')), label(el, 'DELTA'));
+  NOW += 2000;
+  el.data = picture(0.05);
+  ok('a second report that moved is LIVE', track(el, 'A')?.dataset.ovState === 'live', track(el, 'A')?.dataset.ovState);
+
+  // 3. Routes follow the same rule.
+  const JFK = { lat: 40.64, lon: -73.78 }, LHR = { lat: 51.47, lon: -0.46 };
+  el = fresh({ lat: '50', lon: '-35', range: '3200', pitch: '30', bearing: '60', ring: '1500' });
+  el.data = [{ id: 'r1', label: 'KEF-JFK', from: { lat: 63.98, lon: -22.6 }, to: JFK }, { id: 'r2', label: 'JFK-LHR', from: JFK, to: LHR, pos: { lat: 50, lon: -40, at: NOW } }];
+  const trip = (id) => el.querySelector(`.ov-tactical__trip[data-ov-id="${id}"]`);
+  ok('a route with no fix is a still plan', trip('r1')?.dataset.ovState === 'plan' && !trip('r1').querySelector('.ov-tactical__ping, .is-flown'), trip('r1')?.dataset.ovState);
+  ok('a route with one report is held, and does not ping', trip('r2')?.dataset.ovState === 'held' && !trip('r2').querySelector('.ov-tactical__ping'), trip('r2')?.dataset.ovState);
+
+  // 4. Countries.
+  el = fresh({ countries: '' });
+  ok('countries asked for and none given is said', /COUNTRIES NOT LOADED/.test(key(el)), key(el));
+  OvTactical.countries = COUNTRIES;
+  ok('outlines given later reach a map already on the page', !!el.querySelector('.ov-tactical__land'), '');
+  el = fresh({ countries: '', lat: '63', lon: '-175', range: '1250', pitch: '20' });
+  const Wb = Math.round(el.clientWidth), Hb = Math.round(Wb * 0.62);
+  // The length of a stroke that lies ON THE GLASS (Liang-Barsky against the
+  // view). A far point can project thousands of pixels away and be harmless;
+  // what must never happen is a long stroke across what the reader sees.
+  const onGlass = ([x0, y0], [x1, y1]) => {
+    let t0 = 0, t1 = 1;
+    const dx = x1 - x0, dy = y1 - y0;
+    for (const [p, q] of [[-dx, x0], [dx, Wb - x0], [-dy, y0], [dy, Hb - y0]]) {
+      if (p === 0) { if (q < 0) return 0; continue; }
+      const r = q / p;
+      if (p < 0) { if (r > t1) return 0; if (r > t0) t0 = r; } else { if (r < t0) return 0; if (r < t1) t1 = r; }
+    }
+    return Math.hypot(dx, dy) * (t1 - t0);
+  };
+  const longest = Math.max(0, ...runs(el.querySelector('.ov-tactical__border')?.getAttribute('d')).flatMap((r) => r.slice(1).map((p, i) => onGlass(r[i], p))));
+  ok('over the Bering Strait no border stroke runs across the glass', longest < Wb / 3, [longest, Wb]);
+
+  // 5. The camera moves by hand only when asked, and never traps the page's scroll.
+  el = fresh({ bearing: '0' });
+  el.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true, cancelable: true }));
+  ok('without orbit an arrow key does not move the camera', el.getAttribute('bearing') === '0', el.getAttribute('bearing'));
+  el.setAttribute('orbit', '');
+  let views = 0;
+  el.addEventListener('ov:view', () => { views += 1; });
+  el.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true, cancelable: true }));
+  ok('with orbit an arrow turns the camera and announces ov:view', el.getAttribute('bearing') === '5.0' && views === 1, [el.getAttribute('bearing'), views]);
+  const plain = new WheelEvent('wheel', { deltaY: 120, bubbles: true, cancelable: true });
+  el.dispatchEvent(plain);
+  ok('a plain wheel is left to the page', !plain.defaultPrevented && el.getAttribute('range') === '2400', [plain.defaultPrevented, el.getAttribute('range')]);
+  const pinch = new WheelEvent('wheel', { deltaY: 120, ctrlKey: true, bubbles: true, cancelable: true });
+  el.dispatchEvent(pinch);
+  ok('ctrl-wheel zooms', pinch.defaultPrevented && Number(el.getAttribute('range')) > 2400, el.getAttribute('range'));
+  for (let i = 0; i < 12; i++) el.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowUp', bubbles: true, cancelable: true }));
+  ok('keys cannot pitch past 45', el.getAttribute('pitch') === '45.0', el.getAttribute('pitch'));
+
+  // 6. Nothing ticks, and yet a track goes stale on time.
+  el = fresh({ fresh: '0.3' });
+  el.data = [{ id: 'T', lat: 35.47, lon: -97.52, hdg: 0, spd: 300, at: NOW }];
+  // Let a new element's first resize callbacks run BEFORE the clock moves: one
+  // that lands after would repaint and pass this check with no timer at all.
+  await settle(150);
+  ok('fresh straight after the report', track(el, 'T')?.dataset.ovState === 'held', track(el, 'T')?.dataset.ovState);
+  NOW += 1000;
+  await settle(700);
+  ok('the map turns the track stale on its own timer, unprompted', track(el, 'T')?.dataset.ovState === 'stale', track(el, 'T')?.dataset.ovState);
+  const text = await (await fetch(new URL(SRC, location.href))).text();
+  ok('the element never asks for an animation frame', !/requestAnimationFrame/.test(text), '');
+
+  report();
+} catch (e) {
+  report(e);
+}
+</script>

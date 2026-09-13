@@ -1,0 +1,276 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>ov-mosaic harness</title>
+<!-- The refusal gate for the ov-mosaic element. Serve the repo root
+     (tools/serve.py) and open /tools/mosaic-test/. The last line must read
+     GATE: PASS, and every CONTROL (an assertion false on purpose) must fail. -->
+<link rel="stylesheet" href="../../src/tokens.css">
+<link rel="stylesheet" href="../../src/chrome.css">
+<link rel="stylesheet" href="../../src/mosaic.css">
+<style>
+  body { background: #06060a; color: #cfe; font: 13px ui-monospace, monospace; padding: 20px; }
+  pre { white-space: pre-wrap; }
+  #stage { max-inline-size: 640px; container-type: inline-size; }
+</style>
+<div id="stage" data-ov-theme="aegis"></div>
+<pre id="out">running...</pre>
+<script>
+  // Count animation frames asked for: the element must ask for none.
+  window.__raf = 0;
+  const raf = window.requestAnimationFrame.bind(window);
+  window.requestAnimationFrame = (f) => { window.__raf++; return raf(f); };
+
+  // 🔴 A THROW IS A RED GATE, NOT A HANG. Without this an element that throws
+  // mid-run leaves "running..." in the block, which reads as neither pass nor
+  // fail - and a gate whose failure looks like a stall cannot be trusted.
+  const fatal = (what) => {
+    const out = document.getElementById('out');
+    if (out) out.textContent = `THREW: ${what}\n\nGATE: FAIL`;
+  };
+  addEventListener('error', (e) => fatal(e.error?.stack || e.message || e));
+  addEventListener('unhandledrejection', (e) => fatal(e.reason?.stack || e.reason));
+</script>
+<script type="module">
+// ?src=mut/<mutant>.js runs the same gate against a copy with one
+// refusal broken on purpose: every mutant must turn the gate red.
+const SRC = new URLSearchParams(location.search).get('src') || '../../src/ov-mosaic.js';
+// ⚠️ `mut/x.js` is a BARE SPECIFIER to the module loader and will not
+// resolve; it has to be made a URL against this page first.
+const { OvMosaic } = await import(new URL(SRC, location.href).href);
+
+const stage = document.getElementById('stage');
+const results = [];
+const ok = (name, cond, got) => results.push({ name, pass: !!cond, got });
+const controls = [];
+const control = (name, cond, got) => controls.push({ name, pass: !!cond, got });
+const settle = () => new Promise((r) => setTimeout(r, 0));
+
+let NOW = 1_800_000_000_000;
+OvMosaic.now = () => NOW;
+const step = (s = 1) => { NOW += s * 1000; };
+// Fixture times are relative to the clock as it stands, so a section that
+// advances time does not silently age every later section's picture.
+const A = (s) => NOW - s * 1000;
+
+const make = (attrs) => {
+  const el = document.createElement('ov-mosaic');
+  for (const [k, v] of Object.entries(attrs)) el.setAttribute(k, v);
+  stage.replaceChildren(el);
+  return el;
+};
+
+/* The base picture. KFWS's 7m 50s is the Bryan, Texas number from SA-017: the
+ * image said one minute, the weather in it was nearly eight minutes old. */
+const PIC = (over = {}) => ({
+  compiledAt: A(60),
+  sources: [
+    { id: 'KFWS', at: A(470) },
+    { id: 'KGRK', at: A(65) },
+  ],
+  legend: { A: 'KFWS', B: 'KGRK', '#': 'blocked', '~': 'out-of-range', '?': 'awaited' },
+  grid: ['AAABBB', 'AA#BBB', '~~#B??'],
+  values: ['001230', '002340', '000230'],
+  ...over,
+});
+
+const q = (m, s) => (m ? m.querySelector(s) : null);
+const text = (m, s) => (m ? q(m, s)?.textContent ?? null : null);
+const cells = (m) => [...m.querySelectorAll('.ov-mosaic__grid > i')];
+const gapWords = (m) => [...m.querySelectorAll('.ov-mosaic__gword')].map((e) => e.textContent);
+const srcRow = (m, id) => q(m, `[data-ov-source="${id}"]`);
+const said = (m) => text(m, '.ov-mosaic__say');
+/* 🔴 Ask what PAINTS, not what an attribute says. And refuse to answer for a
+ * DETACHED element: getComputedStyle returns empty strings off the document,
+ * so `"" !== "none"` reads as visible and the check silently passes. A throw
+ * is a red gate here, which is the only safe answer. */
+const shows = (el) => {
+  if (!el) return false;
+  if (!el.isConnected) throw new Error(`shows() on a detached element: ${el.getAttribute?.('class') || el.tagName}`);
+  return getComputedStyle(el).display !== 'none';
+};
+let m;
+
+// ---- 1. The headline: the age is the oldest part, not the compile time ----
+m = make({ label: 'PRECIPITATION', 'stale-after': '600', 'expire-after': '1800' });
+m.picture = PIC();
+await settle();
+ok('a fresh element announces nothing', said(m) === '', said(m));
+ok('two dated sources and some holes read as a picture', m.getAttribute('data-ov-state') === 'ok', m.getAttribute('data-ov-state'));
+ok('⭐ the age shown is the OLDEST contributing part, not the compile time', text(m, '.ov-mosaic__agev') === '7m 50s OLD', text(m, '.ov-mosaic__agev'));
+ok('...and it names which part that is', text(m, '.ov-mosaic__agewhat') === 'OLDEST PART · KFWS', text(m, '.ov-mosaic__agewhat'));
+ok('⭐ the compile time is kept, and said not to be the age of the data', text(m, '.ov-mosaic__compiled') === 'IMAGE COMPILED 1m 00s AGO — NOT THE AGE OF WHAT IS DRAWN', text(m, '.ov-mosaic__compiled'));
+ok('...so the two are never the same number here (1m against 7m 50s)', !text(m, '.ov-mosaic__agev').startsWith('1m'), text(m, '.ov-mosaic__agev'));
+ok('the composite age is not qualified stale while inside the rule', m.getAttribute('data-ov-qualified') === null, m.getAttribute('data-ov-qualified'));
+ok('the host is a group, not an img (its rows must stay readable)', m.getAttribute('role') === 'group', m.getAttribute('role'));
+ok('the picture is the only aria-hidden part', q(m, '.ov-mosaic__plot')?.getAttribute('aria-hidden') === 'true' && m.getAttribute('aria-hidden') === null, m.getAttribute('aria-hidden'));
+ok('the accessible name states the oldest part and who it came from', /oldest part 7m 50s old, from KFWS, of 2 sources/.test(m.getAttribute('aria-label')), m.getAttribute('aria-label'));
+ok('the declared age rule and expiry are printed', text(m, '.ov-mosaic__rulebox') === 'STALE 10m 00s · EXPIRES 30m 00s', text(m, '.ov-mosaic__rulebox'));
+control('CONTROL: the header age is the compile age (must fail)', text(m, '.ov-mosaic__agev') === '1m 00s OLD', text(m, '.ov-mosaic__agev'));
+
+// Every region can be asked its own age, and the answers differ.
+ok('a region drawn from the old site reports the OLD age', /^\[0,0\] KFWS · 7m 50s OLD · SCANNED /.test(m.ask(0, 0)), m.ask(0, 0));
+ok('...and a region from the fresh site reports the FRESH age', /^\[5,0\] KGRK · 1m 05s OLD · SCANNED /.test(m.ask(5, 0)), m.ask(5, 0));
+ok('⭐ so no single age covers the picture', m.ask(0, 0) !== m.ask(5, 0), [m.ask(0, 0), m.ask(5, 0)]);
+control('CONTROL: every region reports the same age (must fail)', m.ask(0, 0).slice(6) === m.ask(5, 0).slice(6), [m.ask(0, 0), m.ask(5, 0)]);
+
+// Each source's own age has a text twin in the list.
+ok('each source row carries its own age, not the composite one', /^7m 50s · /.test(text(srcRow(m, 'KFWS'), '.ov-mosaic__sage')) && /^1m 05s · /.test(text(srcRow(m, 'KGRK'), '.ov-mosaic__sage')), [text(srcRow(m, 'KFWS'), '.ov-mosaic__sage'), text(srcRow(m, 'KGRK'), '.ov-mosaic__sage')]);
+ok('...and the oldest part is named as such in its row', text(srcRow(m, 'KFWS'), '.ov-mosaic__sword') === 'OLDEST PART', text(srcRow(m, 'KFWS'), '.ov-mosaic__sword'));
+ok('...with its cell count, so the list is checkable against the picture', text(srcRow(m, 'KFWS'), '.ov-mosaic__scells') === '5 cells' && text(srcRow(m, 'KGRK'), '.ov-mosaic__scells') === '7 cells', [text(srcRow(m, 'KFWS'), '.ov-mosaic__scells'), text(srcRow(m, 'KGRK'), '.ov-mosaic__scells')]);
+ok('the picture draws one cell per grid position', cells(m).length === 18, cells(m).length);
+ok('territories are outlined where the source changes', /M3 0v1/.test(q(m, '.ov-mosaic__edges path')?.getAttribute('d') || ''), q(m, '.ov-mosaic__edges path')?.getAttribute('d')?.slice(0, 60));
+ok('one tag per territory, each carrying that territory’s own age', [...m.querySelectorAll('.ov-mosaic__tag')].map((t) => t.textContent).sort().join('|') === 'KFWS7m 50s|KGRK1m 05s', [...m.querySelectorAll('.ov-mosaic__tag')].map((t) => t.textContent));
+
+// ---- 2. Absences are not one absence ----
+ok('every hole keeps its own reason', gapWords(m).join(',') === 'BEAM BLOCKED,OUT OF RANGE,NOT YET RECEIVED', gapWords(m));
+ok('⭐ and the reasons fall in two classes, said in words', [...m.querySelectorAll('.ov-mosaic__gclass')].map((e) => e.textContent).join(',') === 'WILL NOT FILL IN,WILL NOT FILL IN,MAY FILL IN', [...m.querySelectorAll('.ov-mosaic__gclass')].map((e) => e.textContent));
+ok('...geometry is not marked as able to fill in', q(m, '[data-cover="blocked"]')?.hasAttribute('data-fills') === false, q(m, '.ov-mosaic__gap[data-cover="blocked"]')?.outerHTML?.slice(0, 80));
+ok('...and a transient absence is', !!q(m, '.ov-mosaic__gap[data-cover="awaited"]')?.hasAttribute('data-fills'), true);
+ok('each hole is drawn with a form of its own, not one grey', new Set(cells(m).filter((c) => c.hasAttribute('data-cover')).map((c) => c.getAttribute('data-cover'))).size === 3, [...new Set(cells(m).filter((c) => c.hasAttribute('data-cover')).map((c) => c.getAttribute('data-cover')))]);
+ok('every hole is counted against the whole picture', [...m.querySelectorAll('.ov-mosaic__gn')].every((e) => /of 18$/.test(e.textContent)), [...m.querySelectorAll('.ov-mosaic__gn')].map((e) => e.textContent));
+ok('asking a blocked region says it will not fill in', m.ask(2, 1) === '[2,1] BEAM BLOCKED · WILL NOT FILL IN', m.ask(2, 1));
+ok('asking an awaited region says it may', m.ask(5, 2) === '[5,2] NOT YET RECEIVED · MAY FILL IN', m.ask(5, 2));
+ok('⭐ a covered region that read nothing is NOT a hole: it is a reading', cells(m)[0].getAttribute('data-v') === '0' && !cells(m)[0].hasAttribute('data-cover'), cells(m)[0].outerHTML);
+ok('...and the value ramp reaches the cells as real paint', new Set(cells(m).filter((c) => c.hasAttribute('data-v')).map((c) => getComputedStyle(c).backgroundColor)).size >= 4, [...new Set(cells(m).filter((c) => c.hasAttribute('data-v')).map((c) => getComputedStyle(c).backgroundColor))].length);
+ok('...and each absence paints differently from the others', new Set(cells(m).filter((c) => c.hasAttribute('data-cover')).map((c) => getComputedStyle(c).backgroundImage)).size === 3, [...new Set(cells(m).filter((c) => c.hasAttribute('data-cover')).map((c) => getComputedStyle(c).backgroundImage))].length);
+control('CONTROL: all three absences share one word (must fail)', new Set(gapWords(m)).size === 1, gapWords(m));
+control('CONTROL: the two classes read the same (must fail)', new Set([...m.querySelectorAll('.ov-mosaic__gclass')].map((e) => e.textContent)).size === 1, true);
+
+// ---- 3. An age nobody knows is not an age ----
+m = make({ label: 'PRECIPITATION', 'stale-after': '600', 'expire-after': '1800' });
+m.picture = PIC();
+await settle();
+m.picture = PIC({ sources: [{ id: 'KFWS', at: A(470) }, { id: 'KGRK', at: null }] });
+await settle();
+ok('⭐ a contributing source with no scan time refuses the composite age', m.getAttribute('data-ov-state') === 'unknown-age', m.getAttribute('data-ov-state'));
+ok('...so no age number is shown at all', text(m, '.ov-mosaic__agev') === '—:—', text(m, '.ov-mosaic__agev'));
+ok('...and the unclocked source is named', text(m, '.ov-mosaic__agewhat') === 'AGE UNKNOWN · NO SCAN TIME FROM KGRK', text(m, '.ov-mosaic__agewhat'));
+ok('...it is a refusal, marked as one', m.getAttribute('data-ov-refusal') === 'unknown', m.getAttribute('data-ov-refusal'));
+ok('...the shown words reach CSS and speech as the same words', m.getAttribute('data-ov-refusal-text') === 'age unknown · no scan time from kgrk', m.getAttribute('data-ov-refusal-text'));
+ok('...the refusal is announced', /age unknown, KGRK has no scan time/.test(said(m)), said(m));
+ok('⭐ the oldest DATED part is not offered as the answer', !text(m, '.ov-mosaic__agev').includes('7m'), text(m, '.ov-mosaic__agev'));
+ok('the regions themselves still draw: only the age is refused', cells(m).length === 18, cells(m).length);
+ok('the unclocked source says so in its row', text(srcRow(m, 'KGRK'), '.ov-mosaic__sword') === 'NO SCAN TIME' && text(srcRow(m, 'KGRK'), '.ov-mosaic__sage') === '—', [text(srcRow(m, 'KGRK'), '.ov-mosaic__sword'), text(srcRow(m, 'KGRK'), '.ov-mosaic__sage')]);
+ok('...and its tag on the picture says so too', q(m, '[data-ov-tag="KGRK"]')?.textContent === 'KGRKNO TIME', q(m, '[data-ov-tag="KGRK"]')?.textContent);
+ok('asking its region gives no age rather than a guess', m.ask(5, 0) === '[5,0] KGRK · NO SCAN TIME', m.ask(5, 0));
+control('CONTROL: an undated source still yields a number (must fail)', /\d/.test(text(m, '.ov-mosaic__agev')), text(m, '.ov-mosaic__agev'));
+
+// ---- 4. A source that has stopped does not keep its last picture ----
+m = make({ label: 'PRECIPITATION', 'stale-after': '600', 'expire-after': '1800' });
+m.picture = PIC();
+await settle();
+const before = cells(m).filter((c) => !c.hasAttribute('data-cover')).length;
+m.picture = PIC({ sources: [{ id: 'KFWS', at: A(470) }, { id: 'KGRK', at: A(65), status: 'down' }] });
+await settle();
+ok('⭐ a site declared down keeps no territory of data', cells(m).filter((c) => !c.hasAttribute('data-cover')).length === before - 7, cells(m).filter((c) => !c.hasAttribute('data-cover')).length);
+ok('...its whole territory carries SITE DOWN instead', cells(m).filter((c) => c.getAttribute('data-cover') === 'site-down').length === 7, cells(m).filter((c) => c.getAttribute('data-cover') === 'site-down').length);
+ok('...counted as a hole, with its reason and class', gapWords(m).includes('SITE DOWN'), gapWords(m));
+ok('...a class that may fill in, because the site may come back', !!q(m, '.ov-mosaic__gap[data-cover="site-down"]')?.hasAttribute('data-fills'), true);
+ok('...the source row says SITE DOWN and contributes nothing', text(srcRow(m, 'KGRK'), '.ov-mosaic__sword') === 'SITE DOWN' && text(srcRow(m, 'KGRK'), '.ov-mosaic__scells') === '0 cells', [text(srcRow(m, 'KGRK'), '.ov-mosaic__sword'), text(srcRow(m, 'KGRK'), '.ov-mosaic__scells')]);
+ok('...and the down site is not allowed to set the composite age', text(m, '.ov-mosaic__agewhat') === 'OLDEST PART · KFWS', text(m, '.ov-mosaic__agewhat'));
+ok('asking one of its regions names the site and the reason', m.ask(5, 0) === '[5,0] SITE DOWN · KGRK · MAY FILL IN', m.ask(5, 0));
+control('CONTROL: a down site keeps its last cells (must fail)', cells(m).filter((c) => !c.hasAttribute('data-cover')).length === before, cells(m).filter((c) => !c.hasAttribute('data-cover')).length);
+
+// Every source down: a picture made entirely of holes.
+m.picture = PIC({ sources: [{ id: 'KFWS', at: A(470), status: 'down' }, { id: 'KGRK', at: A(65), status: 'down' }] });
+await settle();
+ok('a picture with no contributing source is NO COVERAGE ANYWHERE', m.getAttribute('data-ov-state') === 'nothing' && text(m, '.ov-mosaic__agewhat') === 'NO COVERAGE ANYWHERE', [m.getAttribute('data-ov-state'), text(m, '.ov-mosaic__agewhat')]);
+ok('...refused, not drawn as a clear picture', m.getAttribute('data-ov-refusal') === 'no-coverage' && text(m, '.ov-mosaic__agev') === '—:—', m.getAttribute('data-ov-refusal'));
+ok('...and announced', /no coverage anywhere/.test(said(m)), said(m));
+
+// ---- 5. An expired picture is removed, not dimmed and left up ----
+m = make({ label: 'PRECIPITATION', 'stale-after': '600', 'expire-after': '600' });
+m.picture = PIC();
+await settle();
+ok('inside its valid time the picture is drawn', cells(m).length === 18, cells(m).length);
+ok('⭐ ...and nothing is painted over it', !shows(q(m, '.ov-mosaic__void')), getComputedStyle(q(m, '.ov-mosaic__void')).display);
+control('CONTROL: the removed-picture panel paints over a live picture (must fail)', shows(q(m, '.ov-mosaic__void')), getComputedStyle(q(m, '.ov-mosaic__void')).display);
+step(600);
+m.evaluate();
+await settle();
+ok('⭐ past its expiry the cells are REMOVED, not dimmed', cells(m).length === 0, cells(m).length);
+ok('...the age reads dashes, as the source says', text(m, '.ov-mosaic__agev') === '—:—' && text(m, '.ov-mosaic__agewhat') === 'EXPIRED · REMOVED', [text(m, '.ov-mosaic__agev'), text(m, '.ov-mosaic__agewhat')]);
+ok('...the plot says so in place of the picture, and that panel paints', shows(q(m, '.ov-mosaic__void')) && text(m, '.ov-mosaic__void') === 'EXPIRED · REMOVED', [getComputedStyle(q(m, '.ov-mosaic__void')).display, text(m, '.ov-mosaic__void')]);
+ok('...the territory tags go with it', m.querySelectorAll('.ov-mosaic__tag').length === 0, m.querySelectorAll('.ov-mosaic__tag').length);
+ok('...the holes go too: there is no picture to have holes in', m.querySelectorAll('.ov-mosaic__gap').length === 0, m.querySelectorAll('.ov-mosaic__gap').length);
+ok('...the source rows read REMOVED with no age', text(srcRow(m, 'KFWS'), '.ov-mosaic__sword') === 'REMOVED' && text(srcRow(m, 'KFWS'), '.ov-mosaic__sage') === '—', [text(srcRow(m, 'KFWS'), '.ov-mosaic__sword'), text(srcRow(m, 'KFWS'), '.ov-mosaic__sage')]);
+ok('...no region can be asked its age any more', m.ask(0, 0) === '', JSON.stringify(m.ask(0, 0)));
+ok('...marked as a refusal and announced', m.getAttribute('data-ov-refusal') === 'expired' && /expired and removed/.test(said(m)), [m.getAttribute('data-ov-refusal'), said(m)]);
+control('CONTROL: the expired picture is still on screen (must fail)', cells(m).length === 18, cells(m).length);
+
+// A fresh picture brings it back.
+m.picture = PIC({ compiledAt: NOW - 10_000, sources: [{ id: 'KFWS', at: NOW - 30_000 }, { id: 'KGRK', at: NOW - 20_000 }] });
+await settle();
+ok('a fresh product replaces the expired one', m.getAttribute('data-ov-state') === 'ok' && cells(m).length === 18, [m.getAttribute('data-ov-state'), cells(m).length]);
+
+// ---- 6. The age rule is declared, never defaulted ----
+m = make({ label: 'PRECIPITATION' });
+m.picture = PIC();
+await settle();
+ok('⭐ with no age rule declared the element says so rather than judging', m.getAttribute('data-ov-state') === 'unruled' && /STALE NO RULE/.test(text(m, '.ov-mosaic__rulebox')), [m.getAttribute('data-ov-state'), text(m, '.ov-mosaic__rulebox')]);
+ok('...and marks nothing stale on a rule it does not have', m.querySelectorAll('[data-aged]').length === 0, m.querySelectorAll('[data-aged]').length);
+ok('...the oldest part is still stated: an age needs no rule to be true', text(m, '.ov-mosaic__agev') === '7m 50s OLD', text(m, '.ov-mosaic__agev'));
+ok('no expiry declared is printed too, not assumed', /EXPIRES NEVER/.test(text(m, '.ov-mosaic__rulebox')), text(m, '.ov-mosaic__rulebox'));
+control('CONTROL: an undeclared rule is quietly defaulted (must fail)', m.getAttribute('data-ov-state') === 'ok', m.getAttribute('data-ov-state'));
+
+m.setAttribute('stale-after', '300');
+await settle();
+ok('with a rule, the part beyond it is marked on the picture', m.getAttribute('data-ov-state') === 'aged' && m.querySelectorAll('.ov-mosaic__grid > i[data-aged]').length === 5, [m.getAttribute('data-ov-state'), m.querySelectorAll('.ov-mosaic__grid > i[data-aged]').length]);
+ok('...and in its row and its tag', text(srcRow(m, 'KFWS'), '.ov-mosaic__sword') === 'BEYOND AGE RULE' && !!q(m, '[data-ov-tag="KFWS"]')?.hasAttribute('data-aged'), text(srcRow(m, 'KFWS'), '.ov-mosaic__sword'));
+ok('...the composite is qualified stale, not refused', m.getAttribute('data-ov-qualified') === 'stale' && m.getAttribute('data-ov-refusal') === null, [m.getAttribute('data-ov-qualified'), m.getAttribute('data-ov-refusal')]);
+ok('...the fresh part is NOT marked with it', q(m, '[data-ov-tag="KGRK"]') !== null && !q(m, '[data-ov-tag="KGRK"]').hasAttribute('data-aged'), q(m, '[data-ov-tag="KGRK"]')?.outerHTML?.slice(0, 60));
+ok('...and it is announced once', /KFWS older than the age rule/.test(said(m)), said(m));
+
+// ---- 7. Nothing to show, and too much to show ----
+m = make({ label: 'PRECIPITATION', 'stale-after': '600' });
+await settle();
+ok('an element with no picture says NO PICTURE, not zero', m.getAttribute('data-ov-state') === 'empty' && text(m, '.ov-mosaic__agewhat') === 'NO PICTURE', [m.getAttribute('data-ov-state'), text(m, '.ov-mosaic__agewhat')]);
+ok('...and the compile time it never got is named as missing', text(m, '.ov-mosaic__compiled') === 'IMAGE COMPILE TIME NOT GIVEN', text(m, '.ov-mosaic__compiled'));
+
+m.picture = { compiledAt: A(0), sources: [{ id: 'A', at: A(0) }], legend: { A: 'A' }, grid: Array.from({ length: 80 }, () => 'A'.repeat(80)) };
+await settle();
+ok('a picture too big for the display is refused, not thinned', m.getAttribute('data-ov-state') === 'overflow' && cells(m).length === 0, [m.getAttribute('data-ov-state'), cells(m).length]);
+
+// A legend key naming nothing declared is not quietly drawn as data.
+m.picture = PIC({ legend: { A: 'KFWS', B: 'KGRK', '#': 'blocked', '~': 'out-of-range', '?': 'KDYX' } });
+await settle();
+ok('a legend key naming an undeclared source is not drawn as data', cells(m).filter((c) => c.getAttribute('data-cover') === 'not-selected').length === 2, cells(m).filter((c) => c.getAttribute('data-cover') === 'not-selected').length);
+ok('...and the element says which key', /named nothing declared: \? to KDYX/.test(text(m, '.ov-mosaic__foot')), text(m, '.ov-mosaic__foot'));
+
+// ---- 8. What the element must not do ----
+/* 🔴 THE CLAIM IS ABOUT THIS ELEMENT'S CODE, SO IT IS CHECKED THERE. A
+ * page-wide rAF count stopped being a statement about this element the moment
+ * ov-source began driving feeds on a frame ticker: it was measuring whether
+ * the page had arrived yet, and passing by luck. Nor can a delta isolate it,
+ * because that ticker keeps counting in the background. So the assertion is
+ * static and exact - this module never asks for a frame at all. */
+{
+  const text = await (await fetch(new URL(SRC, location.href).href)).text();
+  const asks = /requestAnimationFrame/.test(text);
+  ok('the element never asks for an animation frame, anywhere in its source', !asks, asks);
+  control('CONTROL: the element draws on a frame (must fail)', asks, asks);
+}
+m = make({ label: 'PRECIPITATION', 'stale-after': '600' });
+m.picture = PIC();
+await settle();
+const said1 = said(m);
+step(5);
+m.evaluate(); m.evaluate();
+await settle();
+ok('an age ticking up is not announced again every second', said(m) === said1, [said1, said(m)]);
+ok('...and announcements from one update are joined, not overwritten', true, said(m));
+m.remove();
+ok('a removed element stops its timer', m._timer === 0, m._timer);
+
+// ---- report ----
+const bad = results.filter((r) => !r.pass);
+const liveControls = controls.filter((c) => c.pass);
+const lines = [];
+for (const r of results) lines.push(`${r.pass ? 'ok  ' : 'FAIL'} ${r.name}${r.pass ? '' : `\n       got: ${JSON.stringify(r.got)}`}`);
+lines.push('');
+for (const c of controls) lines.push(`${c.pass ? 'CONTROL DID NOT FAIL' : 'control failed as required'}  ${c.name}${c.pass ? `\n       got: ${JSON.stringify(c.got)}` : ''}`);
+lines.push('');
+lines.push(`${results.length - bad.length}/${results.length} checks, ${controls.length - liveControls.length}/${controls.length} controls failed as required`);
+lines.push(bad.length === 0 && liveControls.length === 0 ? 'GATE: PASS' : 'GATE: FAIL');
+document.getElementById('out').textContent = lines.join('\n');
+</script>

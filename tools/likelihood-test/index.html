@@ -1,0 +1,113 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>ov-likelihood harness</title>
+<link rel="stylesheet" href="../../src/tokens.css">
+<link rel="stylesheet" href="../../src/likelihood.css">
+<style>
+  body { background: #06060a; color: #cfe; font: 13px ui-monospace, monospace; padding: 20px; }
+  #stage { display: grid; grid-template-columns: repeat(auto-fill, 420px); gap: 16px; }
+  pre { white-space: pre-wrap; }
+</style>
+<div id="stage" data-ov-theme="aegis"></div>
+<pre id="out">running...</pre>
+<script type="module">
+import '../../src/ov-likelihood.js';
+await customElements.whenDefined('ov-likelihood');
+
+const stage = document.getElementById('stage');
+const results = [];
+const ok = (name, cond, got) => results.push({ name, pass: !!cond, got });
+const controls = [];
+const control = (name, cond, got) => controls.push({ name, pass: !!cond, got });
+const plate = (finding) => { const el = document.createElement('ov-likelihood'); stage.append(el); el.finding = finding; return el; };
+const rep = (el) => el.report();
+const text = (el) => el.textContent;
+const basis = 'Three independent gauges and one survey agree.';
+
+// 1. The floor: limited evidence, low agreement.
+const floor = plate({ statement: 's', evidence: 'limited', agreement: 'low', confidence: 'medium', likelihood: 'likely', basis });
+ok('limited evidence, low agreement: confidence withheld', rep(floor).confidence === null && /NOT ASSIGNED: LIMITED EVIDENCE, LOW AGREEMENT/.test(text(floor)), rep(floor));
+ok('and likelihood withheld, naming why', rep(floor).likelihood === null && /WITHHELD: LIMITED EVIDENCE, LOW AGREEMENT/.test(text(floor)), rep(floor));
+ok('and the summary terms are still shown', /LIMITED EVIDENCE/.test(text(floor)) && /LOW AGREEMENT/.test(text(floor)) && floor.querySelector('.ov-likelihood__cell.is-on'), '');
+ok('no pips and no range are drawn for it', !floor.querySelector('.ov-likelihood__pip') && !floor.querySelector('.ov-likelihood__range, .ov-likelihood__point'), '');
+
+// 2. A likelihood needs high confidence.
+const med = plate({ evidence: 'medium', agreement: 'high', confidence: 'medium', likelihood: 'very likely', basis });
+ok('medium confidence: likelihood withheld, confidence named', rep(med).likelihood === null && /WITHHELD: CONFIDENCE MEDIUM/.test(text(med)) && rep(med).confidence === 'medium', text(med));
+const high = plate({ evidence: 'robust', agreement: 'medium', confidence: 'high', likelihood: 'very likely', basis });
+ok('high confidence: the likelihood is shown as its range', rep(high).likelihood && rep(high).likelihood.lo === 0.9 && rep(high).likelihood.hi === 1 && /very likely 90%–100%/.test(text(high)), rep(high));
+const implied = plate({ evidence: 'robust', agreement: 'high', likelihood: 'likely', basis });
+ok('no confidence given, robust and high: likelihood shown', rep(implied).likelihood && rep(implied).likelihood.term === 'likely', rep(implied));
+const notImplied = plate({ evidence: 'robust', agreement: 'medium', likelihood: 'likely', basis });
+ok('no confidence given, not robust and high: withheld', rep(notImplied).likelihood === null && /NO CONFIDENCE, ROBUST EVIDENCE, MEDIUM AGREEMENT/.test(text(notImplied)), text(notImplied));
+
+// 3. Confidence is not a number.
+const numC = plate({ evidence: 'robust', agreement: 'high', confidence: 0.8, basis });
+ok('a numeric confidence is refused', rep(numC).confidence === null && /CONFIDENCE IS NOT A NUMBER/.test(text(numC)), text(numC));
+ok('confidence is five steps, and never printed as a percentage', high.querySelectorAll('.ov-likelihood__pip').length === 5 && high.querySelectorAll('.ov-likelihood__pip.is-on').length === 4 && !/confidence[^,]*%/.test(high.getAttribute('aria-label')), '');
+const badC = plate({ evidence: 'robust', agreement: 'high', confidence: 'pretty sure', basis });
+ok('a confidence word off the scale is refused', /"pretty sure" IS NOT A CONFIDENCE LEVEL/.test(text(badC)), text(badC));
+
+// 4. A term is a range; a number stays a number; they must agree.
+const rangeEl = high.querySelector('.ov-likelihood__range');
+ok('a term is drawn as a range from its lower bound to its upper, fuzzy', rangeEl && rangeEl.style.left === '90%' && rangeEl.style.width === '10%' && rangeEl.classList.contains('is-fuzzy'), rangeEl && rangeEl.getAttribute('style'));
+const lik = plate({ evidence: 'robust', agreement: 'high', confidence: 'very high', likelihood: 'likely', basis });
+ok('"likely" is drawn 66% to 100%, not a point at 66', lik.querySelector('.ov-likelihood__range').style.width === '34%' && !lik.querySelector('.ov-likelihood__point'), '');
+const rng = plate({ evidence: 'robust', agreement: 'high', confidence: 'high', likelihood: [0.9, 0.95], basis });
+ok('a range handed in is drawn as that range, with no term', rep(rng).likelihood.kind === 'range' && /90% to 95%, no term/.test(text(rng)) && !rng.querySelector('.ov-likelihood__range.is-fuzzy'), text(rng));
+const num = plate({ evidence: 'robust', agreement: 'high', confidence: 'high', likelihood: 0.8, basis });
+ok('a bare number is a point and is not turned into a term', rep(num).likelihood.kind === 'number' && /80%, not turned into a term/.test(text(num)) && num.querySelector('.ov-likelihood__point') && !num.querySelector('.ov-likelihood__like em'), text(num));
+const clash = plate({ evidence: 'robust', agreement: 'high', confidence: 'high', likelihood: 'very likely', probability: 0.7, basis });
+ok('a term and a number that disagree are refused', rep(clash).likelihood === null && /VERY LIKELY DOES NOT COVER 70%/.test(text(clash)), text(clash));
+const agree = plate({ evidence: 'robust', agreement: 'high', confidence: 'high', likelihood: 'likely', probability: 0.7, basis });
+ok('a term and a number that agree are shown as the term', rep(agree).likelihood.term === 'likely', rep(agree));
+const fake = plate({ evidence: 'robust', agreement: 'high', confidence: 'high', likelihood: 'almost certainly', basis });
+ok('a term that is not calibrated is refused', /"almost certainly" IS NOT A CALIBRATED TERM/.test(text(fake)), text(fake));
+const ar4 = plate({ evidence: 'robust', agreement: 'high', confidence: 'high', likelihood: 'extremely likely', basis });
+ok('the footnote\'s AR4 terms are calibrated too', rep(ar4).likelihood && rep(ar4).likelihood.lo === 0.95, rep(ar4));
+
+// 5. About as likely as not is not "we don't know".
+const aal = plate({ evidence: 'limited', agreement: 'medium', likelihood: 'about as likely as not', basis });
+ok('"about as likely as not" on thin evidence is withheld with its own reason', rep(aal).likelihood === null && /ABOUT AS LIKELY AS NOT IS NOT "UNKNOWN"/.test(text(aal)), text(aal));
+const aalOk = plate({ evidence: 'robust', agreement: 'high', confidence: 'high', likelihood: 'about as likely as not', basis });
+ok('and shown, 33% to 66%, when it was earned', rep(aalOk).likelihood && rep(aalOk).likelihood.lo === 0.33 && rep(aalOk).likelihood.hi === 0.66, rep(aalOk));
+
+// 6. Low confidence carries its reasons; every finding wants an account.
+const lowNoWhy = plate({ evidence: 'medium', agreement: 'low', confidence: 'low' });
+ok('low confidence with no basis is flagged', rep(lowNoWhy).flags.some((f) => /low confidence given without its reasons/.test(f)), rep(lowNoWhy).flags);
+const lowWhy = plate({ evidence: 'medium', agreement: 'low', confidence: 'low', basis: 'Retained because a failure would flood the lower deck.' });
+ok('low confidence with a basis is not flagged, and the basis is shown', !rep(lowWhy).flags.length && /flood the lower deck/.test(text(lowWhy)), rep(lowWhy).flags);
+ok('no basis at all is flagged as no traceable account', rep(lowNoWhy).flags.includes('no traceable account given'), rep(lowNoWhy).flags);
+
+// 7. The matrix: the finding's cell, and only it.
+ok('exactly one matrix cell is marked, at robust evidence and high agreement', implied.querySelectorAll('.ov-likelihood__cell.is-on').length === 1 && implied.querySelector('.ov-likelihood__cell.is-on').title === 'high agreement, robust evidence', implied.querySelector('.ov-likelihood__cell.is-on')?.title);
+
+// 8. Nothing, and back.
+const n = plate(null);
+ok('no finding is the kit\'s unknown', n.getAttribute('data-ov-refusal') === 'unknown' && /NO FINDING/.test(text(n)), '');
+n.finding = { evidence: 'robust' };
+ok('a finding without agreement is refused, not guessed', n.getAttribute('data-ov-refusal') === 'unknown' && /AGREEMENT NOT GIVEN/.test(text(n)), text(n));
+n.finding = { evidence: 'robust', agreement: 'high', confidence: 'high', basis };
+ok('a refusal clears when a finding arrives', !n.hasAttribute('data-ov-refusal') && rep(n).confidence === 'high', n.getAttribute('data-ov-refusal'));
+n.finding = null;
+ok('same width refused as drawn (the demo card measures once)', n.getBoundingClientRect().width === high.getBoundingClientRect().width, [n.getBoundingClientRect().width, high.getBoundingClientRect().width]);
+ok('the state attribute says what was done', floor.getAttribute('data-ov-likelihood') === 'withheld' && high.getAttribute('data-ov-likelihood') === 'quantified' && lowWhy.getAttribute('data-ov-likelihood') === 'summary', '');
+
+// CONTROLS: false claims that a working harness must reject.
+control('the floor finding shows a likelihood', rep(floor).likelihood !== null, '');
+control('medium confidence earned a likelihood', rep(med).likelihood !== null, '');
+control('a bare number was given a word', num.querySelector('.ov-likelihood__like em') !== null, '');
+
+const passed = results.filter((x) => x.pass).length;
+const failed = results.length - passed;
+const controlsFailed = controls.filter((x) => !x.pass).length;
+const gate = failed === 0 && controlsFailed === controls.length && controls.length > 0;
+const out = document.getElementById('out');
+out.textContent = [
+  ...results.map((x) => `${x.pass ? 'PASS' : 'FAIL'}  ${x.name}${x.pass ? '' : '  got ' + JSON.stringify(x.got)}`),
+  ...controls.map((x) => `${x.pass ? 'CONTROL PASSED (BAD)' : 'CONTROL FAILED (good)'}  ${x.name}`),
+  '', `${passed} passed, ${failed} failed, ${controlsFailed}/${controls.length} controls failed as required`,
+  `GATE: ${gate ? 'PASS' : 'FAIL'}`,
+].join('\n');
+out.setAttribute('data-gate', gate ? 'pass' : 'fail');
+</script>

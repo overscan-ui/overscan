@@ -1,0 +1,69 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>ov-locator solve tests</title>
+<!-- Over tools/serve.py: /tools/locator-test/ . The last case is a CONTROL that must fail. -->
+<link rel="stylesheet" href="../../src/tokens.css">
+<link rel="stylesheet" href="../../src/finish.css">
+<link rel="stylesheet" href="../../src/locator.css">
+<style>
+  body { margin: 0; background: #08080a; color: #ccc; font: 12px ui-monospace, monospace; }
+  .row { display: flex; flex-wrap: wrap; gap: 18px; padding: 16px 24px; }
+  .row > div { inline-size: 230px; }
+  .cap { color: #888; margin-block-end: 6px; }
+  #tests { white-space: pre; color: #9f9; padding: 16px 24px; }
+  #tests.fail { color: #f77; }
+</style>
+<section class="ov ov-finish row" data-ov-theme="aegis" id="steps"></section>
+<section class="ov ov-finish row" data-ov-theme="machina" id="more"></section>
+<div id="tests">running…</div>
+<script type="module">
+  import '../../src/ov-locator.js';
+  await customElements.whenDefined('ov-locator');
+  const T = { x: 30, y: 20 };                       // where the source really is
+  const range = (id, x, y, sigma, age = 1) => ({ id, kind: 'range', x, y, r: Math.hypot(T.x - x, T.y - y), sigma, age });
+  const bearing = (id, x, y, spread, age = 1) => ({ id, kind: 'bearing', x, y, deg: (Math.atan2(T.x - x, T.y - y) * 180 / Math.PI + 360) % 360, spread, age });
+  const P = [range('P1', -60, -50, 4), range('P2', 70, -60, 4), range('P3', -50, 70, 4), range('P4', 80, 70, 1.2)];
+  const mk = (host, cap, fixes, attrs = {}) => {
+    const d = document.createElement('div');
+    d.innerHTML = `<div class="cap">${cap}</div>`;
+    const el = document.createElement('ov-locator');
+    el.setAttribute('fix', attrs.fix ?? '5'); el.setAttribute('max-age', '20');
+    d.append(el); host.append(d); el.fixes = fixes; return el;
+  };
+  const steps = document.getElementById('steps'), more = document.getElementById('more');
+  const s1 = mk(steps, 'one probe', P.slice(0, 1));
+  const s2 = mk(steps, 'two probes', P.slice(0, 2));
+  const s3 = mk(steps, 'three probes', P.slice(0, 3));
+  const s4 = mk(steps, 'four probes', P);
+  const b2 = mk(more, 'two bearings', [bearing('DF1', -80, -80, 2), bearing('DF2', 80, -80, 2)], { fix: '6' });
+  const dis = mk(more, 'fixes that disagree', [{ id: 'A', kind: 'range', x: -40, y: 0, r: 10, sigma: 2, age: 1 }, { id: 'B', kind: 'range', x: 40, y: 0, r: 10, sigma: 2, age: 1 }]);
+  const st = mk(more, 'a stale fix, excluded', [...P.slice(0, 2), { ...P[2], age: 90 }]);
+  const none = mk(more, 'no fixes', []);
+  const sol = (el) => el.getAttribute('data-ov-solution');
+  const cases = [
+    ['one range probe: a ring, NO FIX, and not called unbounded', () => sol(s1) === 'region' && !s1.textContent.includes('unbounded')],
+    ['one bearing IS unbounded', () => { const e = mk(document.getElementById('more'), 'one bearing', [bearing('DF', -80, -80, 2)]); return e.textContent.includes('unbounded'); }],
+    ['the mirror candidate outside the view is counted, not lost', () => s2.textContent.includes('outside the view')],
+    ['two range probes: two candidates, NO FIX', () => sol(s2) === 'candidates'],
+    ['three: one region, still NO FIX at ±5', () => sol(s3) === 'region'],
+    ['four, one of them tight: a FIX, near the truth', () => { if (sol(s4) !== 'fix') return false; const m = /at (-?[\d.]+), (-?[\d.]+)/.exec(s4.textContent); return m && Math.hypot(+m[1] - T.x, +m[2] - T.y) < 4; }],
+    ['no point is drawn before a fix', () => !s2.querySelector('.ov-locator__point') && !!s4.querySelector('.ov-locator__point')],
+    ['two crossing bearings resolve to one region', () => ['fix', 'region'].includes(sol(b2))],
+    ['contradictory fixes are refused, not averaged', () => sol(dis) === 'disagree' && !dis.querySelector('.ov-locator__point')],
+    ['a stale fix is excluded and counted', () => st.textContent.includes('1 excluded as stale') && sol(st) === 'candidates'],
+    ['no fixes is a refusal', () => sol(none) === 'none' && none.getAttribute('data-ov-refusal') === 'unknown'],
+    ['CONTROL: a false claim is caught', () => sol(s1) === 'fix'],
+  ];
+  let bad = 0;
+  const out = cases.map(([name, fn]) => {
+    let ok = false; try { ok = !!fn(); } catch (e) { ok = false; }
+    const control = name.startsWith('CONTROL'); const pass = control ? !ok : ok;
+    if (!pass) bad += 1;
+    return `${pass ? 'ok  ' : 'FAIL'} ${name}${control ? ' (must fail)' : ''}`;
+  });
+  const el = document.getElementById('tests');
+  el.textContent = `${cases.length - bad} of ${cases.length} pass\n` + out.join('\n')
+    + '\n\nverdicts: ' + [s1, s2, s3, s4, b2, dis, st, none].map((e) => e.querySelector('.ov-locator__verdict').textContent).join(' | ');
+  el.classList.toggle('fail', bad > 0);
+  window.locResults = { total: cases.length, bad, out };
+</script>

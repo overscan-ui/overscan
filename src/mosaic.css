@@ -1,0 +1,299 @@
+@layer overscan {
+/* A composite where every region keeps its own age. See ov-mosaic.js for the
+ * refusal. PROTOTYPE.
+ *
+ * 🔴 NO ABSENCE RESTS ON COLOUR. Garmin's fault is drawing three different
+ * absences in "gray shade of purple": here each has a FORM as well as a tint,
+ * and the two classes differ in kind, not degree. Geometry (WILL NOT FILL IN)
+ * is hatched in one direction and outlined solid; a transient absence (MAY
+ * FILL IN) is dotted or cross-hatched and outlined dashed. Every one also
+ * writes its word in the legend with a matching swatch and a cell count, so
+ * the picture is never the only place the reason exists.
+ *
+ * The value ramp is the theme's own accent at six steps. Six, because a value
+ * drawn in more steps than the eye can separate is a claim about precision
+ * the data has not earned.
+ */
+
+ov-mosaic {
+  --ov-m-glow: calc(var(--ov-bloom, .2) * 10px);
+  --ov-m-gap: color-mix(in srgb, var(--ov-dim) 60%, transparent);
+  display: grid;
+  gap: 8px;
+  min-inline-size: 0;
+  font-family: var(--ov-font-mono);
+  font-size: var(--ov-size-1, 10px);
+  color: var(--ov-ink);
+}
+
+
+/* ---- the age: the OLDEST PART, and the compile time kept apart --------
+ * The two lines are deliberately unequal. SA-017's accidents were people
+ * reading the compile time as the age of the weather, so the oldest part is
+ * the big number and the compile time is small, beside it, and says in words
+ * that it is not the age of what is drawn.
+ */
+
+
+/* ⚠️ NO HEAD BAR HERE. Six elements opened with the same name-and-rules row and
+   the set read as a template rather than as instruments; `.ov-head` in
+   chrome.css is that row for the elements it genuinely suits. This one has a
+   loud readout of its own, so the NAME sits inside it and the declared rules
+   go underneath, where they are a footnote to the reading rather than a
+   heading above it. */
+.ov-mosaic__label {
+  grid-column: 1 / -1;
+  font-size: var(--ov-size-1, 10px);
+  letter-spacing: .18em;
+  text-transform: uppercase;
+  opacity: .75;
+}
+.ov-mosaic__rulebox {
+  color: var(--ov-faint);
+  letter-spacing: .08em;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+.ov-mosaic__agev {
+  font-size: calc(var(--ov-size-2, 12px) * 2.2);
+  letter-spacing: .06em;
+  font-variant-numeric: tabular-nums;
+  text-shadow: 0 0 var(--ov-m-glow) currentColor;
+}
+.ov-mosaic__agewhat { letter-spacing: .1em; overflow-wrap: anywhere; }
+.ov-mosaic__agev[data-ov-dashed] { font-size: calc(var(--ov-size-2, 12px) * 1.5); letter-spacing: .2em; }
+
+
+/* Never quiet, never the same size as the age: the sentence exists because
+   the number above it is routinely mistaken for this one. */
+.ov-mosaic__compiled {
+  color: var(--ov-faint);
+  letter-spacing: .08em;
+  margin-block-start: -4px;
+}
+
+/* ---- the picture ------------------------------------------------------
+ * A fixed aspect box, so the plot has a height before any data arrives and
+ * the page never reflows around it. Cells are a plain grid of <i>; the
+ * territory outlines are one SVG path over the top; the per-source tags are
+ * HTML placed by percentage, because SVG text under
+ * preserveAspectRatio="none" would stretch with the box.
+ */
+
+.ov-mosaic__plot {
+  position: relative;
+  aspect-ratio: 8 / 5;
+  min-block-size: 120px;
+  border: var(--ov-rule, 1px) solid var(--ov-line-strong);
+  background: var(--ov-field);
+  overflow: hidden;
+}
+.ov-mosaic__grid {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  grid-template-columns: repeat(var(--ov-mosaic-cols, 1), 1fr);
+  grid-template-rows: repeat(var(--ov-mosaic-rows, 1), 1fr);
+}
+.ov-mosaic__grid > i { display: block; min-inline-size: 0; }
+
+/* The value ramp. 0 is COVERED AND CLEAR: a source looked and saw nothing,
+   which is a reading, so it is drawn flat rather than left blank. */
+.ov-mosaic__grid > i[data-v="0"] { background: color-mix(in srgb, var(--ov-accent) 4%, transparent); }
+.ov-mosaic__grid > i[data-v="1"] { background: color-mix(in srgb, var(--ov-accent) 16%, transparent); }
+.ov-mosaic__grid > i[data-v="2"] { background: color-mix(in srgb, var(--ov-accent) 32%, transparent); }
+.ov-mosaic__grid > i[data-v="3"] { background: color-mix(in srgb, var(--ov-accent) 52%, transparent); }
+.ov-mosaic__grid > i[data-v="4"] { background: color-mix(in srgb, var(--ov-accent) 74%, transparent); }
+.ov-mosaic__grid > i[data-v="5"] { background: var(--ov-accent); }
+
+/* A territory past the age rule is struck through with fine diagonals, so it
+   reads as suspect at a glance without changing what the value says. */
+.ov-mosaic__grid > i[data-aged] {
+  background-image: repeating-linear-gradient(45deg,
+    color-mix(in srgb, var(--ov-alarm) 60%, transparent) 0 1px, transparent 1px 4px);
+}
+
+/* ---- the absences, each its own form --------------------------------- */
+
+/* WILL NOT FILL IN (geometry): one direction of hatch, in the faint ink. */
+.ov-mosaic__grid > i[data-cover="out-of-range"],
+.ov-mosaic__swatch[data-cover="out-of-range"] {
+  background:
+    repeating-linear-gradient(90deg, var(--ov-m-gap) 0 1px, transparent 1px 5px);
+}
+.ov-mosaic__grid > i[data-cover="blocked"],
+.ov-mosaic__swatch[data-cover="blocked"] {
+  background:
+    repeating-linear-gradient(135deg, var(--ov-m-gap) 0 1.5px, transparent 1.5px 4px);
+}
+.ov-mosaic__grid > i[data-cover="cone"],
+.ov-mosaic__swatch[data-cover="cone"] {
+  background:
+    repeating-linear-gradient(45deg, var(--ov-m-gap) 0 1.5px, transparent 1.5px 4px);
+}
+
+/* MAY FILL IN (transient): dots and crosses, never a hatch, so the two
+   classes are never confused at a glance. */
+.ov-mosaic__grid > i[data-cover="site-down"],
+.ov-mosaic__swatch[data-cover="site-down"] {
+  background:
+    repeating-linear-gradient(45deg, color-mix(in srgb, var(--ov-alarm) 55%, transparent) 0 1.5px, transparent 1.5px 5px),
+    repeating-linear-gradient(-45deg, color-mix(in srgb, var(--ov-alarm) 55%, transparent) 0 1.5px, transparent 1.5px 5px);
+}
+.ov-mosaic__grid > i[data-cover="awaited"],
+.ov-mosaic__swatch[data-cover="awaited"] {
+  background:
+    radial-gradient(circle at 50% 50%, var(--ov-m-gap) 0 .8px, transparent .9px) 0 0 / 4px 4px;
+}
+.ov-mosaic__grid > i[data-cover="not-selected"],
+.ov-mosaic__swatch[data-cover="not-selected"] {
+  background: color-mix(in srgb, var(--ov-dim) 12%, transparent);
+}
+
+/* Territory outlines. Geometry is outlined solid and a transient absence
+   dashed, which is the same distinction the legend writes in words. */
+.ov-mosaic__edges {
+  position: absolute;
+  inset: 0;
+  inline-size: 100%;
+  block-size: 100%;
+  pointer-events: none;
+}
+.ov-mosaic__edges path {
+  fill: none;
+  stroke: var(--ov-line-strong);
+  stroke-width: 1;
+}
+
+/* ---- one tag per territory ------------------------------------------- */
+
+.ov-mosaic__tags { position: absolute; inset: 0; pointer-events: none; }
+.ov-mosaic__tag {
+  position: absolute;
+  translate: -50% -50%;
+  display: grid;
+  justify-items: center;
+  padding: 1px 4px;
+  font-size: 8px;
+  line-height: 1.25;
+  letter-spacing: .08em;
+  white-space: nowrap;
+  color: var(--ov-ink);
+  background: color-mix(in srgb, var(--ov-case, #000) 78%, transparent);
+  border: var(--ov-rule, 1px) solid var(--ov-line-strong);
+  font-variant-numeric: tabular-nums;
+}
+.ov-mosaic__tag b { letter-spacing: .12em; }
+.ov-mosaic__tag[data-aged] { color: var(--ov-alarm); border-color: var(--ov-alarm); border-style: dashed; }
+.ov-mosaic__tag[data-undated] { color: var(--ov-alarm); border-color: var(--ov-alarm); border-style: dotted; }
+
+/* The picture removed: nothing is left to misread. */
+.ov-mosaic__void {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  letter-spacing: .2em;
+  color: var(--ov-alarm);
+  background: var(--ov-field);
+  border: var(--ov-rule, 1px) dashed var(--ov-alarm);
+}
+/* 🔴 An author `display` beats the UA sheet's `[hidden] { display: none }`,
+   whatever the layer, so a box toggled with el.hidden needs this rule or it
+   never goes away. Without it this opaque panel sits over every picture. */
+.ov-mosaic__void[hidden] { display: none; }
+
+/* ---- asking a region its own age ------------------------------------- */
+
+.ov-mosaic__probe {
+  min-block-size: 1.4em;
+  color: var(--ov-accent);
+  letter-spacing: .08em;
+  font-variant-numeric: tabular-nums;
+  border-block-end: var(--ov-rule, 1px) dotted var(--ov-line);
+}
+.ov-mosaic__probe:empty::before {
+  content: "POINT AT A REGION FOR ITS OWN SOURCE AND AGE";
+  color: var(--ov-faint);
+  letter-spacing: .1em;
+}
+
+/* ---- the sources, in text ------------------------------------------- */
+
+.ov-mosaic__srcs { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }
+.ov-mosaic__src {
+  display: grid;
+  grid-template-columns: minmax(5ch, auto) minmax(0, 13ch) 1fr auto;
+  align-items: baseline;
+  gap: 1ch;
+  padding: 2px 5px;
+  border-inline-start: 3px solid var(--ov-line);
+  font-variant-numeric: tabular-nums;
+}
+.ov-mosaic__sid { letter-spacing: .12em; }
+.ov-mosaic__sage { color: var(--ov-faint); }
+.ov-mosaic__sword { letter-spacing: .1em; }
+.ov-mosaic__scells { color: var(--ov-faint); }
+
+.ov-mosaic__src[data-ov-status="up"] { border-inline-start-color: var(--ov-accent); }
+.ov-mosaic__src[data-ov-status="aged"] {
+  border-inline-start-color: var(--ov-alarm);
+  border-inline-start-style: dashed;
+  color: var(--ov-alarm);
+}
+.ov-mosaic__src[data-ov-status="undated"] {
+  border-inline-start-color: var(--ov-alarm);
+  border-inline-start-style: dotted;
+  color: var(--ov-alarm);
+}
+.ov-mosaic__src[data-ov-status="down"] { border-inline-start: 3px double var(--ov-alarm); color: var(--ov-alarm); }
+.ov-mosaic__src:is([data-ov-status="awaited"], [data-ov-status="idle"], [data-ov-status="not-selected"]) { color: var(--ov-dim); }
+.ov-mosaic__src[data-ov-status="expired"] { color: var(--ov-dim); text-decoration: line-through; }
+
+/* ---- the legend of absences ----------------------------------------- */
+
+.ov-mosaic__gaps { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }
+.ov-mosaic__gap {
+  display: grid;
+  grid-template-columns: 12px minmax(0, 16ch) auto 1fr;
+  align-items: center;
+  gap: 1ch;
+  color: var(--ov-faint);
+  font-variant-numeric: tabular-nums;
+}
+.ov-mosaic__swatch {
+  inline-size: 12px;
+  block-size: 12px;
+  box-sizing: border-box;
+  border: var(--ov-rule, 1px) solid var(--ov-line-strong);
+}
+/* The class distinction, drawn: geometry is boxed solid, a transient
+   absence dashed. The words say the same thing. */
+.ov-mosaic__swatch[data-fills] { border-style: dashed; }
+.ov-mosaic__gword { letter-spacing: .1em; color: var(--ov-ink); }
+.ov-mosaic__gclass { letter-spacing: .12em; text-align: end; }
+.ov-mosaic__gap:not([data-fills]) .ov-mosaic__gclass { color: var(--ov-alarm); }
+
+.ov-mosaic__foot { color: var(--ov-alarm); letter-spacing: .08em; overflow-wrap: anywhere; }
+.ov-mosaic__foot:empty { display: none; }
+
+/* Live region: heard, never seen. */
+.ov-mosaic__say {
+  position: absolute;
+  inline-size: 1px;
+  block-size: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+/* Narrow: the source rows stack their words under the name rather than
+   letting the row scroll sideways. */
+@container (max-width: 380px) {
+  .ov-mosaic__src { grid-template-columns: 1fr auto; }
+  .ov-mosaic__sage { grid-column: 1 / -1; }
+  .ov-mosaic__gap { grid-template-columns: 12px 1fr; }
+  .ov-mosaic__gn, .ov-mosaic__gclass { grid-column: 2; text-align: start; }
+  .ov-mosaic__agev { font-size: calc(var(--ov-size-2, 12px) * 1.7); }
+}
+}

@@ -1,0 +1,79 @@
+@layer overscan {
+/* The donut. See ov-donut.js for the refusal.
+ *
+ * 🔴 THE UNATTRIBUTED WEDGE IS NOT DECORATION. It is hatched, outlined and
+ * labelled with its value, so the share nobody accounted for reads as a
+ * quantity, not as empty space. Parts are told apart by pattern, in the
+ * accent colour, so the chart holds up in near-monochrome themes too.
+ */
+
+ov-donut {
+  --ov-donut-size: 150px;
+  display: grid;
+  gap: 8px;
+  inline-size: max-content;
+  max-inline-size: 100%;
+  font-family: var(--ov-font-mono);
+  font-size: 11px;
+  letter-spacing: .06em;
+  color: var(--ov-ink);
+}
+
+.ov-donut__body { display: flex; flex-wrap: wrap; gap: 14px; align-items: center; }
+
+.ov-donut__fig { position: relative; inline-size: var(--ov-donut-size); block-size: var(--ov-donut-size); flex: none; }
+.ov-donut__ring { display: block; inline-size: 100%; block-size: 100%; color: var(--ov-accent); overflow: visible; }
+
+.ov-donut__track { fill: color-mix(in srgb, var(--ov-line) 60%, transparent); }
+.ov-donut__slice { stroke: var(--ov-field); stroke-width: .6; }
+.ov-donut__slice--light { fill-opacity: .5; }
+.ov-donut__slice--unattr {
+  color: var(--ov-faint);
+  stroke: var(--ov-faint);
+  stroke-width: .5;
+  stroke-dasharray: 1.5 1;
+}
+.ov-donut__over { fill: var(--ov-alarm); }
+
+.ov-donut__centre {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-content: center;
+  text-align: center;
+  font-size: 10px;
+  letter-spacing: .08em;
+  line-height: 1.3;
+  padding: 0 22%;
+}
+.ov-donut__centre b { font-weight: 400; color: var(--ov-ink); }
+.ov-donut__centre span { color: var(--ov-faint); font-size: 9px; }
+ov-donut[data-ov-over="true"] .ov-donut__centre b { color: var(--ov-alarm); }
+ov-donut[data-ov-nowhole] .ov-donut__centre { color: var(--ov-alarm); }
+
+/* ONE grid for the whole legend, rows as display:contents, so the value
+ * column lines up; a per-row grid sized each row on its own and the long
+ * UNATTRIBUTED note pushed its value off the edge. */
+.ov-donut__legend {
+  display: grid;
+  grid-template-columns: 10px max-content minmax(0, 32ch);
+  gap: 4px 8px;
+  align-items: start;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.ov-donut__item { display: contents; }
+.ov-donut__swatch { margin-block-start: 2px; }
+.ov-donut__val { white-space: normal; }
+.ov-donut__swatch { inline-size: 10px; block-size: 10px; color: var(--ov-accent); border: 1px solid var(--ov-line-strong); box-sizing: border-box; }
+.ov-donut__item--unattr .ov-donut__swatch { color: var(--ov-faint); border-style: dashed; }
+.ov-donut__name { letter-spacing: .1em; white-space: nowrap; }
+.ov-donut__val { color: var(--ov-faint); font-variant-numeric: tabular-nums; }
+.ov-donut__item--none .ov-donut__val,
+.ov-donut__item--negative .ov-donut__val { color: var(--ov-alarm); }
+.ov-donut__item--none .ov-donut__swatch,
+.ov-donut__item--negative .ov-donut__swatch { border-style: dashed; border-color: var(--ov-alarm); }
+
+.ov-donut__note { margin: 0; color: var(--ov-alarm); font-size: 10px; letter-spacing: .06em; max-inline-size: 60ch; }
+}

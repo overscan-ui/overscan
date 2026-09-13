@@ -1,0 +1,104 @@
+{
+  "name": "overscan",
+  "version": "0.1.0",
+  "description": "A themeable sci-fi/FUI web component kit for control screens. Custom elements plus a CSS layer, ten dark themes, and readouts that refuse to invent.",
+  "license": "MIT",
+  "homepage": "https://overscan.dev",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/overscan-ui/overscan.git"
+  },
+  "bugs": {
+    "url": "https://github.com/overscan-ui/overscan/issues"
+  },
+  "type": "module",
+  "sideEffects": [
+    "./src/ov-*.js",
+    "./src/overscan.js",
+    "./src/*.css"
+  ],
+  "main": "./src/overscan.js",
+  "module": "./src/overscan.js",
+  "types": "./types/overscan.d.ts",
+  "exports": {
+    ".": {
+      "types": "./types/overscan.d.ts",
+      "default": "./src/overscan.js"
+    },
+    "./overscan.css": "./src/overscan.css",
+    "./custom-elements.json": "./custom-elements.json",
+    "./ov-*.js": "./src/ov-*.js",
+    "./*.js": "./src/ov-*.js",
+    "./*": "./src/ov-*.js",
+    "./src/*": "./src/*",
+    "./react": {
+      "types": "./types/overscan.d.ts",
+      "default": "./src/react/index.js"
+    },
+    "./vue": {
+      "types": "./types/overscan.d.ts",
+      "default": "./src/vue/index.js"
+    },
+    "./svelte": {
+      "svelte": "./src/svelte/index.js",
+      "default": "./src/svelte/index.js"
+    },
+    "./svelte/*": "./src/svelte/*"
+  },
+  "files": [
+    "src/",
+    "types/",
+    "custom-elements.json"
+  ],
+  "customElements": "custom-elements.json",
+  "scripts": {
+    "check": "tsc --noEmit",
+    "types": "tsc --emitDeclarationOnly",
+    "api": "python3 tools/api.py",
+    "wrappers": "python3 tools/gen_wrappers.py",
+    "wrapper-test": "node tools/wrapper-test/build.mjs"
+  },
+  "devDependencies": {
+    "esbuild": "^0.28.2",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0",
+    "svelte": "^5.57.0",
+    "typescript": "^5.6.0",
+    "vite": "^8.3.0",
+    "vue": "^3.5.42"
+  },
+  "keywords": [
+    "web-components",
+    "custom-elements",
+    "ui-kit",
+    "css",
+    "fui",
+    "sci-fi",
+    "terminal"
+  ],
+  "private": true,
+  "peerDependencies": {
+    "react": ">=18",
+    "react-dom": ">=18",
+    "vue": ">=3.4",
+    "svelte": ">=5",
+    "gsap": ">=3.12"
+  },
+  "peerDependenciesMeta": {
+    "react": {
+      "optional": true
+    },
+    "react-dom": {
+      "optional": true
+    },
+    "vue": {
+      "optional": true
+    },
+    "svelte": {
+      "optional": true
+    },
+    "gsap": {
+      "optional": true
+    }
+  }
+}

@@ -1,0 +1,105 @@
+/* ---- CASCADE LAYER ------------------------------------------------------
+ *
+ * Everything the kit ships sits in ONE layer named `overscan`, so a consumer's
+ * own CSS beats it without a specificity fight and without !important. That is
+ * close to mandatory for a distributed kit: an app should be able to restyle a
+ * panel by writing a plain rule.
+ *
+ * ⚠️ ONE layer, deliberately, NOT a sub-layer per file. Sub-layers look tidier
+ * and would silently reorder the kit against itself: layer order beats
+ * specificity, so a high-specificity rule in an early file that currently wins
+ * would start losing to a low-specificity rule in a later one. A single layer
+ * preserves source order exactly, so nothing inside the kit changes.
+ *
+ * Unlayered author CSS wins over all of it. That is the point.
+ */
+
+@layer overscan {
+/* Analog dial. Every mark takes its colour from the tokens, which is the whole
+ * argument against drawing this on a canvas. */
+
+ov-gauge {
+  position: relative;
+  display: block;
+  aspect-ratio: 1;
+  inline-size: var(--ov-gauge-size, 150px);
+}
+
+.ov-gauge__svg { inline-size: 100%; block-size: 100%; display: block; }
+
+.ov-gauge__arc {
+  fill: none;
+  stroke: var(--ov-line-strong);
+  stroke-width: 1.2;
+}
+
+.ov-gauge__tick { stroke: var(--ov-line-strong); stroke-width: 0.9; }
+
+.ov-gauge__ticklabel {
+  fill: var(--ov-faint);
+  font-family: var(--ov-font-mono);
+  font-size: 4.4px;
+  text-anchor: middle;
+}
+
+.ov-gauge__needle {
+  stroke: var(--ov-accent);
+  stroke-width: 1.6;
+  stroke-linecap: butt;
+}
+
+.ov-gauge__hub { fill: var(--ov-accent); }
+
+.ov-gauge__read {
+  position: absolute;
+  inset-block-end: 16%;
+  inset-inline: 0;
+  text-align: center;
+  font-size: var(--ov-size-4);
+  color: var(--ov-ink);
+  font-variant-numeric: tabular-nums;
+}
+
+.ov-gauge__unit {
+  position: absolute;
+  inset-block-end: 6%;
+  inset-inline: 0;
+  text-align: center;
+  font-size: var(--ov-size-1);
+  letter-spacing: 1.2px;
+  color: var(--ov-faint);
+}
+
+/* Pinned, and said out loud. A needle resting quietly on the limit reads as a
+ * legitimate maximum, which is the same lie as a clipped peak on a chart. */
+ov-gauge[data-ov-over] .ov-gauge__needle,
+ov-gauge[data-ov-over] .ov-gauge__hub {
+  stroke: var(--ov-alarm);
+  fill: var(--ov-alarm);
+}
+ov-gauge[data-ov-over] .ov-gauge__read { color: var(--ov-alarm); }
+ov-gauge[data-ov-over]::after {
+  content: "over range";
+  position: absolute;
+  inset-block-start: 6%;
+  inset-inline: 0;
+  text-align: center;
+  font-size: var(--ov-size-1);
+  letter-spacing: 1.2px;
+  text-transform: uppercase;
+  color: var(--ov-alarm);
+}
+
+/* No needle at all. A needle at zero is a reading. */
+ov-gauge[data-ov-refusal]::after {
+  content: attr(data-ov-refusal);
+  position: absolute;
+  inset-block-start: 44%;
+  inset-inline: 0;
+  text-align: center;
+  font-size: var(--ov-size-1);
+  letter-spacing: 1.2px;
+  text-transform: uppercase;
+  color: var(--ov-alarm);
+}
+}

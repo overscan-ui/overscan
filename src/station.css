@@ -1,0 +1,131 @@
+@layer overscan {
+/* The name row is `.ov-head` in chrome.css - one source, not seven copies of
+   the same six declarations. This one is the tight variant: the name sits
+   beside the method badge rather than at the far end of the row. */
+
+/* An automated observation that names its missing sensors. See ov-station.js
+ * for the refusal. PROTOTYPE.
+ *
+ * 🔴 NO KIND OF ABSENCE RESTS ON COLOUR. Each is a word the element writes AND
+ * a mark over the glyph: NOT EQUIPPED a cross, NOT OPERATING one stroke,
+ * UNABLE TO DETECT the three slashes its report uses, ABSENCE UNREADABLE a
+ * dashed ring, NOT REPORTED a dotted one. A reporting tile has no mark.
+ * Glow scales with the theme's --ov-bloom, so a flat theme stays flat.
+ */
+
+ov-station {
+  --ov-st-glow: calc(var(--ov-bloom, .2) * 10px);
+  display: grid;
+  gap: 8px;
+  min-inline-size: 0;
+  font-family: var(--ov-font-mono);
+  font-size: var(--ov-size-1, 10px);
+  color: var(--ov-ink);
+}
+
+.ov-station__label { font-size: var(--ov-size-2, 12px); letter-spacing: .16em; text-transform: uppercase; }
+.ov-station__how { color: var(--ov-faint); letter-spacing: .12em; }
+.ov-station__age { margin-inline-start: auto; color: var(--ov-faint); letter-spacing: .1em; font-variant-numeric: tabular-nums; }
+ov-station[data-ov-qualified="stale"] .ov-station__age { color: var(--ov-alarm); }
+
+.ov-station__down {
+  padding: 3px 6px;
+  border: 3px double var(--ov-alarm);
+  color: var(--ov-alarm);
+  letter-spacing: .12em;
+}
+.ov-station__down:empty { display: none; }
+
+/* ---- the tiles ------------------------------------------------------- */
+
+.ov-station__tiles {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 1px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  /* No shared background behind the tiles: the gaps used to paint it, so an
+     unfilled end of a row read as one big empty tile (seen in the demo). Each
+     tile carries its own border instead. */
+  gap: 0;
+}
+.ov-station__tile {
+  border: var(--ov-rule, 1px) solid var(--ov-line);
+  margin: -0.5px 0 0 -0.5px;   /* collapse the shared edges */
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr) auto;
+  grid-template-rows: auto auto 1fr;   /* every tile the same height in its row */
+  align-items: start;
+  column-gap: 9px;
+  row-gap: 3px;
+  padding: 9px 10px 10px;
+  background: var(--ov-field);
+  color: var(--ov-accent);
+}
+.ov-station__tile:not([data-ov-state="value"], [data-ov-state="none"], [data-ov-state="ncd"], [data-ov-state="clear"]) { color: var(--ov-alarm); }
+/* Not equipped is not a fault: it recedes rather than shouting. */
+.ov-station__tile[data-ov-state="not-equipped"] {
+  color: var(--ov-faint);
+  background: color-mix(in srgb, var(--ov-line) 22%, var(--ov-field));
+}
+
+.ov-station__glyph {
+  grid-row: 1 / span 3;
+  inline-size: 28px;
+  block-size: 28px;
+  overflow: visible;
+}
+.ov-station__art { fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; }
+.ov-station__mark { fill: none; stroke: currentColor; stroke-width: 2; }
+/* A tile that cannot report draws its instrument faint, and the mark loud. */
+.ov-station__tile:not([data-ov-state="value"], [data-ov-state="none"], [data-ov-state="ncd"], [data-ov-state="clear"]) .ov-station__art { opacity: .35; }
+.ov-station__tile:is([data-ov-state="value"], [data-ov-state="none"], [data-ov-state="ncd"], [data-ov-state="clear"]) .ov-station__art {
+  filter: drop-shadow(0 0 var(--ov-st-glow) currentColor);
+}
+
+/* The name is a quiet label; the READING is the loud thing in a tile. */
+.ov-station__name { color: var(--ov-faint); letter-spacing: .14em; text-transform: uppercase; overflow-wrap: anywhere; align-self: baseline; }
+.ov-station__how2 { color: var(--ov-faint); letter-spacing: .1em; align-self: baseline; }
+.ov-station__read {
+  grid-column: 2 / -1;
+  font-size: calc(var(--ov-size-2, 12px) * 1.25);
+  letter-spacing: .06em;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+  text-shadow: 0 0 var(--ov-st-glow) currentColor;
+}
+.ov-station__tile:not([data-ov-state="value"]) .ov-station__read { font-size: var(--ov-size-1, 10px); letter-spacing: .14em; text-shadow: none; }
+.ov-station__why { grid-column: 2 / -1; color: var(--ov-faint); line-height: 1.4; overflow-wrap: anywhere; opacity: .85; }
+.ov-station__why:empty { display: none; }
+.ov-station__tile:not([data-ov-state="value"], [data-ov-state="none"], [data-ov-state="ncd"], [data-ov-state="clear"], [data-ov-state="not-equipped"]) .ov-station__why { color: var(--ov-alarm); }
+
+/* The words carry their own box, so a state is never colour alone. */
+.ov-station__tile:not([data-ov-state="value"]) .ov-station__read {
+  justify-self: start;
+  padding: 0 5px;
+  border: var(--ov-rule, 1px) solid currentColor;
+}
+.ov-station__tile[data-ov-state="not-equipped"] .ov-station__read { border-style: dashed; }
+.ov-station__tile[data-ov-state="not-operating"] .ov-station__read { border: 3px double currentColor; }
+.ov-station__tile:is([data-ov-state="unreadable"], [data-ov-state="not-reported"]) .ov-station__read { border-style: dotted; }
+
+/* ---- the maintenance line -------------------------------------------- */
+
+.ov-station__maint { letter-spacing: .08em; color: var(--ov-faint); }
+.ov-station__maint[data-ov-maint="needed"] { color: var(--ov-alarm); }
+.ov-station__maint:empty { display: none; }
+
+.ov-station__say {
+  position: absolute;
+  inline-size: 1px;
+  block-size: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+@container (max-width: 380px) {
+  .ov-station__tiles { grid-template-columns: 1fr; }
+}
+}

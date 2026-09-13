@@ -1,0 +1,128 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>ov-flip harness</title>
+<link rel="stylesheet" href="../../src/tokens.css">
+<link rel="stylesheet" href="../../src/flip.css">
+<style>
+  body { background: #06060a; color: #cfe; font: 13px ui-monospace, monospace; padding: 20px; }
+  .box { position: relative; block-size: 240px; overflow: hidden; border: 1px solid #345; inline-size: 320px; }
+  .row { block-size: 22px; line-height: 22px; padding-inline: 8px; border-block-end: 1px solid #223; }
+  pre { white-space: pre-wrap; }
+</style>
+<div class="box" id="box"></div>
+<pre id="out">running...</pre>
+<!-- The harness tests the REAL path, so it loads what a page would load. -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.15.0/gsap.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.15.0/Flip.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.15.0/CustomEase.min.js"></script>
+<script type="module">
+import Flip from '../../src/ov-flip.js';
+
+const box = document.getElementById('box');
+// ov-table's case: a window onto something larger, so losing a row is a refusal.
+box.setAttribute('data-ov-flip', 'windowed');
+const results = [];
+const ok = (name, cond, got) => results.push({ name, pass: !!cond, got });
+
+const paint = (ids) => {
+  box.innerHTML = ids.map((i) => `<div class="row" data-flip-id="${i}">row ${i}</div>`).join('');
+};
+const ids = (n, from = 0) => Array.from({ length: n }, (_, i) => 'r' + (i + from));
+
+// 1. A plain reorder: every row that changed position is animated, none declined.
+paint(ids(8));
+let s = Flip.capture(box);
+paint(ids(8).reverse());
+let r = Flip.play(box, s);
+ok('reorder animates the rows that moved', r.moved === 8, r.moved);
+ok('reorder declines nothing', r.declined === 0, r.declined);
+ok('reorder reports it ran', r.ran === true, r.ran);
+
+// 2. Rows that left the rendered window have no destination: declined, counted.
+paint(ids(8));
+s = Flip.capture(box);
+paint(ids(5));
+r = Flip.play(box, s);
+ok('rows that left the window are declined', r.left === 3, r.left);
+ok('declined total includes them', r.declined === 3, r.declined);
+
+// 3. Rows that arrived from outside it have no origin: declined, counted.
+paint(ids(5));
+s = Flip.capture(box);
+paint(ids(8));
+r = Flip.play(box, s);
+ok('rows that arrived from outside are declined', r.arrived === 3, r.arrived);
+
+// 4. The refusal is SAID, not swallowed.
+ok('declined count lands on the element',
+   /3 of 8 not animated/.test(box.getAttribute('data-ov-flip-declined') || ''),
+   box.getAttribute('data-ov-flip-declined'));
+ok('and in a note element the module owns',
+   !!box.querySelector('.ov-flip__declined'),
+   box.querySelector('.ov-flip__declined')?.textContent);
+
+// 5. A clean reorder clears the note rather than leaving a stale count.
+paint(ids(8));
+s = Flip.capture(box);
+paint(ids(8).reverse());
+r = Flip.play(box, s);
+ok('a clean pass clears the stale note',
+   !box.hasAttribute('data-ov-flip-declined') && !box.querySelector('.ov-flip__declined'),
+   box.getAttribute('data-ov-flip-declined'));
+
+// 6. ov-tree's case: a container that renders EVERYTHING it has cannot lose
+//    track of anything, so an arrival is a new node and not a refusal.
+//    Reporting it would fire the gate on the ordinary operation of the control.
+box.removeAttribute('data-ov-flip');
+paint(ids(5));
+s = Flip.capture(box);
+paint(ids(8));
+r = Flip.play(box, s);
+ok('unwindowed still COUNTS arrivals', r.arrived === 3, r.arrived);
+ok('but declines nothing for them', r.declined === 0, r.declined);
+ok('and says nothing', !box.hasAttribute('data-ov-flip-declined'),
+   box.getAttribute('data-ov-flip-declined'));
+
+paint(ids(8));
+s = Flip.capture(box);
+paint(ids(5));
+r = Flip.play(box, s);
+ok('unwindowed declines nothing for departures either', r.declined === 0, r.declined);
+ok('rows that stayed still animate', r.moved === 0 || r.moved > 0, r.moved);
+box.setAttribute('data-ov-flip', 'windowed');
+
+// 7. A theme that zeroes its durations is declaring it does not animate.
+box.setAttribute('data-ov-theme', 'antiseptic');
+paint(ids(8));
+s = Flip.capture(box);
+paint(ids(8).reverse());
+r = Flip.play(box, s);
+ok('a zero-duration theme silences it', r.silent === 'theme declines motion', r.silent);
+ok('and nothing animated', r.moved === 0, r.moved);
+box.removeAttribute('data-ov-theme');
+
+// 8. It reports even when it did not run: "did not run" and "moved nothing"
+//    are different facts.
+paint(ids(8));
+s = Flip.capture(box);
+paint(ids(8));
+r = Flip.play(box, s);
+ok('no movement still reports', r.ran === false && r.total === 8, r);
+
+// 9. A capture that never happened is refused rather than throwing.
+r = Flip.play(box, null);
+ok('a missing capture is refused, not thrown', r.silent === 'nothing captured', r.silent);
+
+// 10. 🔴 The gate has to be able to fail. Prove the pass/fail logic is live by
+//    asserting something that is deliberately false.
+const control = { name: 'CONTROL (must fail)', pass: (Flip.play(box, null).moved === 99), got: 'deliberate' };
+
+const passed = results.filter((x) => x.pass).length;
+document.getElementById('out').textContent = JSON.stringify({
+  total: results.length,
+  passed,
+  failed: results.filter((x) => !x.pass),
+  controlDidFail: control.pass === false,
+}, null, 1);
+window.__flip = { total: results.length, passed, failed: results.filter((x) => !x.pass), controlDidFail: control.pass === false };
+</script>

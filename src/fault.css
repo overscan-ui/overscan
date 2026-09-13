@@ -1,0 +1,54 @@
+/* ---- CASCADE LAYER ------------------------------------------------------
+ *
+ * Everything the kit ships sits in ONE layer named `overscan`, so a consumer's
+ * own CSS beats it without a specificity fight and without !important. That is
+ * close to mandatory for a distributed kit: an app should be able to restyle a
+ * panel by writing a plain rule.
+ *
+ * ⚠️ ONE layer, deliberately, NOT a sub-layer per file. Sub-layers look tidier
+ * and would silently reorder the kit against itself: layer order beats
+ * specificity, so a high-specificity rule in an early file that currently wins
+ * would start losing to a low-specificity rule in a later one. A single layer
+ * preserves source order exactly, so nothing inside the kit changes.
+ *
+ * Unlayered author CSS wins over all of it. That is the point.
+ */
+
+@layer overscan {
+/* Damage to the glass. See ov-fault.js and REFUSAL.md, "The third kind".
+ *
+ * 🔴 The ONE element in the kit that sits over the interface rather than
+ * behind it. That is allowed because a fault never needs to read what is
+ * underneath: a dead pixel is black over a chart and black over an empty
+ * panel. Anything that MULTIPLIES with the image beneath still has to be CSS.
+ */
+
+ov-fault {
+  position: absolute;
+  inset: 0;
+  /* Above the content, below the top layer. A dialog opened with showModal()
+   * is genuinely in front of the screen's own damage, which is wrong in
+   * physics and right in practice: nobody wants a modal they cannot read
+   * because of a demonstration. */
+  z-index: 50;
+  display: block;
+  /* ⚠️ The element does NOT swallow pointer events. The dead zone is a real
+   * hole in hit testing, implemented as a capture-phase listener in
+   * ov-fault.js over one declared region, because a dead digitiser affects
+   * part of a screen and blocking the whole surface would be a different and
+   * much less interesting bug. */
+  pointer-events: none;
+  overflow: hidden;
+}
+
+ov-fault canvas {
+  display: block;
+  inline-size: 100%;
+  block-size: 100%;
+}
+
+/* A surface carrying damage needs its own stacking context, or the fault
+ * escapes to the nearest positioned ancestor and lands over the wrong thing.
+ * .ov-finish already isolates; this is for anything else. */
+.ov-has-fault { position: relative; isolation: isolate; }
+}

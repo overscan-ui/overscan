@@ -1,0 +1,108 @@
+/* ---- CASCADE LAYER ------------------------------------------------------
+ *
+ * Everything the kit ships sits in ONE layer named `overscan`, so a consumer's
+ * own CSS beats it without a specificity fight and without !important. That is
+ * close to mandatory for a distributed kit: an app should be able to restyle a
+ * panel by writing a plain rule.
+ *
+ * ⚠️ ONE layer, deliberately, NOT a sub-layer per file. Sub-layers look tidier
+ * and would silently reorder the kit against itself: layer order beats
+ * specificity, so a high-specificity rule in an early file that currently wins
+ * would start losing to a low-specificity rule in a later one. A single layer
+ * preserves source order exactly, so nothing inside the kit changes.
+ *
+ * Unlayered author CSS wins over all of it. That is the point.
+ */
+
+@layer overscan {
+/* Seven-segment readout.
+ *
+ * Drawn in the DOM, not on a canvas, so the theme, the contrast switch and the
+ * motion switch all reach it from one control surface. A canvas widget is
+ * invisible to the cascade, which means every kit-wide behaviour has to be
+ * built a second time for it and covers half the screen.
+ */
+
+ov-segment {
+  --seg-w: var(--ov-seg-width, 26px);
+  display: inline-flex;
+  gap: 5px;
+  vertical-align: middle;
+}
+
+.ov-seg {
+  position: relative;
+  inline-size: var(--seg-w);
+  flex: 0 0 auto;
+  line-height: 0;
+}
+
+.ov-seg__svg {
+  display: block;
+  inline-size: 100%;
+  block-size: auto;
+}
+
+/* One rule covers both shapes: bars are filled polygons, diagonals are stroked
+ * lines, and a segment is a segment either way. */
+.ov-seg__s {
+  fill: var(--ov-line);
+  stroke: var(--ov-line);
+  stroke-width: 11;
+  transition: fill var(--ov-dur-fast) var(--ov-ease),
+              stroke var(--ov-dur-fast) var(--ov-ease);
+}
+
+/* Lit segments take the accent. Unlit ones stay visible, because a real
+ * display has its dark segments too and hiding them is a lie about the device.
+ * It also stops a partly lit glyph being mistaken for a whole one. */
+.ov-seg__s[data-on] {
+  fill: var(--ov-accent);
+  stroke: var(--ov-accent);
+}
+
+.ov-seg[data-dp]::after {
+  content: "";
+  position: absolute;
+  inset-block-end: 4%;
+  inset-inline-end: -18%;
+  inline-size: 16%;
+  aspect-ratio: 1;
+  background: var(--ov-accent);
+}
+
+/* ---- refusal ----------------------------------------------------------- */
+
+/* Dashes in the alarm colour. A refusal is never a number, never blank, and
+ * never the last good value. See REFUSAL.md. */
+ov-segment[data-ov-refusal] .ov-seg__s[data-on] {
+  fill: var(--ov-alarm);
+  stroke: var(--ov-alarm);
+}
+
+/* Stale still shows its number, because withholding a slightly old reading is
+ * usually worse than showing one. It is marked rather than hidden. */
+ov-segment[data-ov-qualified] .ov-seg__s[data-on] {
+  fill: var(--ov-faint);
+  stroke: var(--ov-faint);
+}
+
+ov-segment[data-ov-qualified]::after {
+  content: attr(data-ov-qualifier-text);
+  align-self: center;
+  margin-inline-start: 8px;
+  font-size: var(--ov-size-1);
+  letter-spacing: 1.2px;
+  color: var(--ov-faint);
+}
+
+ov-segment[data-ov-refusal]::after {
+  content: attr(data-ov-refusal);
+  align-self: center;
+  margin-inline-start: 8px;
+  font-size: var(--ov-size-1);
+  letter-spacing: 1.2px;
+  text-transform: uppercase;
+  color: var(--ov-alarm);
+}
+}

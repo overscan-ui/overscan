@@ -1,0 +1,86 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>ov-reveal hold tests</title>
+<!-- Over tools/serve.py: /tools/reveal-test/ . The last case is a CONTROL that must fail. -->
+<!-- data-ov-reveal-hold: a region whose layout is still settling keeps its
+     arrivals queued until the page releases it, and never past the cap. The
+     home wall uses it so cells do not move while they fade in. -->
+<link rel="stylesheet" href="../../src/tokens.css">
+<link rel="stylesheet" href="../../src/motion.css">
+<style>
+  body { background: #06060a; color: #cfe; font: 13px ui-monospace, monospace; padding: 20px; }
+  .t { padding: 6px 10px; border: 1px solid #345; margin-block-end: 8px; inline-size: 360px; }
+  pre { white-space: pre-wrap; }
+</style>
+<div data-ov-reveal class="t" id="free">free: in no hold</div>
+<div data-ov-reveal-hold id="region"><div data-ov-reveal class="t" id="held">held: the page releases it</div></div>
+<div data-ov-reveal-hold id="stuck"><div data-ov-reveal class="t" id="capped">capped: nobody releases it</div></div>
+<pre id="out">running...</pre>
+<!-- The harness tests the REAL path, so it loads what a page would load. -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.15.0/gsap.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.15.0/Flip.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.15.0/CustomEase.min.js"></script>
+<script type="module">
+// Importing starts the reveal at once (the document has finished parsing), so
+// every check below runs after start() has queued and swept.
+import '../../src/ov-reveal.js';
+
+const PENDING = 'ov-reveal--pending';
+const $ = (id) => document.getElementById(id);
+const pending = (id) => $(id).classList.contains(PENDING);
+/* ⚠️ DEALT, NOT ARRIVED. The hold decides whether the sweep hands an element to
+ * reveal(); whether its GSAP timeline then finishes is a different question.
+ * Under headless --virtual-time-budget animation frames do not
+ * run, so nothing ever ARRIVES there and the first version of this page failed
+ * four checks and its control while passing 8/8 in a real browser. An element
+ * is dealt once it has arrived OR carries a live tween, which reads the same
+ * in both. */
+const dealt = (id) => !pending(id) || gsap.getTweensOf($(id)).length > 0;
+const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+const results = [];
+const ok = (name, cond, got) => results.push({ name, pass: !!cond, got });
+const t0 = performance.now();
+
+// 1. Preconditions. Without a duration the reveal declines motion and queues
+//    nothing, and every "still waiting" check below would be vacuous.
+const raw = getComputedStyle($('free')).getPropertyValue('--ov-dur-slow').trim();
+const dur = parseFloat(raw) * (/[^m]s$/.test(raw) ? 1000 : 1);
+ok('the page gives the reveal a duration, so it queues at all', dur > 0, raw);
+ok('a held element is queued, not dealt', !dealt('held'), dealt('held'));
+ok('a capped element is queued, not dealt', !dealt('capped'), dealt('capped'));
+const cappedDealtAtStart = dealt('capped');
+
+// 2. Outside a hold nothing changes: the first sweep deals it.
+await wait(dur + 400);
+ok('an element in no hold is dealt', dealt('free'), dealt('free'));
+ok('a held element is still waiting while held', !dealt('held'), dealt('held'));
+
+// 3. The page releases its hold: the attribute comes off and it says so.
+$('region').removeAttribute('data-ov-reveal-hold');
+dispatchEvent(new Event('ov:reveal-release'));
+await wait(dur + 400);
+ok('releasing the hold deals what it kept', dealt('held'), dealt('held'));
+ok('an unreleased hold is still honoured inside the cap',
+   !dealt('capped') && performance.now() - t0 < 2500, Math.round(performance.now() - t0));
+
+// 4. 🔴 A hold can never strand anything. Past the 2.5 s cap it is ignored;
+//    the guard would deal it on its next look (up to 4 s), and any sweep does
+//    it sooner, so the harness asks for one rather than sit out the guard.
+await wait(Math.max(0, 2600 - (performance.now() - t0)));
+dispatchEvent(new Event('ov:reveal-release'));
+await wait(dur + 400);
+ok('a hold nobody releases is ignored after the cap', dealt('capped'), dealt('capped'));
+
+// 5. The gate has to be able to fail: a deliberately false claim.
+// Recorded at start, when the capped element was provably still held, so
+// the claim is false in a real browser and headless alike.
+const control = { name: 'CONTROL (must fail)', pass: cappedDealtAtStart === true, got: 'deliberate' };
+
+const passed = results.filter((x) => x.pass).length;
+const failed = results.filter((x) => !x.pass);
+document.getElementById('out').textContent =
+  results.map((x) => `${x.pass ? 'ok  ' : 'FAIL'} ${x.name}`).join('\n')
+  + `\n${control.pass ? 'FAIL CONTROL passed, so the checks above prove nothing' : 'ok   CONTROL: a false claim is caught (must fail)'}`
+  + `\n\n${passed}/${results.length} passed${control.pass ? ', control did NOT fail' : ', control failed as it must'}`;
+window.__reveal = { total: results.length, passed, failed, controlDidFail: control.pass === false };
+</script>

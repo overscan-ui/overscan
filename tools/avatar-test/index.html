@@ -1,0 +1,247 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>ov-avatar harness</title>
+<!-- The refusal gate for the ov-avatar Serve the repo root
+     (tools/serve.py) and open /tools/avatar-test/. The last line must read
+     GATE: PASS, and every CONTROL must fail. -->
+<link rel="stylesheet" href="../../src/tokens.css">
+<link rel="stylesheet" href="../../src/avatar.css">
+<style>
+  body { background: #06060a; color: #cfe; font: 13px ui-monospace, monospace; padding: 20px; }
+  pre { white-space: pre-wrap; }
+  #stage { max-inline-size: 420px; }
+</style>
+<div id="stage" data-ov-theme="aegis"></div>
+<pre id="out" data-gate="pending">running...</pre>
+<script>
+  const fatal = (what) => {
+    const out = document.getElementById('out');
+    if (out) { out.textContent = `THREW: ${what}\n\nGATE: FAIL`; out.dataset.gate = 'fail'; }
+  };
+  addEventListener('error', (e) => fatal(e.error?.stack || e.message || e));
+  addEventListener('unhandledrejection', (e) => fatal(e.reason?.stack || e.reason));
+</script>
+<script type="module">
+const SRC = new URLSearchParams(location.search).get('src') || '../../src/ov-avatar.js';
+await import(new URL(SRC, location.href).href);
+
+const stage = document.getElementById('stage');
+const results = [], controls = [];
+const ok = (n, c, g) => results.push({ name: n, pass: !!c, got: g });
+const control = (n, c, g) => controls.push({ name: n, pass: !!c, got: g });
+
+const make = (attrs = {}) => {
+  const el = document.createElement('ov-avatar');
+  for (const [k, v] of Object.entries(attrs)) el.setAttribute(k, v);
+  stage.replaceChildren(el);
+  return el;
+};
+const cs = (el) => getComputedStyle(el);
+const bodies = (a) => a.querySelectorAll('.ov-avatar__body').length;
+const slot = (a) => a.querySelector('.ov-avatar__slot');
+const mark = (a) => a.querySelector('.ov-avatar__mark');
+const name = (a) => a.querySelector('.ov-avatar__name').textContent;
+const task = (a) => a.querySelector('.ov-avatar__task').textContent;
+const note = (a) => a.querySelector('.ov-avatar__note').textContent;
+const state = (a) => a.report.state;
+let a;
+
+// ---- 1. An occupied seat ---------------------------------------------------
+a = make({ kind: 'crew', name: 'CDR', task: 'FLYING RMS' });
+ok('a named crew member is assigned, drawn as a silhouette, with name and task', state(a) === 'assigned' && bodies(a) > 0 && name(a) === 'CDR' && task(a) === 'FLYING RMS', [state(a), bodies(a), name(a), task(a)]);
+ok('...claims no refusal', !a.hasAttribute('data-ov-refusal'), a.getAttribute('data-ov-refusal'));
+ok('...keeps its host role an image, with a label that names kind and task', a.getAttribute('role') === 'img' && a.getAttribute('aria-label') === 'CDR, helmeted crew, FLYING RMS', a.getAttribute('aria-label'));
+
+// ---- 2. ⭐ The empty seat ---------------------------------------------------
+a = make({});
+ok('⭐ no kind and no name is UNASSIGNED', state(a) === 'unassigned' && name(a) === 'UNASSIGNED', [state(a), name(a)]);
+ok('⭐ ...and draws NO silhouette at all', bodies(a) === 0 && !a.querySelector('.ov-avatar__well'), bodies(a));
+ok('⭐ ...but a dashed empty well, drawn dashed', slot(a) && cs(slot(a)).strokeDasharray !== 'none' && cs(slot(a)).fill === 'none', slot(a) && cs(slot(a)).strokeDasharray);
+ok('...and says unassigned slot to a screen reader', a.getAttribute('aria-label') === 'unassigned slot', a.getAttribute('aria-label'));
+control('CONTROL: an empty seat is drawn as a person (must fail)', bodies(a) > 0, bodies(a));
+a = make({ kind: 'unassigned', task: 'FLYING RMS' });
+ok('kind="unassigned" is the same empty seat, and prints no task for nobody', state(a) === 'unassigned' && bodies(a) === 0 && task(a) === '', [state(a), task(a)]);
+
+// ---- 3. ⭐ A name with no kind is not a human --------------------------------
+a = make({ name: 'MS2' });
+ok('⭐ a name with no kind is KIND NOT STATED, not a human', state(a) === 'unstated' && task(a) === 'KIND NOT STATED' && bodies(a) === 0, [state(a), task(a), bodies(a)]);
+ok('...drawn as a dotted well with a question mark', slot(a)?.classList.contains('is-unstated') && a.querySelector('.ov-avatar__q')?.textContent === '?', slot(a)?.getAttribute('class'));
+ok('...and marked as a refusal', a.getAttribute('data-ov-refusal') === 'unknown', a.getAttribute('data-ov-refusal'));
+control('CONTROL: a name with no kind gets the human silhouette (must fail)', a.getAttribute('data-ov-kind') === 'human', a.getAttribute('data-ov-kind'));
+a = make({ name: 'MS2', kind: 'wizard' });
+ok('a kind that is not one of the four says so, and draws no silhouette', state(a) === 'unstated' && /KIND WIZARD IS NOT ONE OF/.test(task(a)) && bodies(a) === 0, task(a));
+
+// ---- 4. A silhouette with no name --------------------------------------------
+a = make({ kind: 'robot' });
+ok('a robot with no name draws the robot and says NAME NOT GIVEN', state(a) === 'unnamed' && bodies(a) > 0 && name(a) === 'NAME NOT GIVEN', [state(a), name(a)]);
+ok('...and is marked as a refusal, in the alarm colour', a.getAttribute('data-ov-refusal') === 'unknown' && cs(a.querySelector('.ov-avatar__name')).color === cs(a).getPropertyValue('--ov-alarm').trim().replace(/^#(..)(..)(..)$/, (_, r, g, b) => `rgb(${parseInt(r, 16)}, ${parseInt(g, 16)}, ${parseInt(b, 16)})`), cs(a.querySelector('.ov-avatar__name')).color);
+
+// ---- 5. A contradiction is not resolved -------------------------------------
+a = make({ kind: 'unassigned', name: 'PLT' });
+ok('a name on a slot marked unassigned is a CONFLICT, neither picked', state(a) === 'conflict' && name(a) === 'PLT' && task(a) === 'NAMED, AND MARKED UNASSIGNED' && bodies(a) === 0, [state(a), name(a), task(a)]);
+
+// ---- 6. ⭐ The status is supplied, never decided, never on an empty seat ----
+a = make({ kind: 'human', name: 'FE', status: 'bad' });
+ok('a supplied bad status is drawn on the edge', a.getAttribute('data-ov-status') === 'bad' && mark(a), a.getAttribute('data-ov-status'));
+const badFill = cs(mark(a)).fill;
+a.setAttribute('status', 'ok');
+ok('...and ok is a different shape', mark(a).tagName === 'circle' && cs(mark(a)).fill !== badFill, [mark(a).tagName, cs(mark(a)).fill]);
+a.setAttribute('status', 'bad');
+ok('...bad is a diamond, not a disc', mark(a).tagName === 'path', mark(a).tagName);
+a.setAttribute('status', 'unknown');
+ok('...unknown is a hollow square', mark(a).tagName === 'rect' && cs(mark(a)).strokeDasharray !== 'none', mark(a).tagName);
+a.setAttribute('status', 'note');
+ok('...note is a ring', mark(a).tagName === 'circle' && cs(mark(a)).fill !== badFill, mark(a).tagName);
+a = make({ status: 'bad' });
+ok('⭐ a status handed to an empty seat is NOT drawn', state(a) === 'unassigned' && !mark(a) && !a.hasAttribute('data-ov-status'), [state(a), !!mark(a)]);
+ok('⭐ ...and the refusal is written out', note(a) === 'A STATUS FOR AN EMPTY SLOT IS NOT SHOWN' && a.report.ignored.includes('status'), note(a));
+control('CONTROL: an empty seat carries a status mark (must fail)', !!mark(a), !!mark(a));
+a = make({ kind: 'alien', name: 'XO', status: 'green' });
+ok('a status that is not one of the four is not drawn, and says so', !mark(a) && note(a) === 'NOT SHOWN: STATUS GREEN', note(a));
+a = make({ kind: 'alien', name: 'XO' });
+ok('no status handed in, no mark: the avatar decides nothing', !mark(a) && !a.hasAttribute('data-ov-status'), !!mark(a));
+control('CONTROL: an avatar with no status shows ok (must fail)', a.getAttribute('data-ov-status') === 'ok', a.getAttribute('data-ov-status'));
+
+// ---- 7. Silhouettes: kinds, variants, fill and line ---------------------------
+const g = (el) => el.querySelector('.ov-avatar__fig')?.innerHTML || '';
+const pics = ['human', 'crew', 'alien', 'robot'].map((k) => g(make({ kind: k, name: 'X' })));
+ok('each kind draws its own silhouette', new Set(pics).size === 4, pics.map((p) => p.length));
+const humans = ['neutral', 'female', 'male'].map((x) => g(make({ kind: 'human', variant: x, name: 'X' })));
+ok('male, female and non-gendered humans are three drawings', new Set(humans).size === 3, humans.map((p) => p.length));
+a = make({ kind: 'human', name: 'X' });
+ok('a human with no variant is the non-gendered one', a.report.variant === 'neutral' && g(a) === humans[0], a.report.variant);
+const well = cs(a.querySelector('.ov-avatar__well')).fill;
+const ALLV = [['human', ['neutral', 'female', 'male']], ['crew', ['suit']], ['alien', ['grey', 'insect', 'squid', 'reptile']], ['robot', ['box', 'android', 'drone', 'mech']]];
+for (const [kind, vs] of ALLV) {
+  if (vs.length === 4) ok(`the four ${kind} variants are four drawings`, new Set(vs.map((x) => g(make({ kind, variant: x, name: 'X' })))).size === 4, null);
+  for (const x of vs) {
+    const el = make({ kind, variant: x, name: 'X' });
+    const parts = [...el.querySelectorAll('.ov-avatar__fig > *')];
+    // Filled silhouette: every shape is a fill in the figure colour, every
+    // limb a stroke in it, and nothing is painted in the well's colour (a hole).
+    const solid = parts.length > 0 && parts.every((p) => (p.classList.contains('ov-avatar__limb')
+      ? cs(p).stroke !== 'none' && cs(p).fill === 'none'
+      : p.classList.contains('ov-avatar__body') && cs(p).fill !== 'none' && cs(p).fill !== well));
+    ok(`${kind} ${x} is a filled silhouette with no inner detail`, solid, parts.map((p) => `${p.getAttribute('class')}:${cs(p).fill}`));
+  }
+}
+// The paint: every figure part is filled (or stroked) with this avatar's own
+// gradient, and the gradient really darkens downward, below the theme's dim ink.
+{
+  const lum = (c) => { const m = c.match(/[\d.]+/g).map(Number); return 0.2126 * m[0] + 0.7152 * m[1] + 0.0722 * m[2]; };
+  const el = make({ kind: 'alien', variant: 'insect', name: 'X' });
+  const grad = el.querySelector('.ov-avatar__pic linearGradient');
+  const parts = [...el.querySelectorAll('.ov-avatar__fig > *')];
+  const painted = parts.every((p) => (p.classList.contains('ov-avatar__limb') ? cs(p).stroke : cs(p).fill) === `url("#${grad.id}")`);
+  ok('every part of a figure is painted with its own gradient', !!grad && painted, parts.map((p) => cs(p).fill));
+  const top = cs(grad.querySelector('.ov-avatar__stop-top')).stopColor;
+  const bottom = cs(grad.querySelector('.ov-avatar__stop-bottom')).stopColor;
+  const dim = cs(el).getPropertyValue('--ov-dim').trim();
+  const probe = document.createElement('i'); probe.style.color = dim; el.append(probe);
+  const dimColor = cs(probe).color;
+  const dimLum = lum(dimColor); probe.remove();
+  ok('the gradient is lighter at the head than at the shoulders, and both are darker than dim ink', lum(top) > lum(bottom) && lum(top) < dimLum, [top, bottom, dimLum]);
+  // Read while the element is still on the page: a detached element computes no fill.
+  const flatFill = cs(el.querySelector('.ov-avatar__body')).fill;
+  control('CONTROL: the figure is painted in flat dim ink (must fail)', flatFill === dimColor, [flatFill, dimColor]);
+  const other = make({ kind: 'robot', variant: 'box', name: 'Y' });
+  const two = make({ kind: 'robot', variant: 'box', name: 'Y' });
+  stage.replaceChildren(other, two);
+  ok('two avatars on one page do not share a gradient id', other.querySelector('linearGradient').id !== two.querySelector('linearGradient').id, null);
+}
+
+// Room around the figure: scaled down inside the well, the widest drawing
+// still leaves a margin on both sides and at the top.
+for (const [kind, vs] of ALLV) {
+  for (const x of vs) {
+    const el = make({ kind, variant: x, name: 'X' });
+    const fig = el.querySelector('.ov-avatar__fig');
+    const box = fig.getBoundingClientRect();
+    const well = el.querySelector('.ov-avatar__well').getBoundingClientRect();
+    const m = well.width * 0.06;
+    ok(`${kind} ${x} leaves room inside its well`, box.left >= well.left + m - 0.5 && box.right <= well.right - m + 0.5 && box.top >= well.top + m - 0.5, [box.left - well.left, well.right - box.right, box.top - well.top, m]);
+  }
+}
+
+// Symmetry: the human outlines are built mirrored, so the drawing's box is centred.
+for (const x of ['neutral', 'female', 'male']) {
+  const el = make({ kind: 'human', variant: x, name: 'X' });
+  const bb = el.querySelector('.ov-avatar__fig path').getBBox();
+  ok(`the ${x} human is left-right symmetric about the well's centre`, Math.abs(bb.x + bb.width / 2 - 50) < 0.5, bb);
+}
+// ⭐ No holes: render each figure alone, flood the background in from the
+// canvas edge, and count any background pixel the flood cannot reach. A gap
+// enclosed between parts (a neck between two pistons) is a hole in the shape.
+const holesOf = async (markup) => {
+  const inner = markup.replace(/class="ov-avatar__body"/g, 'fill="#000"').replace(/class="ov-avatar__limb"/g, 'fill="none" stroke="#000" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"');
+  const N = 200;
+  const url = `data:image/svg+xml,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" width="${N}" height="${N}">${inner}</svg>`)}`;
+  const img = new Image();
+  await new Promise((r, j) => { img.onload = r; img.onerror = j; img.src = url; });
+  const c = document.createElement('canvas'); c.width = c.height = N;
+  const x = c.getContext('2d'); x.drawImage(img, 0, 0);
+  const px = x.getImageData(0, 0, N, N).data;
+  const inside = (i) => px[i * 4 + 3] > 40;
+  const seen = new Uint8Array(N * N);
+  const stack = [];
+  for (let k = 0; k < N; k++) stack.push(k, (N - 1) * N + k, k * N, k * N + N - 1);
+  while (stack.length) {
+    const i = stack.pop();
+    if (i < 0 || i >= N * N || seen[i] || inside(i)) continue;
+    seen[i] = 1;
+    const cx = i % N;
+    stack.push(i - N, i + N);
+    if (cx > 0) stack.push(i - 1);
+    if (cx < N - 1) stack.push(i + 1);
+  }
+  let n = 0;
+  for (let i = 0; i < N * N; i++) if (!seen[i] && !inside(i)) n++;
+  return n;
+};
+for (const [kind, vs] of ALLV) {
+  for (const vName of vs) {
+    const n = await holesOf(make({ kind, variant: vName, name: 'X' }).querySelector('.ov-avatar__fig').innerHTML);
+    ok(`${kind} ${vName} has no holes: nothing enclosed between its parts`, n <= 4, n);
+  }
+}
+// The counter itself must see a hole: a neck drawn as two posts between a head
+// and a collar, which is the shape that shipped with holes once.
+const posts = await holesOf('<rect class="ov-avatar__body" x="30" y="10" width="40" height="40"/>'
+  + '<rect class="ov-avatar__body" x="38" y="50" width="6" height="14"/><rect class="ov-avatar__body" x="56" y="50" width="6" height="14"/>'
+  + '<rect class="ov-avatar__body" x="10" y="64" width="80" height="36"/>');
+control('CONTROL: a neck of two posts between head and collar has no holes (must fail)', posts <= 4, posts);
+control('CONTROL: a human drawing has a cut-out in the well colour (must fail)', [...make({ kind: 'human', name: 'X' }).querySelectorAll('.ov-avatar__fig > *')].some((p) => cs(p).fill === well), null);
+a = make({ kind: 'alien', variant: 'elf', name: 'XO' });
+ok('a variant the kind does not have is said, and the kind is still drawn', note(a) === 'VARIANT ELF IS NOT A ALIEN VARIANT' && bodies(a) > 0 && a.report.variant === 'grey', note(a));
+a = make({ kind: 'robot', variant: 'drone', name: 'R' });
+ok('the drawing is cropped by its well', !!a.querySelector('.ov-avatar__pic clipPath') && a.querySelector('.ov-avatar__pic g').getAttribute('clip-path') === `url(#${a.querySelector('clipPath').id})`, null);
+const ids = new Set([...stage.ownerDocument.querySelectorAll('clipPath')].map((x) => x.id));
+ok('...with a clip id no other avatar shares', ids.size === stage.ownerDocument.querySelectorAll('clipPath').length, ids.size);
+
+// ---- 8. Reacts to change -----------------------------------------------------
+a = make({ kind: 'human', name: 'FE', status: 'ok' });
+a.removeAttribute('name');
+a.removeAttribute('kind');
+ok('clearing name and kind empties the seat and drops the mark', state(a) === 'unassigned' && bodies(a) === 0 && !mark(a), [state(a), bodies(a), !!mark(a)]);
+
+// ---- 9. What the source may not do ------------------------------------------
+const srcText = await (await fetch(new URL(SRC, location.href).href)).text();
+ok('the element never asks for an animation frame or runs a timer', !/requestAnimationFrame|setInterval|setTimeout/.test(srcText), true);
+ok('...and has no default silhouette to fall back on', !/\|\|\s*'human'|\?\?\s*'human'/.test(srcText), true);
+control('CONTROL: the element draws on a frame (must fail)', /requestAnimationFrame/.test(srcText), 'source');
+
+// ---- report ----
+const bad = results.filter((r) => !r.pass);
+const live = controls.filter((x) => x.pass);
+const lines = [];
+for (const r of results) lines.push(`${r.pass ? 'ok  ' : 'FAIL'} ${r.name}${r.pass ? '' : `\n       got: ${JSON.stringify(r.got)}`}`);
+lines.push('');
+for (const x of controls) lines.push(`${x.pass ? 'CONTROL DID NOT FAIL' : 'control failed as required'}  ${x.name}${x.pass ? `\n       got: ${JSON.stringify(x.got)}` : ''}`);
+lines.push('');
+lines.push(`${results.length - bad.length}/${results.length} checks, ${controls.length - live.length}/${controls.length} controls failed as required`);
+const pass = bad.length === 0 && live.length === 0;
+lines.push(pass ? 'GATE: PASS' : 'GATE: FAIL');
+const out = document.getElementById('out');
+out.textContent = lines.join('\n');
+out.dataset.gate = pass ? 'pass' : 'fail';
+</script>

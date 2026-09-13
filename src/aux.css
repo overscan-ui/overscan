@@ -1,0 +1,129 @@
+/* ---- CASCADE LAYER ------------------------------------------------------
+ *
+ * Everything the kit ships sits in ONE layer named `overscan`, so a consumer's
+ * own CSS beats it without a specificity fight and without !important. That is
+ * close to mandatory for a distributed kit: an app should be able to restyle a
+ * panel by writing a plain rule.
+ *
+ * ⚠️ ONE layer, deliberately, NOT a sub-layer per file. Sub-layers look tidier
+ * and would silently reorder the kit against itself: layer order beats
+ * specificity, so a high-specificity rule in an early file that currently wins
+ * would start losing to a low-specificity rule in a later one. A single layer
+ * preserves source order exactly, so nothing inside the kit changes.
+ *
+ * Unlayered author CSS wins over all of it. That is the point.
+ */
+
+@layer overscan {
+/* Tree, ANSI, tooltip, transport. */
+
+/* ---- tree -------------------------------------------------------------- */
+
+ov-tree {
+  display: block;
+  font-family: var(--ov-font-mono);
+  font-size: var(--ov-size-2);
+  color: var(--ov-ink);
+}
+
+.ov-tree__row {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 3px 8px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.ov-tree__row:hover { background: var(--ov-panel); }
+.ov-tree__row:focus-visible { outline: 2px solid var(--ov-accent); outline-offset: -2px; }
+
+.ov-tree__twisty { color: var(--ov-accent); inline-size: 1em; flex: 0 0 auto; }
+.ov-tree__label { padding-inline-start: calc((var(--lvl, 1) - 1) * 16px); }
+
+/* "empty" and "not loaded" are different states, so they read differently. */
+.ov-tree__note { color: var(--ov-faint); font-size: var(--ov-size-1); }
+.ov-tree__row[data-ov-unknown] .ov-tree__twisty { color: var(--ov-alarm); }
+.ov-tree__row[data-ov-unknown] .ov-tree__note { color: var(--ov-alarm); }
+
+/* ---- ansi -------------------------------------------------------------- */
+
+/* The mapping from ANSI's palette onto this theme's is DECLARED HERE rather
+ * than hidden in script, because it is a choice and not a translation. A
+ * monochrome theme has no green; what it has is one accent, and saying so in
+ * CSS is what makes the choice reviewable. */
+ov-ansi { position: relative; display: block; white-space: pre-wrap; }
+
+.ov-ansi--bold { color: var(--ov-ink); }
+.ov-ansi--dim { color: var(--ov-faint); }
+.ov-ansi--rev { background: var(--ov-lit-bg); color: var(--ov-lit-fg); }
+.ov-ansi--bright { filter: brightness(1.25); }
+
+.ov-ansi--black { color: var(--ov-line-strong); }
+.ov-ansi--red { color: var(--ov-alarm); }
+.ov-ansi--green { color: var(--ov-accent); }
+.ov-ansi--yellow { color: var(--ov-accent-2); }
+.ov-ansi--blue { color: var(--ov-accent-2); }
+.ov-ansi--magenta { color: var(--ov-alarm); }
+.ov-ansi--cyan { color: var(--ov-accent-2); }
+.ov-ansi--white { color: var(--ov-ink); }
+
+/* A colour this theme does not have. Shown in the nearest token and marked, so
+ * the reader can tell the colour is the kit's opinion, not the sender's. */
+.ov-ansi--approx { color: var(--ov-dim); text-decoration: underline dotted; }
+
+ov-ansi[data-ov-approx]::after {
+  content: attr(data-ov-approx-n);
+  display: block;
+  margin-block-start: 6px;
+  font-size: var(--ov-size-1);
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  color: var(--ov-alarm);
+}
+
+/* ---- tooltip ----------------------------------------------------------- */
+
+/* Top layer again, for the same reason as the dialog and the popover. */
+[popover].ov-tip {
+  margin: 0;
+  padding: 6px 10px;
+  inline-size: max-content;
+  max-inline-size: 34ch;
+  background: var(--ov-raised);
+  color: var(--ov-ink);
+  font-family: var(--ov-font-mono);
+  font-size: var(--ov-size-1);
+  line-height: 1.5;
+  border: var(--ov-rule) solid var(--ov-line-strong);
+  position-area: block-start;
+  position-try-fallbacks: block-end, inline-end, inline-start;
+}
+
+/* ---- transport --------------------------------------------------------- */
+
+ov-transport {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-family: var(--ov-font-mono);
+  font-size: var(--ov-size-2);
+  color: var(--ov-ink);
+}
+
+.ov-tp__t { color: var(--ov-dim); font-variant-numeric: tabular-nums; }
+.ov-tp__seek { flex: 1 1 auto; min-inline-size: 90px; }
+
+/* No end, so no fraction of it. The bar is absent and says why, rather than
+ * sitting at zero and looking like the start of a recording. */
+.ov-tp__seek[data-ov-refusal]::after {
+  content: attr(data-ov-refusal);
+  display: block;
+  font-size: var(--ov-size-1);
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  color: var(--ov-alarm);
+}
+
+ov-transport[data-ov-live] .ov-tp__end { color: var(--ov-alarm); }
+}

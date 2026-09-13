@@ -1,0 +1,69 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>ov-dose tests</title>
+<!-- Over tools/serve.py: /tools/dose-test/ . The last case is a CONTROL that must fail. -->
+<link rel="stylesheet" href="../../src/tokens.css">
+<link rel="stylesheet" href="../../src/finish.css">
+<link rel="stylesheet" href="../../src/dose.css">
+<style>
+  body { margin: 0; background: #08080a; color: #ccc; font: 12px ui-monospace, monospace; }
+  .row { display: grid; grid-template-columns: repeat(auto-fill, minmax(420px, 1fr)); gap: 22px; padding: 16px 24px; align-items: start; }
+  .cap { color: #888; margin-block-end: 6px; }
+  #tests { white-space: pre; color: #9f9; padding: 16px 24px; }
+  #tests.fail { color: #f77; }
+</style>
+<section class="ov ov-finish row" data-ov-theme="antiseptic" id="a"></section>
+<div id="tests">running…</div>
+<script type="module">
+  import '../../src/ov-dose.js';
+  await customElements.whenDefined('ov-dose');
+  const mk = (cap, data) => { const d = document.createElement('div'); d.innerHTML = `<div class="cap">${cap}</div>`; const el = document.createElement('ov-dose'); d.append(el); document.getElementById('a').append(d); el.order = data; return el; };
+  const LIB = { version: 'v14 2026-08-30', area: 'ICU ADULT' };
+  const LIM = { unit: 'units/kg/h', hardLow: 5, softLow: 12, softHigh: 25, hardHigh: 40 };
+  const hep = (o = {}) => ({ drug: 'heparin', concentration: '25,000 units / 250 mL', dose: { value: 18, unit: 'units/kg/h' },
+    rate: { value: 13, unit: 'mL/h' }, weight: { value: 72, unit: 'kg', source: 'measured' }, library: LIB, limits: LIM, ...o });
+  const within = mk('within limits', hep());
+  const basic = mk('basic mode', hep({ library: null }));
+  const units = mk('limits in another unit', { drug: 'drug a', dose: { value: 5, unit: 'mg/min' }, library: LIB, limits: { unit: 'mg/h', softHigh: 15, hardHigh: 30 } });
+  const noWeight = mk('per-kg with no weight', hep({ weight: null }));
+  const hold = mk('above soft, not acknowledged', hep({ dose: { value: 30, unit: 'units/kg/h' } }));
+  const over = mk('above soft, acknowledged', hep({ dose: { value: 30, unit: 'units/kg/h' }, acknowledged: { by: 'RN Okafor', reason: 'titrating per protocol', at: '14:02' } }));
+  const noReason = mk('acknowledged, no reason', hep({ dose: { value: 30, unit: 'units/kg/h' }, acknowledged: { by: 'RN Okafor' } }));
+  const hard = mk('above hard, with an acknowledgement', hep({ dose: { value: 45, unit: 'units/kg/h' }, acknowledged: { by: 'RN Okafor', reason: 'urgent' } }));
+  const low = mk('below soft', hep({ dose: { value: 8, unit: 'units/kg/h' } }));
+  const noLim = mk('in the library, no limits', hep({ limits: null }));
+  const oldLib = mk('an old library', hep({ library: { ...LIB, current: 'v15 2026-09-06' } }));
+  const status = mk('a status handed in', hep({ library: null, status: 'ok', inRange: true }));
+  const none = mk('nothing', null);
+  const caseU = mk('units: case and spaces only', hep({ limits: { ...LIM, unit: 'Units / kg / h' } }));
+  const mcg = mk('units: mcg is not mg', { drug: 'drug b', dose: { value: 0.1, unit: 'mcg/kg/min' }, weight: { value: 70 }, library: LIB, limits: { unit: 'mg/kg/min', softHigh: 0.2, hardHigh: 0.3 } });
+
+  const T = (el) => el.textContent;
+  const pos = (el, sel) => [...el.querySelectorAll(sel)].map((x) => parseFloat(x.style.insetInlineStart));
+  const markIn = (el, lo, hi) => { const m = pos(el, '.ov-dose__mark')[0]; return m > lo && m < hi; };
+  const soft = (el) => pos(el, '.ov-dose__tick.is-soft'), hardT = (el) => pos(el, '.ov-dose__tick.is-hard');
+  const state = (el) => el.getAttribute('data-ov-dose');
+  const cases = [
+    ['a checked dose inside its soft limits is WITHIN, on its scale', () => state(within) === 'within' && T(within).includes('WITHIN LIMITS') && markIn(within, Math.min(...soft(within)), Math.max(...soft(within)))],
+    ['⭐ basic mode is UNCHECKED, a refusal, and no scale is drawn', () => state(basic) === 'unchecked' && basic.getAttribute('data-ov-refusal') === 'unknown' && T(basic).includes('UNCHECKED: NO DRUG LIBRARY (BASIC MODE)') && !basic.querySelector('.ov-dose__scale')],
+    ['...the entered dose is still shown as entered', () => basic.querySelector('.ov-dose__value b').textContent === '18' && T(basic).includes('units/kg/h')],
+    ['limits handed in without a library are not used, and say so', () => T(basic).includes('handed in and not used: limits')],
+    ['a dose in another unit is NOT COMPARED, and both units are printed', () => state(units) === 'uncompared' && T(units).includes('NOT COMPARED: LIMITS IN mg/h, DOSE IN mg/min') && !units.querySelector('.ov-dose__scale')],
+    ['units match ignoring case and spaces, and mcg is never mg', () => state(caseU) === 'within' && state(mcg) === 'uncompared'],
+    ['a per-kg dose with no weight is NOT CHECKED', () => state(noWeight) === 'uncompared' && T(noWeight).includes('A PER-KG DOSE WITH NO WEIGHT')],
+    ['past a soft limit, unacknowledged, is HOLD', () => state(hold) === 'hold' && T(hold).includes('HOLD: ABOVE THE SOFT LIMIT, NOT ACKNOWLEDGED') && !hold.querySelector('.ov-dose__override')],
+    ['an acknowledged override stays marked, with who and why', () => state(over) === 'overridden' && /OVERRIDDEN BY RN OKAFOR AT 14:02 · TITRATING PER PROTOCOL/.test(T(over)) && markIn(over, Math.max(...soft(over)), Math.max(...hardT(over)))],
+    ['an acknowledgement with no reason says REASON NOT RECORDED', () => T(noReason).includes('REASON NOT RECORDED')],
+    ['⭐ past a hard limit is BLOCKED, says REPROGRAM, and an acknowledgement is not honoured', () => state(hard) === 'blocked' && T(hard).includes('BLOCKED: ABOVE THE HARD LIMIT, REPROGRAM') && T(hard).includes('CANNOT BYPASS A HARD LIMIT: NOT HONOURED') && !T(hard).includes('OVERRIDDEN BY')],
+    ['below a soft limit is HOLD too, and says below', () => state(low) === 'hold' && T(low).includes('BELOW THE SOFT LIMIT')],
+    ['a drug with no limits in the library is UNCHECKED', () => state(noLim) === 'unchecked' && T(noLim).includes('NO LIMITS FOR THIS DRUG') && !noLim.querySelector('.ov-dose__scale')],
+    ['the library version and care area are always printed, and an old library says so', () => T(within).includes('library v14 2026-08-30 · care area ICU ADULT') && T(oldLib).includes('NOT THE CURRENT LIBRARY (v15 2026-09-06)')],
+    ['a status or inRange handed in is counted and not used', () => state(status) === 'unchecked' && T(status).includes('handed in and not used: status, inRange')],
+    ['no order is the kit refusal', () => none.getAttribute('data-ov-refusal') === 'unknown' && T(none).includes('NO ORDER')],
+    ['CONTROL: basic mode reads as within', () => state(basic) === 'within' || !!basic.querySelector('.ov-dose__scale')],
+  ];
+  let bad = 0;
+  const res = cases.map(([name, fn]) => { let r = false; try { r = !!fn(); } catch (e) { r = false; } const c = name.startsWith('CONTROL'); const pass = c ? !r : r; if (!pass) bad += 1; return `${pass ? 'ok  ' : 'FAIL'} ${name}${c ? ' (must fail)' : ''}`; });
+  const t = document.getElementById('tests'); t.textContent = `${cases.length - bad} of ${cases.length} pass\n` + res.join('\n'); t.classList.toggle('fail', bad > 0);
+  window.doseResults = { total: cases.length, bad, out: res };
+</script>

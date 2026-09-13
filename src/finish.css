@@ -1,0 +1,147 @@
+/* ---- CASCADE LAYER ------------------------------------------------------
+ *
+ * Everything the kit ships sits in ONE layer named `overscan`, so a consumer's
+ * own CSS beats it without a specificity fight and without !important. That is
+ * close to mandatory for a distributed kit: an app should be able to restyle a
+ * panel by writing a plain rule.
+ *
+ * ⚠️ ONE layer, deliberately, NOT a sub-layer per file. Sub-layers look tidier
+ * and would silently reorder the kit against itself: layer order beats
+ * specificity, so a high-specificity rule in an early file that currently wins
+ * would start losing to a low-specificity rule in a later one. A single layer
+ * preserves source order exactly, so nothing inside the kit changes.
+ *
+ * Unlayered author CSS wins over all of it. That is the point.
+ */
+
+@layer overscan {
+/* Overscan finish.
+ *
+ * The finish sits OVER the interface, which is why it is CSS and not a shader:
+ * a GLSL pass cannot sample the DOM. Two pseudo-element layers, no extra markup.
+ *
+ * Everything here erodes contrast, and by an amount that depends on where on
+ * the surface an element sits. tools/finish.py models exactly these rules and
+ * reports the delivered ratio per position. If you change a value here, change
+ * it there, or the model is a claim rather than a measurement.
+ */
+
+.ov-finish {
+  position: relative;
+  isolation: isolate;
+
+  /* The vignette is a BACKGROUND, so it paints behind the panels rather than
+   * over them. Measured 2026-09-09: over content it darkens ink and surface
+   * together toward black, and WCAG's +0.05 flare term does not scale with
+   * them, so the ratio collapses toward 1 with no colour edited anywhere. At
+   * vignette 0.74 that took terminal's ink from 13.87:1 to 1.96:1.
+   *
+   * Behind the panels it costs nothing and still does its job, because nothing
+   * back there has to be legible. Same rule as the shaders: the field is where
+   * effects live, content is not. */
+  background-image: radial-gradient(
+    ellipse 78% 78% at 50% 50%,
+    transparent 38%,
+    rgb(0 0 0 / var(--ov-vignette)) 100%
+  );
+  --ov-grain-tex: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+
+/* Everything on the surface sits above the field, EXCEPT the field itself.
+ * The exclusion is what makes it work: `.ov-finish > *` is a class selector
+ * and `ov-field` is an element selector, so without :not() the more specific rule
+ * wins, the backdrop becomes position:relative, and it takes layout space and
+ * pushes the whole surface down. Two of this kit's own stylesheets fighting
+ * over one property, which is exactly what the specificity note in TOKENS.md
+ * is about. */
+.ov-finish > *:not(ov-field) {
+  position: relative;
+  z-index: 1;
+}
+
+.ov-finish::before,
+.ov-finish::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+/* Grain lifts the surface, so it is a screen blend. Never overlay: overlay
+ * preserves pure black, which is most of every field in this kit. */
+.ov-finish::before {
+  z-index: 1;
+  background-image: var(--ov-grain-tex);
+  background-size: 120px 120px;
+  mix-blend-mode: screen;
+  opacity: var(--ov-grain);
+  animation: ov-grain-drift 700ms steps(1) infinite;
+}
+
+/* Scanlines stay OVER everything: they are the surface of the screen, and a
+ * scanline that stopped at a panel edge would read as a printed pattern rather
+ * than as a display. Their cost is in the palette, which is solved against it:
+ * every token clears its gate with grain and scanline already applied. */
+.ov-finish::after {
+  z-index: 2;
+  background-image: repeating-linear-gradient(
+    to bottom,
+    rgb(0 0 0 / var(--ov-scan-opacity)) 0 1px,
+    transparent 1px var(--ov-scan-pitch)
+  );
+}
+
+/* ---- the page-level surface ---------------------------------------------
+ *
+ * 🔴 A FINISH ON A SURFACE THAT IS THE WHOLE DOCUMENT MUST TRACK THE VIEWPORT.
+ * This is the same finding `field.css` records for `ov-field`, and the finish
+ * had the identical bug for longer, because a gradient has no drawing buffer
+ * to make the cost obvious.
+ *
+ * The home page is 12,561 CSS pixels tall. At dpr 2 that is 25,123 device
+ * pixels, and `position: absolute; inset: 0` asks the compositor for a FIFTY
+ * NINE MEGAPIXEL layer carrying a one-pixel-period repeating gradient, 6,281
+ * repeats from top to bottom. Desktop absorbs it. iOS does not: it rasterises
+ * a layer that size at reduced resolution, and a one-pixel pattern resampled
+ * down does not come back as a fine line, it comes back as THICK BANDS. That
+ * is the bug seen on iPad and never reproducible on a Mac, and it is why fixing
+ * the shader's own scanline changed nothing: the thick lines were never the
+ * shader's, they were this overlay.
+ *
+ * ⭐ And viewport-fixed is not merely cheaper, it is more correct. This file
+ * already argues that scanlines "are the surface of the screen". The surface
+ * of a screen does not scroll with what is displayed on it. Fixing it to the
+ * viewport is what a screen actually does.
+ *
+ * ⚠️ It is opt-in rather than automatic because a small `.ov-finish` is a
+ * little screen of its own and its scanlines belong to IT: making every finish
+ * fixed would paste the theme card's grain across the whole window. Page-level
+ * surfaces say so.
+ *
+ * ⚠️ `.ov-finish` sets `isolation: isolate`, which creates a stacking context
+ * but NOT a containing block, so `fixed` still resolves against the viewport.
+ * A `transform`, `filter` or `will-change` on an ancestor WOULD capture it. */
+.ov-finish--viewport::before,
+.ov-finish--viewport::after {
+  position: fixed;
+}
+
+@keyframes ov-grain-drift {
+  0%   { background-position: 0 0; }
+  25%  { background-position: -37px 19px; }
+  50%  { background-position: 23px -41px; }
+  75%  { background-position: -13px -7px; }
+  100% { background-position: 0 0; }
+}
+
+/* Perpetual motion cancels first. The grain drift never ends and never carries
+ * information, so it is the first thing to stop. A naive
+ * reduced-motion pass leaves exactly this kind of thing running. */
+@media (prefers-reduced-motion: reduce) {
+  .ov-finish::before { animation: none; }
+}
+
+/* A theme is allowed to have no finish at all. antiseptic sets every finish
+ * token to zero, which is the register rather than an omission, and makes it
+ * the only theme whose delivered contrast equals its nominal contrast. */
+}

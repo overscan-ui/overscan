@@ -1,0 +1,115 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>ov-donut tests</title>
+<!-- Over tools/serve.py: /tools/donut-test/ . Cases named CONTROL must fail. -->
+<link rel="stylesheet" href="../../src/tokens.css">
+<link rel="stylesheet" href="../../src/donut.css">
+<style>
+  body { background: #06060a; color: #cfe; font: 13px ui-monospace, monospace; padding: 20px; }
+  pre { white-space: pre-wrap; }
+</style>
+<div id="stage" data-ov-theme="holo"></div>
+<pre id="out">running...</pre>
+<script type="module">
+import '../../src/ov-donut.js';
+
+const stage = document.getElementById('stage');
+const results = [];
+const ok = (name, cond, got) => results.push({ name, pass: !!cond, got });
+const controls = [];
+const control = (name, cond, got) => controls.push({ name, pass: !!cond, got });
+const fresh = (attrs) => {
+  const el = document.createElement('ov-donut');
+  for (const [k, v] of Object.entries(attrs)) el.setAttribute(k, v);
+  stage.replaceChildren(el);
+  return el;
+};
+const sweep = (el, label) => {
+  const p = [...el.querySelectorAll('.ov-donut__slice')].find((x) => x.getAttribute('data-ov-label') === label);
+  return p ? Number(p.getAttribute('data-ov-sweep')) : null;
+};
+const drawn = (el) => [...el.querySelectorAll('.ov-donut__slice')].reduce((t, p) => t + Number(p.getAttribute('data-ov-sweep')), 0);
+const legend = (el, label) => {
+  const li = [...el.querySelectorAll('.ov-donut__item')].find((x) => x.querySelector('.ov-donut__name').textContent === label);
+  return li ? li.querySelector('.ov-donut__val').textContent : null;
+};
+const note = (el) => el.querySelector('.ov-donut__note').textContent;
+const centre = (el) => el.querySelector('.ov-donut__centre').textContent;
+const near = (a, b) => Math.abs(a - b) < 0.01;
+
+let el;
+
+// 1. THE REFUSAL: parts are fractions of the WHOLE, not of their sum.
+el = fresh({ whole: '120', unit: 'MW', parts: 'A=42, B=31, C=9' });
+ok('A is 42/120 of the ring (126 degrees), not 42/82', near(sweep(el, 'A'), 126), sweep(el, 'A'));
+ok('the unattributed wedge holds the rest: 38/120 (114 degrees)', near(sweep(el, 'UNATTRIBUTED'), 114), sweep(el, 'UNATTRIBUTED'));
+ok('...and says its value and share', legend(el, 'UNATTRIBUTED') === '38 MW · 31.67%', legend(el, 'UNATTRIBUTED'));
+control('CONTROL: 82 of 120 is drawn as a full ring of parts (must fail)', near(sweep(el, 'A') + sweep(el, 'B') + sweep(el, 'C'), 360),
+  sweep(el, 'A') + sweep(el, 'B') + sweep(el, 'C'));
+ok('the whole ring is accounted for, parts plus unattributed', near(drawn(el), 360), drawn(el));
+ok('the centre says how much is attributed', /82 \/ 120 MW/.test(centre(el)) && /ATTRIBUTED/.test(centre(el)), centre(el));
+
+// 2. No whole, no proportions.
+el = fresh({ parts: 'A=42, B=31' });
+ok('no whole: nothing is drawn', el.querySelectorAll('.ov-donut__slice').length === 0, el.querySelectorAll('.ov-donut__slice').length);
+ok('...the parts are still listed', legend(el, 'A') === '42' && legend(el, 'B') === '31', [legend(el, 'A'), legend(el, 'B')]);
+ok('...and it says why', /no whole declared/.test(note(el)) && /NO WHOLE DECLARED/.test(centre(el)), note(el));
+
+// 3. A part with no reading is named, not absorbed.
+el = fresh({ whole: '100', parts: 'A=40, SOLAR=null, B=20' });
+ok('a null part is not drawn', sweep(el, 'SOLAR') === null, sweep(el, 'SOLAR'));
+ok('...it is listed as NO DATA', legend(el, 'SOLAR') === 'NO DATA', legend(el, 'SOLAR'));
+ok('...and the unattributed wedge says it includes it', /includes SOLAR: no reading/.test(legend(el, 'UNATTRIBUTED')), legend(el, 'UNATTRIBUTED'));
+
+// 4. More than the whole is drawn as more.
+el = fresh({ whole: '100', unit: 'kW', parts: 'A=70, B=45' });
+ok('parts past the whole fill one lap', near(sweep(el, 'A') + sweep(el, 'B'), 360), sweep(el, 'A') + sweep(el, 'B'));
+ok('...the excess (15) goes on the outer ring: 54 degrees', near(Number(el.querySelector('.ov-donut__over').getAttribute('data-ov-sweep')), 54),
+  el.querySelector('.ov-donut__over').getAttribute('data-ov-sweep'));
+ok('...no unattributed wedge', sweep(el, 'UNATTRIBUTED') === null, null);
+ok('...the centre reads OVER BY 15', /OVER BY 15 kW/.test(centre(el)) && el.getAttribute('data-ov-over') === 'true', centre(el));
+ok('...each part still reports its true share of the whole', legend(el, 'B') === '45 kW · 45%', legend(el, 'B'));
+
+// 5. Negative parts are refused.
+el = fresh({ whole: '100', parts: 'A=50, B=-10' });
+ok('a negative part is not drawn and is REFUSED', sweep(el, 'B') === null && /REFUSED/.test(legend(el, 'B')) && /negative part refused: B/.test(note(el)), legend(el, 'B'));
+
+// 6. A whole that is zero, negative or text is no whole.
+for (const w of ['0', '-5', 'lots']) {
+  el = fresh({ whole: w, parts: 'A=1' });
+  ok(`whole="${w}" is treated as no whole`, el.hasAttribute('data-ov-nowhole') && el.querySelectorAll('.ov-donut__slice').length === 0, w);
+}
+
+// 7. Property: an array replaces; a map is refused.
+el = fresh({ whole: '10', parts: 'A=5' });
+el.parts = [{ label: 'X', value: 4 }, { label: 'Y', value: 1 }];
+ok('the property replaces the parts', sweep(el, 'A') === null && near(sweep(el, 'X'), 144), sweep(el, 'X'));
+el.parts = { X: 4 };
+ok('a map is refused, and said', /not an array/.test(note(el)), note(el));
+
+// 8. Patterns, not colour alone: two parts never share a fill.
+el = fresh({ whole: '100', parts: 'A=10, B=10, C=10, D=10, E=10' });
+const kinds = [...el.querySelectorAll('.ov-donut__slice:not(.ov-donut__slice--unattr)')].map((p) => p.getAttribute('class'));
+ok('five parts, five different patterns', new Set(kinds).size === 5, kinds);
+
+// 9. A part keeps its pattern when another part drops out.
+el = fresh({ whole: '100', parts: 'A=10, B=10, C=10' });
+const patOf = (l) => [...el.querySelectorAll('.ov-donut__slice')].find((p) => p.getAttribute('data-ov-label') === l).getAttribute('class');
+const before = patOf('C');
+el.setAttribute('parts', 'A=10, B=null, C=10');
+ok('C keeps its own pattern when B drops out', patOf('C') === before, [before, patOf('C')]);
+
+const passed = results.filter((x) => x.pass).length;
+const failed = results.length - passed;
+const controlsFailed = controls.filter((x) => !x.pass).length;
+const gate = failed === 0 && controlsFailed === controls.length && controls.length > 0;
+const out = document.getElementById('out');
+out.textContent = [
+  ...results.map((x) => `${x.pass ? 'PASS' : 'FAIL'}  ${x.name}${x.pass ? '' : '  got ' + JSON.stringify(x.got)}`),
+  ...controls.map((x) => `${x.pass ? 'CONTROL PASSED (BAD)' : 'CONTROL FAILED (good)'}  ${x.name}`),
+  '',
+  `${passed} passed, ${failed} failed, ${controlsFailed}/${controls.length} controls failed as required`,
+  `GATE: ${gate ? 'PASS' : 'FAIL'}`,
+].join('\n');
+out.setAttribute('data-gate', gate ? 'pass' : 'fail');
+</script>

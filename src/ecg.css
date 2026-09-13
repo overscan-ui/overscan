@@ -1,0 +1,204 @@
+@layer overscan {
+/* The bedside rhythm strip. See ov-ecg.js for the refusal.
+ *
+ * 🔴 NOTHING RESTS ON COLOUR. Every state is a word the element writes, and
+ * the drawing differs in form: a live trace is a solid line with a moving
+ * cursor, a disconnected lead is a DOTTED RAIL and no trace at all (never a
+ * solid flat line, which would read as asystole), a stopped signal keeps its
+ * last trace with the cursor stilled and marked, and an artefact trace is
+ * drawn while its numeric is replaced by a question mark.
+ *
+ * Glow scales with the theme's --ov-bloom, so a flat theme stays flat.
+ */
+
+ov-ecg {
+  --ov-ecg-glow: calc(var(--ov-bloom, .2) * 16px);
+  display: grid;
+  gap: 8px;
+  min-inline-size: 0;
+  font-family: var(--ov-font-mono);
+  font-size: var(--ov-size-1, 10px);
+  color: var(--ov-ink);
+}
+
+.ov-ecg__head {
+  display: flex;
+  align-items: baseline;
+  gap: 1.5ch;
+  padding-block-end: 6px;
+  border-block-end: var(--ov-rule, 1px) solid var(--ov-line);
+}
+.ov-ecg__label {
+  flex: 1 1 auto;
+  font-size: var(--ov-size-2, 12px);
+  letter-spacing: .14em;
+  text-transform: uppercase;
+}
+.ov-ecg__lead {
+  color: var(--ov-faint);
+  letter-spacing: .12em;
+  white-space: nowrap;
+}
+.ov-ecg__state {
+  padding: 2px 6px;
+  border: var(--ov-rule, 1px) solid var(--ov-accent);
+  color: var(--ov-accent);
+  letter-spacing: .14em;
+  white-space: nowrap;
+}
+ov-ecg:not([data-ov-signal="live"]) .ov-ecg__state {
+  border-style: dashed;
+  border-color: var(--ov-alarm);
+  color: var(--ov-alarm);
+}
+ov-ecg[data-ov-signal="leads-off"] .ov-ecg__state { border: 3px double var(--ov-alarm); }
+
+.ov-ecg__body {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(84px, max-content);
+  gap: 12px;
+  align-items: stretch;
+}
+
+/* ---- the strip -------------------------------------------------------- */
+
+.ov-ecg__strip {
+  display: block;
+  inline-size: 100%;
+  block-size: 130px;
+  background: color-mix(in srgb, var(--ov-field) 82%, #000);
+  border: var(--ov-rule, 1px) solid var(--ov-line);
+}
+.ov-ecg__grid {
+  stroke: color-mix(in srgb, var(--ov-line) 45%, transparent);
+  stroke-width: 1;
+  vector-effect: non-scaling-stroke;
+}
+.ov-ecg__rail {
+  fill: none;
+  stroke: color-mix(in srgb, var(--ov-line) 80%, transparent);
+  stroke-width: 1;
+  vector-effect: non-scaling-stroke;
+}
+/* A disconnected lead: a dotted rail in the alarm colour, and NO trace. */
+ov-ecg[data-ov-signal="leads-off"] .ov-ecg__rail {
+  stroke: var(--ov-alarm);
+  stroke-width: 2;
+  stroke-dasharray: 3 7;
+}
+.ov-ecg__trace {
+  fill: none;
+  stroke: var(--ov-accent);
+  stroke-width: 2;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+  vector-effect: non-scaling-stroke;
+  filter: drop-shadow(0 0 var(--ov-ecg-glow) currentColor);
+  color: var(--ov-accent);
+}
+ov-ecg[data-ov-signal="artifact"] .ov-ecg__trace { stroke: var(--ov-alarm); color: var(--ov-alarm); }
+ov-ecg[data-ov-signal="stopped"] .ov-ecg__trace {
+  stroke: var(--ov-faint);
+  color: var(--ov-faint);
+  stroke-dasharray: 6 4;
+}
+/* The flat lines, each its own form. A called asystole: solid, alarm colour.
+   A flat trace nobody called: solid, in ink, no glow. Paused: no trace, a
+   long-dashed rail in the faint colour. */
+ov-ecg[data-ov-signal="asystole"] .ov-ecg__trace { stroke: var(--ov-alarm); color: var(--ov-alarm); stroke-width: 3; }
+ov-ecg[data-ov-signal="asystole"] .ov-ecg__state { border: 3px double var(--ov-alarm); }
+ov-ecg[data-ov-signal="flat"] .ov-ecg__trace { stroke: var(--ov-ink); color: var(--ov-ink); filter: none; }
+ov-ecg[data-ov-signal="paused"] .ov-ecg__rail { stroke: var(--ov-faint); stroke-width: 2; stroke-dasharray: 16 10; }
+ov-ecg[data-ov-signal="paused"] .ov-ecg__state { border-color: var(--ov-faint); color: var(--ov-faint); }
+ov-ecg[data-ov-signal="paused"] :is(.ov-ecg__num, .ov-ecg__why) { color: var(--ov-faint); }
+
+.ov-ecg__pace {
+  fill: none;
+  stroke: var(--ov-ink);
+  stroke-width: 1.5;
+  stroke-dasharray: 4 3;
+  vector-effect: non-scaling-stroke;
+  opacity: .8;
+}
+.ov-ecg__blank { fill: color-mix(in srgb, var(--ov-field) 82%, #000); }
+.ov-ecg__cursor {
+  stroke: var(--ov-accent);
+  stroke-width: 2;
+  vector-effect: non-scaling-stroke;
+  filter: drop-shadow(0 0 var(--ov-ecg-glow) var(--ov-accent));
+}
+/* A cursor that is not moving says so by shape, not only by standing still. */
+.ov-ecg__cursor[data-ov-moving="no"] {
+  stroke: var(--ov-alarm);
+  stroke-dasharray: 4 4;
+  filter: none;
+}
+
+/* ---- the numeric ------------------------------------------------------ */
+
+.ov-ecg__numbers {
+  display: grid;
+  align-content: start;
+  gap: 2px;
+  padding-inline-start: 10px;
+  border-inline-start: var(--ov-rule, 1px) solid var(--ov-line);
+}
+.ov-ecg__rate { display: flex; align-items: baseline; gap: .6ch; }
+.ov-ecg__num {
+  font-size: var(--ov-size-5, 34px);
+  line-height: 1;
+  letter-spacing: .02em;
+  color: var(--ov-accent);
+  text-shadow: 0 0 var(--ov-ecg-glow) currentColor;
+  font-variant-numeric: tabular-nums;
+}
+/* The question mark in place of the numeric: the bedside monitor's own rule. */
+ov-ecg:not([data-ov-signal="live"]) .ov-ecg__num,
+ov-ecg[data-ov-alarm] .ov-ecg__num { color: var(--ov-alarm); }
+.ov-ecg__unit { color: var(--ov-faint); letter-spacing: .1em; }
+.ov-ecg__limits { color: var(--ov-faint); letter-spacing: .1em; }
+ov-ecg[data-ov-alarm] .ov-ecg__limits { color: var(--ov-alarm); }
+.ov-ecg__qualifier { color: var(--ov-alarm); letter-spacing: .1em; line-height: 1.3; }
+.ov-ecg__qualifier:empty { display: none; }
+
+.ov-ecg__why {
+  color: var(--ov-alarm);
+  letter-spacing: .1em;
+  line-height: 1.4;
+}
+.ov-ecg__why:empty { display: none; }
+
+/* The mark that keeps a mockup from passing for a device. */
+.ov-ecg__demo {
+  padding: 3px 6px;
+  border: var(--ov-rule, 1px) dashed var(--ov-line);
+  color: var(--ov-faint);
+  letter-spacing: .16em;
+  text-align: center;
+}
+.ov-ecg__demo:empty { display: none; }
+
+.ov-ecg__say {
+  position: absolute;
+  inline-size: 1px;
+  block-size: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+@media (max-width: 420px) {
+  .ov-ecg__body { grid-template-columns: minmax(0, 1fr); }
+  .ov-ecg__numbers {
+    padding-inline-start: 0;
+    border-inline-start: 0;
+    padding-block-start: 6px;
+    border-block-start: var(--ov-rule, 1px) solid var(--ov-line);
+  }
+}
+
+/* Reduced motion: the cursor is not a moving part, it is where the pen is. */
+@media (prefers-reduced-motion: reduce) {
+  .ov-ecg__cursor { stroke-dasharray: 2 3; }
+}
+}

@@ -1,0 +1,71 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>ov-term parser tests</title>
+<!-- Open over tools/serve.py: http://localhost:8842/tools/term-test/ . The last case is a
+     CONTROL that must fail, so a harness that passes everything is caught. -->
+<link rel="stylesheet" href="../../src/tokens.css">
+<link rel="stylesheet" href="../../src/finish.css">
+<link rel="stylesheet" href="../../src/aux.css">
+<link rel="stylesheet" href="../../src/term.css">
+<style>
+  body { margin: 0; background: #08080a; color: #ccc; font: 12px ui-monospace, monospace; }
+  section { padding: 16px 24px; display: grid; gap: 12px; }
+  #tests { white-space: pre; color: #9f9; }
+  #tests.fail { color: #f77; }
+</style>
+<section class="ov ov-finish" data-ov-theme="terminal">
+  <ov-term id="status" src="../../demo/sessions/status.txt" cols="62" rows="21"></ov-term>
+</section>
+<section class="ov ov-finish" data-ov-theme="neo">
+  <ov-term id="neo" src="../../demo/sessions/neo.txt" cols="44" rows="7"></ov-term>
+</section>
+<section><div id="tests">running…</div></section>
+<script type="module">
+  import '../../src/ov-term.js';
+  const E = '\x1b', CSI = E + '[';
+  const rowText = (t, r) => t.buf[r].map((c) => c.ch).join('');
+  const cases = [];
+  const test = (name, fn) => cases.push([name, fn]);
+  const fresh = (cols = 10, rows = 4) => {
+    const t = document.createElement('ov-term');
+    t.setAttribute('cols', cols); t.setAttribute('rows', rows);
+    t.style.display = 'none'; document.body.append(t); return t;
+  };
+  test('CUP places the cursor, 1-based', (t) => { t.write(`${CSI}2;3HX`); return rowText(t, 1) === '  X       '; });
+  test('EL clears to end of line', (t) => { t.write(`abcdef${CSI}1;3H${CSI}K`); return rowText(t, 0) === 'ab        '; });
+  test('ED 2 clears the screen', (t) => { t.write(`abc\r\ndef${CSI}2J`); return rowText(t, 0).trim() === '' && rowText(t, 1).trim() === ''; });
+  test('autowrap at the last column', (t) => { t.write('0123456789AB'); return rowText(t, 0) === '0123456789' && rowText(t, 1).startsWith('AB'); });
+  test('LF at the bottom scrolls', (t) => { t.write('a\r\nb\r\nc\r\nd\r\ne'); return rowText(t, 0)[0] === 'b' && rowText(t, 3)[0] === 'e'; });
+  test('scroll region confines scrolling', (t) => { t.write(`TOP${CSI}2;3r${CSI}3;1Hx\r\ny\r\nz`); return rowText(t, 0).startsWith('TOP') && rowText(t, 2)[0] === 'z'; });
+  test('ICH inserts, DCH deletes', (t) => { t.write(`abcd${CSI}1;2H${CSI}2@`); const a = rowText(t, 0).startsWith('a  bcd'); t.write(`${CSI}1;2H${CSI}2P`); return a && rowText(t, 0).startsWith('abcd'); });
+  test('wide glyph takes two cells', (t) => { t.write('アb'); return t.buf[0][0].w === 2 && t.buf[0][1].w === 0 && t.buf[0][2].ch === 'b'; });
+  test('DEC line drawing maps q to a rule', (t) => { t.write(`${E}(0lqk${E}(Bq`); return rowText(t, 0).startsWith('┌─┐q'); });
+  test('DECSC/DECRC restore the cursor', (t) => { t.write(`${CSI}3;4H${E}7${CSI}1;1H${E}8X`); return rowText(t, 2)[3] === 'X'; });
+  test('an unimplemented sequence is refused, not printed', (t) => { t.write(`${CSI}?1049hA`); return rowText(t, 0).startsWith('A ') && [...t.refused.keys()].some((k) => k.includes('alternate screen')) && t.marks.has('0,0'); });
+  test('an OSC title is refused, not printed', (t) => { t.write(`${E}]0;hello\x07B`); return rowText(t, 0)[0] === 'B' && [...t.refused.keys()].some((k) => k.includes('window title')); });
+  test('a sequence split across writes still parses', (t) => { t.write(`${CSI}2`); t.write(';2HZ'); return rowText(t, 1)[1] === 'Z' && t.refused.size === 0; });
+  test('256-colour is counted, not invented', (t) => { t.write(`${CSI}38;5;208mX`); return t.approx === 1 && t.buf[0][0].cls.includes('ov-ansi--approx'); });
+  test('background colour is counted, not dropped', (t) => { t.write(`${CSI}41mX`); return t.approx === 1; });
+  test('refusal marks scroll with their text', (t) => { t.write(`${CSI}4;1H${CSI}?1h\n`); return t.marks.has('2,0') && !t.marks.has('3,0'); });
+  // ⚠️ The harness must be able to fail: a deliberately false case.
+  test('CONTROL: a false claim is caught', (t) => { t.write('abc'); return rowText(t, 0).startsWith('xyz'); });
+
+  await customElements.whenDefined('ov-term');
+  const out = [];
+  let bad = 0;
+  for (const [name, fn] of cases) {
+    const t = fresh();
+    t.reset();
+    let ok = false;
+    try { ok = !!fn(t); } catch (e) { ok = false; }
+    t.remove();
+    const control = name.startsWith('CONTROL');
+    const pass = control ? !ok : ok;
+    if (!pass) bad += 1;
+    out.push(`${pass ? 'ok  ' : 'FAIL'} ${name}${control ? ' (must fail)' : ''}`);
+  }
+  const el = document.getElementById('tests');
+  el.textContent = `${cases.length - bad} of ${cases.length} pass\n` + out.join('\n');
+  el.classList.toggle('fail', bad > 0);
+  window.termResults = { total: cases.length, bad, out };
+</script>

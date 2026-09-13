@@ -1,0 +1,184 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>ov-orbit harness</title>
+<!-- The refusal gate for src/ov-orbit.js. Serve the repo root
+     (python3 tools/serve.py) and open tools/orbit-test/. The last line must
+     read GATE: PASS, and every CONTROL (an assertion false on purpose) must
+     fail. -->
+<link rel="stylesheet" href="../../src/tokens.css">
+<link rel="stylesheet" href="../../src/orbit.css">
+<style>
+  body { background: #06060a; color: #cfe; font: 13px ui-monospace, monospace; padding: 20px; }
+  pre { white-space: pre-wrap; }
+</style>
+<div id="stage" data-ov-theme="holo"></div>
+<pre id="out">running...</pre>
+<script type="module">
+import { OvOrbit } from '../../src/ov-orbit.js';
+
+const stage = document.getElementById('stage');
+const results = [];
+const ok = (name, cond, got) => results.push({ name, pass: !!cond, got });
+const controls = [];
+const control = (name, cond, got) => controls.push({ name, pass: !!cond, got });
+
+// A conic around the origin: r = a(1-e^2)/(1+e cos v), sampled from v0 to v1.
+function arc({ a = 8000, e = 0.4, v0 = 0, v1 = Math.PI * 1.4, n = 40, sigma = (i) => 50 + i * 20, dt = 60 } = {}) {
+  const out = [];
+  for (let i = 0; i < n; i++) {
+    const v = v0 + (v1 - v0) * i / (n - 1);
+    const r = a * (1 - e * e) / (1 + e * Math.cos(v));
+    out.push({ x: r * Math.cos(v), y: r * Math.sin(v), t: i * dt, sigma: sigma(i) });
+  }
+  return out;
+}
+const fresh = (attrs = {}) => {
+  const el = document.createElement('ov-orbit');
+  el.setAttribute('label', 'MARS');
+  el.setAttribute('body', '3390');
+  el.setAttribute('extent', '12000');
+  for (const [k, v] of Object.entries(attrs)) el.setAttribute(k, v);
+  stage.replaceChildren(el);
+  return el;
+};
+const notes = (el) => el.querySelector('.ov-orbit__notes').textContent;
+const polylines = (el) => [...el.querySelectorAll('.ov-orbit__path')].map((p) => p.getAttribute('points').trim().split(/\s+/));
+let el;
+
+// 1. No prediction: the body, no path, and the protocol's unknown.
+el = fresh();
+ok('no prediction draws no path', el.querySelectorAll('.ov-orbit__path').length === 0, el.innerHTML.slice(0, 120));
+ok('...and says NO PREDICTION', /NO PREDICTION/.test(notes(el)), notes(el));
+ok('...marked as the kit refusal unknown', el.getAttribute('data-ov-refusal') === 'unknown', el.getAttribute('data-ov-refusal'));
+ok('the body is still drawn', !!el.querySelector('.ov-orbit__body'), '');
+
+// 2. THE REFUSAL: exactly the points given, open, ending at a horizon.
+el = fresh();
+const P = arc();
+el.prediction = { path: P, horizon: 'SOI exit' };
+const all = polylines(el).flat();
+ok('the path carries exactly the points given, no more', new Set(all).size === P.length, [new Set(all).size, P.length]);
+const first = polylines(el)[0][0], lines = polylines(el), last = lines[lines.length - 1].slice(-1)[0];
+ok('it is open: the last vertex is not the first', first !== last, [first, last]);
+ok('no path element is closed (no polygon, no Z)', !el.querySelector('path.ov-orbit__path') && !el.querySelector('polygon.ov-orbit__path'), '');
+ok('a horizon bar is drawn at the end', !!el.querySelector('.ov-orbit__horizon'), '');
+ok('...and it says when and why', /^HORIZON T\+39m · SOI EXIT/.test(notes(el)), notes(el));
+
+// A path that goes all the way round is still not closed by the element.
+el = fresh();
+const round = arc({ v1: Math.PI * 2 - 0.05, n: 60 });
+el.prediction = { path: round, horizon: 'CONIC LIMIT' };
+const pl = polylines(el).flat();
+ok('a nearly-closed path gets no closing segment', pl[0] !== pl[pl.length - 1] && pl.length === round.length, [pl[0], pl[pl.length - 1], pl.length]);
+control('CONTROL: the element closed the loop (must fail)', pl[0] === pl[pl.length - 1], [pl[0], pl[pl.length - 1]]);
+
+// 3. No reason given for the horizon: it still stops, and says so.
+el = fresh();
+el.prediction = { path: arc() };
+ok('a horizon without a reason says REASON NOT GIVEN', /REASON NOT GIVEN/.test(notes(el)), notes(el));
+
+// 4. Uncertainty: a band while sigma is known; dashed and unbanded after.
+el = fresh();
+el.prediction = { path: arc({ sigma: (i) => (i < 25 ? 60 + i * 25 : null) }), horizon: 'SOI exit' };
+ok('a band is drawn for the banded run', !!el.querySelector('.ov-orbit__band'), '');
+ok('the tail without sigma is a dashed polyline', !!el.querySelector('.ov-orbit__path--unbanded'), '');
+ok('...and the notes admit it from the right point', /UNCERTAINTY NOT GIVEN AFTER POINT 25/.test(notes(el)), notes(el));
+ok('the band covers only the banded run', el.report.banded === 25, el.report);
+control('CONTROL: the band was carried to the end (must fail)', el.report.banded === 40, el.report.banded);
+
+el = fresh();
+el.prediction = { path: arc({ sigma: () => null }), horizon: 'SOI exit' };
+ok('no sigma at all: no band, whole path dashed', !el.querySelector('.ov-orbit__band') && !!el.querySelector('.ov-orbit__path--unbanded'), '');
+
+// 5. A prediction has an age.
+el = fresh({ 'max-age': '60' });
+el.prediction = { path: arc(), horizon: 'SOI exit', age: 95 };
+ok('past max-age the prediction is stale', el.report.state === 'stale' && el.getAttribute('data-ov-qualified') === 'stale', el.report);
+ok('...and says how old', /PREDICTION 95s OLD/.test(notes(el)), notes(el));
+el.prediction = { path: arc(), horizon: 'SOI exit', age: 20 };
+ok('inside max-age it is current', el.report.state === 'current' && !el.hasAttribute('data-ov-qualified'), el.report);
+
+// 6. Off the plot is counted; bad points are counted.
+el = fresh({ extent: '6000' });
+el.prediction = { path: arc(), horizon: 'SOI exit' };
+ok('points beyond the extent are counted', el.report.off > 0 && /POINTS OFF PLOT/.test(notes(el)), [el.report.off, notes(el)]);
+el = fresh();
+el.prediction = { path: [...arc({ n: 10 }), { x: 'x', y: null }], horizon: 'SOI exit' };
+ok('a point with no position is counted, not drawn', el.report.bad === 1 && /1 POINTS WITHOUT A POSITION/.test(notes(el)), notes(el));
+
+// 7. Burns and target.
+el = fresh();
+const B = arc(); B[10].burn = 'BURN 1'; B[30].burn = 'BURN 2';
+el.prediction = { path: B, horizon: 'SOI exit', target: { x: 9000, y: 2000, label: 'DEIMOS' } };
+ok('two burns are marked', el.querySelectorAll('.ov-orbit__burn').length === 2, '');
+ok('the target is drawn and named', !!el.querySelector('.ov-orbit__target') && /DEIMOS/.test(el.querySelector('svg').textContent), '');
+
+// 8. null later is NO PREDICTION again.
+el.prediction = null;
+ok('setting null is NO PREDICTION', el.getAttribute('data-ov-refusal') === 'unknown' && /NO PREDICTION/.test(notes(el)), notes(el));
+
+// 9. Accessible name.
+el.prediction = { path: arc(), horizon: 'SOI exit' };
+ok('role img, name says the horizon', el.getAttribute('role') === 'img' && /mars, horizon t\+39m · soi exit/.test(el.getAttribute('aria-label')), el.getAttribute('aria-label'));
+
+// 10. THE CONE. Circles whose radii come from past errors, a stated rate,
+// and never a claim about the object's size.
+const coneArc = (o = {}) => arc({ sigma: () => 70, ...o }).map((q, i) => ({ ...q, r: o.r ? o.r(i) : 150 + i * 40 }));
+const RATE = { contains: 0.67, basis: '2021-2025 official errors' };
+el = fresh();
+el.prediction = { path: coneArc(), horizon: 'SOI exit', cone: RATE };
+ok('a calibrated cone is drawn, and the sigma band is not', !!el.querySelector('.ov-orbit__cone') && !el.querySelector('.ov-orbit__band'), '');
+ok('...one circle per point, each at its own radius', el.querySelectorAll('.ov-orbit__circle').length === 40 && Number(el.querySelectorAll('.ov-orbit__circle')[5].getAttribute('r')) === 350, el.querySelectorAll('.ov-orbit__circle').length);
+ok('...joined by outer tangents between each pair', el.querySelectorAll('.ov-orbit__join').length === 39, el.querySelectorAll('.ov-orbit__join').length);
+ok('it prints its rate and its basis', /CENTRE INSIDE EACH CIRCLE 67% OF THE TIME · 2021-2025 OFFICIAL ERRORS/.test(notes(el)), notes(el));
+ok('with no whole-path rate it says only "less often than that"', /WHOLE PATH INSIDE LESS OFTEN THAN THAT/.test(notes(el)), notes(el));
+ok('and it always says the cone is not the object\'s size', /THE CONE IS WHERE THE CENTRE MAY GO, NOT ITS SIZE: EFFECTS CAN REACH BEYOND IT/.test(notes(el)), notes(el));
+ok('the cone has no outline', [...el.querySelectorAll('.ov-orbit__circle, .ov-orbit__join')].every((x) => getComputedStyle(x).stroke === 'none'), '');
+el.prediction = { path: coneArc(), horizon: 'SOI exit', cone: { ...RATE, whole: 'about 60-70% of the time', reach: '400 km' } };
+ok('a whole-path rate and a reach are printed as given', /WHOLE PATH INSIDE ABOUT 60-70% OF THE TIME/.test(notes(el)) && /EFFECTS REACH 400 KM BEYOND IT/.test(notes(el)), notes(el));
+ok('the report says the cone was drawn', el.report.cone && el.report.cone.drawn && el.report.cone.coned === 40, el.report.cone);
+
+// A tangent really is tangent: every join vertex lies on its circle.
+const circ = [...el.querySelectorAll('.ov-orbit__circle')].map((c) => [+c.getAttribute('cx'), +c.getAttribute('cy'), +c.getAttribute('r')]);
+const j0 = el.querySelector('.ov-orbit__join').getAttribute('points').split(' ').map((v) => v.split(',').map(Number));
+const onCircle = (pt, c) => Math.abs(Math.hypot(pt[0] - c[0], pt[1] - c[1]) - c[2]) < 0.2;
+ok('join corners lie on the two circles they join', onCircle(j0[0], circ[0]) && onCircle(j0[3], circ[0]) && onCircle(j0[1], circ[1]) && onCircle(j0[2], circ[1]), j0);
+
+// No rate, no basis, a certain rate: no cone.
+el = fresh();
+el.prediction = { path: coneArc(), horizon: 'SOI exit', cone: { basis: 'x' } };
+ok('a cone with no containment rate is not drawn', !el.querySelector('.ov-orbit__cone') && /CONE NOT DRAWN: NO CONTAINMENT RATE/.test(notes(el)), notes(el));
+ok('...and the path is dashed, since nothing about its spread is drawn', !!el.querySelector('.ov-orbit__path--unbanded') && !el.querySelector('.ov-orbit__band'), '');
+control('CONTROL: an unrated cone was drawn (must fail)', !!el.querySelector('.ov-orbit__cone'), '');
+el.prediction = { path: coneArc(), horizon: 'SOI exit', cone: { contains: 0.67 } };
+ok('a cone with a rate but no basis is not drawn', !el.querySelector('.ov-orbit__cone') && /NO BASIS FOR ITS RATE/.test(notes(el)), notes(el));
+el.prediction = { path: coneArc(), horizon: 'SOI exit', cone: { contains: 1, basis: 'x' } };
+ok('a rate of 100% is refused: that is a claim of certainty', !el.querySelector('.ov-orbit__cone') && /NO CONTAINMENT RATE/.test(notes(el)), notes(el));
+
+// Later times are stippled.
+el = fresh();
+el.prediction = { path: coneArc(), horizon: 'SOI exit', cone: { ...RATE, solidUntil: 1800 } };
+const lateC = el.querySelectorAll('.ov-orbit__cone--late .ov-orbit__circle').length;
+ok('after solidUntil the circles are stippled, before it solid', lateC === 9 && el.querySelectorAll('.ov-orbit__cone:not(.ov-orbit__cone--late) .ov-orbit__circle').length === 31, lateC);
+ok('...and the notes say from when', /STIPPLED AFTER T\+30m: LESS CERTAIN/.test(notes(el)), notes(el));
+
+// The cone stops where the radii do.
+el = fresh();
+el.prediction = { path: coneArc({ r: (i) => (i < 22 ? 150 + i * 40 : null) }), horizon: 'SOI exit', cone: RATE };
+ok('the cone stops at the first point with no radius', el.querySelectorAll('.ov-orbit__circle').length === 22 && el.report.cone.coned === 22, el.querySelectorAll('.ov-orbit__circle').length);
+ok('...the rest of the path is dashed and says so', !!el.querySelector('.ov-orbit__path--unbanded') && /CONE NOT GIVEN AFTER POINT 22/.test(notes(el)), notes(el));
+control('CONTROL: the sigma band was drawn in cone mode (must fail)', !!el.querySelector('.ov-orbit__band'), '');
+
+const passed = results.filter((x) => x.pass).length;
+const failed = results.length - passed;
+const controlsFailed = controls.filter((x) => !x.pass).length;
+const gate = failed === 0 && controlsFailed === controls.length && controls.length > 0;
+const out = document.getElementById('out');
+out.textContent = [
+  ...results.map((x) => `${x.pass ? 'PASS' : 'FAIL'}  ${x.name}${x.pass ? '' : '  got ' + JSON.stringify(x.got)}`),
+  ...controls.map((x) => `${x.pass ? 'CONTROL PASSED (BAD)' : 'CONTROL FAILED (good)'}  ${x.name}`),
+  '', `${passed} passed, ${failed} failed, ${controlsFailed}/${controls.length} controls failed as required`,
+  `GATE: ${gate ? 'PASS' : 'FAIL'}`,
+].join('\n');
+out.setAttribute('data-gate', gate ? 'pass' : 'fail');
+</script>

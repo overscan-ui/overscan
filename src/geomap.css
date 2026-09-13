@@ -1,0 +1,79 @@
+@layer overscan {
+/* Countries and great-circle routes on a flat world. See ov-geomap.js.
+ *
+ * 🔴 NOTHING RESTS ON COLOUR. A flown leg is solid and the leg ahead dashed; a
+ * fresh fix is a filled head and a stale, undated or future one a hollow head
+ * with a dashed rim; the straight screen line is dotted; and every state is
+ * also a word in the label. The ping is the only motion, and only on a fix
+ * that is fresh and moved.
+ */
+
+ov-geomap {
+  display: block;
+  min-inline-size: 0;
+  background: var(--ov-panel);
+  border: var(--ov-bezel) solid var(--ov-line-strong);
+}
+.ov-geomap__svg { display: block; inline-size: 100%; block-size: auto; }
+.ov-geomap__grid { fill: none; stroke: var(--ov-line); stroke-width: .15; }
+.ov-geomap__land { fill: color-mix(in oklab, var(--ov-accent) 9%, transparent); }
+.ov-geomap__border {
+  fill: none;
+  stroke: color-mix(in oklab, var(--ov-accent) 45%, transparent);
+  stroke-width: .6px;
+  stroke-linejoin: round;
+  vector-effect: non-scaling-stroke;
+}
+.ov-geomap__route { fill: none; stroke-width: 1.4px; vector-effect: non-scaling-stroke; }
+.ov-geomap__route.is-flown { stroke: var(--ov-accent); }
+.ov-geomap__route.is-ahead { stroke: var(--ov-faint); stroke-dasharray: 3 3; }
+.ov-geomap__naive {
+  fill: none;
+  stroke: var(--ov-alarm);
+  stroke-width: 1px;
+  stroke-dasharray: 1 3;
+  vector-effect: non-scaling-stroke;
+}
+.ov-geomap__end { fill: var(--ov-panel); stroke: var(--ov-ink); stroke-width: 1px; vector-effect: non-scaling-stroke; }
+.ov-geomap__head circle { fill: var(--ov-accent); stroke: var(--ov-accent); stroke-width: 1.2px; vector-effect: non-scaling-stroke; }
+:is([data-ov-state="stale"], [data-ov-state="undated"], [data-ov-state="ahead"]) > .ov-geomap__head circle {
+  fill: var(--ov-panel);
+  stroke: var(--ov-alarm);
+  stroke-dasharray: 2 1.5;
+}
+.ov-geomap__ping {
+  fill: none !important;
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: ov-geomap-ping 1.6s ease-out infinite;
+}
+@keyframes ov-geomap-ping { from { transform: scale(1); opacity: .9; } to { transform: scale(3.2); opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { .ov-geomap__ping { animation: none; opacity: 0; } }
+.ov-geomap__label {
+  fill: var(--ov-ink);
+  font-family: var(--ov-font-mono);
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  paint-order: stroke;
+  stroke: var(--ov-panel);
+  stroke-width: .3em;
+  stroke-linejoin: round;
+}
+.ov-geomap__sub { fill: var(--ov-dim); font-size: .88em; }
+:is([data-ov-state="stale"], [data-ov-state="undated"], [data-ov-state="ahead"]) .ov-geomap__sub { fill: var(--ov-alarm); }
+.ov-geomap__key {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+  padding: 6px 8px;
+  border-block-start: var(--ov-rule) solid var(--ov-line);
+  font: var(--ov-size-1, 11px)/1.4 var(--ov-font-mono);
+  color: var(--ov-faint);
+}
+.ov-geomap__key i { display: inline-block; inline-size: 12px; block-size: 2px; margin: 0 6px 0 10px; vertical-align: middle; }
+.ov-geomap__key i:first-child { margin-inline-start: 0; }
+.ov-geomap__key i.is-flown { background: var(--ov-accent); }
+.ov-geomap__key i.is-ahead { background: repeating-linear-gradient(90deg, var(--ov-faint) 0 3px, transparent 3px 6px); }
+.ov-geomap__key i.is-naive { background: repeating-linear-gradient(90deg, var(--ov-alarm) 0 1px, transparent 1px 4px); }
+.ov-geomap__refuse { color: var(--ov-alarm); font-weight: 400; letter-spacing: .06em; }
+}

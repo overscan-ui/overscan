@@ -1,0 +1,216 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>ov-ecg harness</title>
+<!-- The refusal gate for the ov-ecg Serve the repo root
+     (tools/serve.py) and open /tools/ecg-test/. The last line must read
+     GATE: PASS, and every CONTROL (an assertion false on purpose) must fail. -->
+<link rel="stylesheet" href="../../src/tokens.css">
+<link rel="stylesheet" href="../../src/ecg.css">
+<style>
+  body { background: #06060a; color: #cfe; font: 13px ui-monospace, monospace; padding: 20px; }
+  pre { white-space: pre-wrap; }
+  #stage { max-inline-size: 520px; }
+</style>
+<div id="stage" data-ov-theme="antiseptic"></div>
+<pre id="out">running...</pre>
+<script type="module">
+const SRC = new URLSearchParams(location.search).get('src') || '../../src/ov-ecg.js';
+const { OvEcg } = await import(new URL(SRC, location.href).href);
+// Timers start only once the page has arrived; wait for that, as a page would.
+await new Promise((r) => window.Overscan.whenArrived(r));
+
+const stage = document.getElementById('stage');
+const results = [];
+const ok = (name, cond, got) => results.push({ name, pass: !!cond, got });
+const controls = [];
+const control = (name, cond, got) => controls.push({ name, pass: !!cond, got });
+const settle = () => new Promise((r) => setTimeout(r, 0));
+
+let NOW = 1_800_000_000_000;
+OvEcg.now = () => NOW;
+
+// A second of plausible waveform, made here: the element never makes one.
+const wave = (n = 250, bpm = 72) => Array.from({ length: n }, (_, i) => {
+  const p = ((i * (bpm / 60)) / 250) % 1;
+  return Math.exp(-((p - 0.29) ** 2) / 0.000128) + 0.12 * Math.exp(-((p - 0.16) ** 2) / 0.000968);
+});
+const fresh = (attrs = {}, fed = true) => {
+  const el = document.createElement('ov-ecg');
+  el.setAttribute('label', 'BED 4');
+  el.setAttribute('lead', 'II');
+  for (const [k, v] of Object.entries(attrs)) el.setAttribute(k, v);
+  stage.replaceChildren(el);
+  if (fed) el.feed(wave());
+  el.draw();
+  return el;
+};
+const sig = (el) => el.getAttribute('data-ov-signal');
+const num = (el) => el.querySelector('.ov-ecg__num').textContent;
+const why = (el) => el.querySelector('.ov-ecg__why').textContent;
+const trace = (el) => el.querySelector('.ov-ecg__trace').getAttribute('d') || '';
+const stateWord = (el) => el.querySelector('.ov-ecg__state').textContent;
+let el;
+
+// 1. A signal being read: the rate is shown, the lead is named.
+el = fresh({ rate: '72', low: '50', high: '120' });
+ok('a live strip shows the rate and names its lead', sig(el) === 'live' && num(el) === '72' && el.textContent.includes('LEAD II'), [sig(el), num(el)]);
+ok('...draws a trace and its limits', trace(el).length > 40 && el.textContent.includes('LIMITS 50 / 120'), trace(el).slice(0, 20));
+ok('...and says nothing is wrong with it', why(el) === '', why(el));
+
+// 2. ⭐ A disconnected lead is not a flat heart.
+el = fresh({ rate: '72', low: '50', high: '120', 'leads-off': 'RA' });
+ok('⭐ with a lead off, NO trace is drawn: a flat line would be a claim', trace(el) === '' && sig(el) === 'leads-off', trace(el));
+ok('...the rate is replaced by a question mark', num(el) === '?', num(el));
+ok('...and it says NOT ASYSTOLE and names the lead', /^NOT ASYSTOLE · LEADS OFF: RA/.test(why(el)), why(el));
+ok('...the state word is LEADS OFF', stateWord(el) === 'LEADS OFF', stateWord(el));
+control('CONTROL: the rate is still shown with a lead off (must fail)', num(el) === '72', num(el));
+control('CONTROL: a flat line is drawn for a lead that is off (must fail)', trace(el).length > 40, trace(el));
+el = fresh({ rate: '72', low: '50', high: '120', 'leads-off': '' });
+ok('a lead that is off but not named says the lead is not named', /LEAD NOT NAMED/.test(why(el)), why(el));
+
+// 3. ⭐ Artefact: the trace is real, the rate is not derivable from it.
+el = fresh({ rate: '72', low: '50', high: '120', artifact: '' });
+ok('⭐ with artefact the waveform is still drawn: it is what the leads saw', trace(el).length > 40 && sig(el) === 'artifact', sig(el));
+ok('...but the rate is withheld, and says why', num(el) === '?' && why(el) === 'RATE NOT DERIVABLE · ARTIFACT ON THE SIGNAL', why(el));
+control('CONTROL: a rate is derived from an artefact trace (must fail)', num(el) === '72', num(el));
+
+// 4. ⭐ A stopped signal is not a slow one.
+el = fresh({ rate: '80', low: '50', high: '120', 'max-age': '2' });
+NOW += 5000; el.draw();
+ok('⭐ samples that stop past max-age stop the sweep, with the age', sig(el) === 'stopped' && /^SIGNAL STOPPED 5s AGO/.test(why(el)), why(el));
+ok('...the rate is withheld', num(el) === '?', num(el));
+ok('...and the cursor says it is not moving', el.querySelector('.ov-ecg__cursor').dataset.ovMoving === 'no', el.querySelector('.ov-ecg__cursor').dataset.ovMoving);
+ok('...while the last trace is kept, as history', trace(el).length > 40, trace(el).slice(0, 20));
+control('CONTROL: a stopped signal keeps reading as live (must fail)', sig(el) === 'live', sig(el));
+el.feed(wave());
+el.draw();
+ok('fresh samples bring it back to monitoring', sig(el) === 'live' && num(el) === '80', sig(el));
+
+// 5. Nothing ever received.
+el = fresh({ rate: '72', low: '50', high: '120' }, false);
+ok('a strip that never received anything is NO SIGNAL, with no trace', sig(el) === 'none' && trace(el) === '' && num(el) === '?', [sig(el), num(el)]);
+
+// 6. A paced rate is the pacemaker's.
+el = fresh({ rate: '70', low: '50', high: '120', paced: '' });
+ok('a paced rhythm shows its rate, labelled PACED', num(el) === '70' && el.textContent.includes("PACED: THE PACEMAKER'S RATE"), el.querySelector('.ov-ecg__qualifier').textContent);
+ok('...and its pacing spikes are drawn', (el.querySelector('.ov-ecg__pace').getAttribute('d') || '').length > 10, null);
+
+// 7. No limits, no verdict.
+el = fresh({ rate: '96' });
+ok('a rate with no limits says LIMITS NOT SET', el.textContent.includes('LIMITS NOT SET') && why(el) === 'LIMITS NOT SET · NO ALARM CLAIM IS MADE', why(el));
+ok('...and claims no alarm', !el.hasAttribute('data-ov-alarm') && el.report.alarm === false, el.report.alarm);
+control('CONTROL: an alarm is claimed with no limits set (must fail)', el.hasAttribute('data-ov-alarm'), null);
+el = fresh({ rate: '96', low: '50' });
+ok('one limit alone is still no limits', el.textContent.includes('LIMITS NOT SET'), el.querySelector('.ov-ecg__limits').textContent);
+
+// 8. Outside the limits is an alarm, naming them.
+el = fresh({ rate: '148', low: '50', high: '120' });
+ok('a rate over the high limit alarms, naming the limits', el.hasAttribute('data-ov-alarm') && el.textContent.includes('ALARM: OUTSIDE 50 TO 120'), el.querySelector('.ov-ecg__qualifier').textContent);
+el = fresh({ rate: '44', low: '50', high: '120' });
+ok('...and so does one under the low limit', el.hasAttribute('data-ov-alarm'), null);
+el = fresh({ rate: '44', low: '50', high: '120', 'leads-off': 'LL' });
+ok('a lead that is off cannot alarm on a rate it did not measure', !el.hasAttribute('data-ov-alarm') && el.report.rate === null, el.report);
+
+// 9. A lead change is announced, never a silent redraw.
+el = fresh({ rate: '72', low: '50', high: '120' });
+await settle();
+el.setAttribute('lead', 'V');
+await settle();
+ok('switching lead is said', el.querySelector('.ov-ecg__say').textContent === 'BED 4: lead changed II to V', el.querySelector('.ov-ecg__say').textContent);
+ok('...and the head names the lead being drawn', el.textContent.includes('LEAD V'), el.querySelector('.ov-ecg__lead').textContent);
+
+// 10. A mockup says it is one.
+el = fresh({ rate: '72', low: '50', high: '120', demo: '' });
+ok('a demonstration strip says so on its face', el.querySelector('.ov-ecg__demo').textContent === 'DEMONSTRATION WAVEFORM · NOT A PATIENT', el.querySelector('.ov-ecg__demo').textContent);
+el = fresh({ rate: '72', low: '50', high: '120' });
+ok('...and one that is not, does not', el.querySelector('.ov-ecg__demo').textContent === '', el.querySelector('.ov-ecg__demo').textContent);
+
+// 11. Events on each change of state.
+el = fresh({ rate: '72', low: '50', high: '120' });
+const seen = [];
+el.addEventListener('ov:ecg', (e) => seen.push(`${e.detail.previous}>${e.detail.state}`));
+el.setAttribute('leads-off', 'RA');
+el.removeAttribute('leads-off');
+ok('ov:ecg fires per change of state', seen.join(',') === 'live>leads-off,leads-off>live', seen);
+
+// 11b. ⭐ The flat lines: six reasons a trace is flat, six forms.
+const flatFeed = (el) => { el.feed(new Array(600).fill(0)); el.draw(); return el; };
+el = flatFeed(fresh({ rate: '72', low: '50', high: '120' }, false));
+ok('⭐ a flat trace nobody called is FLAT TRACE, drawn, with the rate withheld', sig(el) === 'flat' && trace(el).length > 40 && num(el) === '?', [sig(el), num(el)]);
+ok('...says it is not called asystole, and claims no alarm', /^FLAT TRACE, NOT CALLED ASYSTOLE/.test(why(el)) && !el.hasAttribute('data-ov-alarm'), why(el));
+control('CONTROL: a flat trace keeps showing 72 (must fail)', num(el) === '72', num(el));
+control('CONTROL: a flat trace nobody called is alarmed as asystole (must fail)', el.hasAttribute('data-ov-alarm'), null);
+el = flatFeed(fresh({ rate: '0', low: '50', high: '120', rhythm: 'asystole' }, false));
+ok('⭐ a flat trace the monitor calls asystole alarms, ALARM: ASYSTOLE', sig(el) === 'asystole' && el.hasAttribute('data-ov-alarm') && stateWord(el) === 'ASYSTOLE' && el.querySelector('.ov-ecg__qualifier').textContent === 'ALARM: ASYSTOLE', [sig(el), stateWord(el)]);
+ok('...and asks for a second lead and the gain until confirmed', /CONFIRM IN A SECOND LEAD, CHECK LEADS AND GAIN \(NOW ×1\)/.test(why(el)), why(el));
+el.setAttribute('confirmed', '');
+ok('...and says CONFIRMED once it is', why(el) === 'ASYSTOLE · CONFIRMED IN A SECOND LEAD', why(el));
+el = fresh({ rate: '72', low: '50', high: '120', rhythm: 'asystole' });
+ok('an asystole call over a trace that is not flat still alarms, and says the contradiction', sig(el) === 'asystole' && el.hasAttribute('data-ov-alarm') && /BUT THIS TRACE IS NOT FLAT/.test(why(el)), why(el));
+el = flatFeed(fresh({ rate: '0', low: '50', high: '120', rhythm: 'asystole', 'leads-off': 'LA' }, false));
+ok('⭐ with a lead off, an asystole call is LEADS OFF, never asystole', sig(el) === 'leads-off' && !el.hasAttribute('data-ov-alarm') && trace(el) === '', sig(el));
+el = fresh({ rate: '72', low: '50', high: '120', paused: '' });
+ok('⭐ paused monitoring draws no trace and says it is not a flat heart', sig(el) === 'paused' && trace(el) === '' && num(el) === '?' && /THIS IS NOT A FLAT HEART/.test(why(el)), [sig(el), why(el)]);
+ok('...with a long-dashed rail, a different form from a lead off', getComputedStyle(el.querySelector('.ov-ecg__rail')).strokeDasharray !== 'none'
+  && getComputedStyle(el.querySelector('.ov-ecg__rail')).strokeDasharray !== (() => { const x = fresh({ 'leads-off': 'RA' }); return getComputedStyle(x.querySelector('.ov-ecg__rail')).strokeDasharray; })(), null);
+el = fresh({ rate: '72', low: '50', high: '120', gain: '2' });
+ok('a gain other than 1 is printed beside the lead', el.querySelector('.ov-ecg__lead').textContent === 'LEAD II · GAIN ×2', el.querySelector('.ov-ecg__lead').textContent);
+el = fresh({ rate: '190', low: '50', high: '120', rhythm: 'vtach' });
+ok('a VTACH call alarms by name', el.querySelector('.ov-ecg__qualifier').textContent === 'ALARM: VTACH', el.querySelector('.ov-ecg__qualifier').textContent);
+
+// 11c. A named feed. ov-source ticks on animation frames, which headless
+// virtual time never runs, so the feed is driven here directly through the
+// same subscribe() contract: what is tested is the strip's side of it.
+{
+  const realSub = window.Overscan.subscribe;
+  let cb = null;
+  let unsubscribed = false;
+  window.Overscan.subscribe = (name, fn) => { if (name === 'gate-ecg') cb = fn; return () => { unsubscribed = true; }; };
+  el = fresh({ rate: '72', low: '50', high: '120', source: 'gate-ecg' }, false);
+  NOW += 1000;
+  cb?.(wave());
+  el.draw();
+  ok('a strip on a named feed is fed by it and reads live', !!cb && sig(el) === 'live' && trace(el).length > 40, [!!cb, sig(el)]);
+  // Past the default max-age of 5 s, which is a strict limit.
+  NOW += 6000;
+  cb?.(null);
+  el.draw();
+  ok('...and a null from the feed feeds nothing: the strip goes on to say SIGNAL STOPPED', sig(el) === 'stopped', sig(el));
+  control('CONTROL: a feed of nulls keeps the strip live (must fail)', sig(el) === 'live', sig(el));
+  el.remove();
+  ok('...and a strip that leaves the page unsubscribes', unsubscribed, unsubscribed);
+  window.Overscan.subscribe = realSub;
+}
+
+// 12. ⭐ No frame loop: the sweep moves because samples arrive.
+el = fresh({ rate: '72', low: '50', high: '120' }, false);
+NOW += 1000;
+el.feed(wave());
+ok('⭐ feeding alone draws the trace, with no draw() called', trace(el).length > 40 && sig(el) === 'live', trace(el).slice(0, 20));
+const before = trace(el);
+NOW += 5;
+el.feed(wave(10, 140));
+ok('...and a second chunk inside 33 ms draws nothing more (capped at 30 a second)', trace(el) === before, null);
+ok('a live strip holds exactly one pending stale timer', el._timer !== null || el._unarrive !== null, [el._timer, el._unarrive]);
+ok('⭐ ...and after arrival keeps no leftover arrival hook that would block the next timer', el._timer !== null && el._unarrive === null, [el._timer, typeof el._unarrive]);
+el.remove();
+ok('...released when the strip leaves the page', el._timer === null && el._unarrive === null, el._timer);
+const ecgSrc = await (await fetch(new URL(SRC, location.href).href)).text();
+ok('the element never asks for an animation frame or repeats a timer', !/requestAnimationFrame|setInterval/.test(ecgSrc), true);
+control('CONTROL: the element draws on a frame (must fail)', /requestAnimationFrame/.test(ecgSrc), 'source');
+
+const passed = results.filter((x) => x.pass).length;
+const failed = results.length - passed;
+const controlsFailed = controls.filter((x) => !x.pass).length;
+const gate = failed === 0 && controlsFailed === controls.length && controls.length > 0;
+const lines = [
+  ...results.map((x) => `${x.pass ? 'PASS' : 'FAIL'}  ${x.name}${x.pass ? '' : '  got ' + JSON.stringify(x.got)}`),
+  ...controls.map((x) => `${x.pass ? 'CONTROL PASSED (BAD)' : 'CONTROL FAILED (good)'}  ${x.name}`),
+  '',
+  `${passed} passed, ${failed} failed, ${controlsFailed}/${controls.length} controls failed as required`,
+  `GATE: ${gate ? 'PASS' : 'FAIL'}`,
+];
+const out = document.getElementById('out');
+out.textContent = lines.join('\n');
+out.setAttribute('data-gate', gate ? 'pass' : 'fail');
+</script>

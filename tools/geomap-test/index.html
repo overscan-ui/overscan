@@ -1,0 +1,199 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>ov-geomap harness</title>
+<!-- The refusal gate for ov-geomap. Serve the repo root (tools/serve.py) and
+     open /tools/geomap-test/. The last line must read GATE: PASS, and every
+     CONTROL (an assertion false on purpose) must fail. ?src= loads a mutant. -->
+<link rel="stylesheet" href="../../src/tokens.css">
+<link rel="stylesheet" href="../../src/chrome.css">
+<link rel="stylesheet" href="../../src/geomap.css">
+<style>
+  body { background: #06060a; color: #cfe; font: 13px ui-monospace, monospace; padding: 20px; }
+  pre { white-space: pre-wrap; }
+  #stage { inline-size: 720px; }
+</style>
+<div id="stage" data-ov-theme="terminal"></div>
+<pre id="out">running...</pre>
+<script type="module">
+const out = document.getElementById('out');
+const results = [];
+const ok = (name, cond, got) => results.push({ name, pass: !!cond, got });
+const controls = [];
+const control = (name, cond, got) => controls.push({ name, pass: !!cond, got });
+const settle = (ms = 0) => new Promise((r) => setTimeout(r, ms));
+const until = async (cond, ms = 3000) => { const t0 = performance.now(); while (!cond() && performance.now() - t0 < ms) await settle(25); };
+
+function report(error) {
+  const passed = results.filter((x) => x.pass).length;
+  const failed = results.length - passed;
+  const controlsFailed = controls.filter((x) => !x.pass).length;
+  const gate = !error && failed === 0 && controls.length > 0 && controlsFailed === controls.length;
+  out.textContent = [
+    ...results.map((x) => `${x.pass ? 'PASS' : 'FAIL'}  ${x.name}${x.pass ? '' : '  got ' + JSON.stringify(x.got)}`),
+    ...controls.map((x) => `${x.pass ? 'CONTROL PASSED (BAD)' : 'CONTROL FAILED (good)'}  ${x.name}`),
+    ...(error ? ['', `THREW: ${error && error.stack || error}`] : []),
+    '', `${passed} passed, ${failed} failed, ${controlsFailed}/${controls.length} controls failed as required`,
+    `GATE: ${gate ? 'PASS' : 'FAIL'}`,
+  ].join('\n');
+  out.setAttribute('data-gate', gate ? 'pass' : 'fail');
+}
+
+try {
+  const SRC = new URLSearchParams(location.search).get('src') || '../../src/ov-geomap.js';
+  const { OvGeomap } = await import(new URL(SRC, location.href).href);
+  const { default: COUNTRIES } = await import('../../src/ov-countries.js');
+  await new Promise((r) => window.Overscan.whenArrived(r));
+
+  let NOW = Date.UTC(2026, 8, 13, 12, 0, 0);
+  OvGeomap.now = () => NOW;
+
+  const stage = document.getElementById('stage');
+  const fresh = (attrs = {}) => {
+    const el = document.createElement('ov-geomap');
+    for (const [k, v] of Object.entries(attrs)) el.setAttribute(k, v);
+    stage.replaceChildren(el);
+    return el;
+  };
+  const trip = (el, id) => el.querySelector(`.ov-geomap__trip[data-ov-id="${id}"]`);
+  const state = (el, id) => trip(el, id)?.dataset.ovState;
+  const sub = (el, id) => trip(el, id)?.querySelector('.ov-geomap__sub')?.textContent || '';
+  const key = (el) => el.querySelector('.ov-geomap__key').textContent;
+  const runs = (d) => {
+    const rs = [];
+    for (const m of (d || '').matchAll(/([ML])\s*(-?[\d.]+)[ ,]+(-?[\d.]+)/g)) {
+      if (m[1] === 'M' || !rs.length) rs.push([]);
+      rs[rs.length - 1].push([+m[2], +m[3]]);
+    }
+    return rs;
+  };
+  const maxJump = (d) => Math.max(0, ...runs(d).flatMap((r) => r.slice(1).map((p, i) => Math.abs(p[0] - r[i][0]))));
+
+  // An independent great circle, so the harness does not grade the element with its own arithmetic.
+  const V = ({ lat, lon }) => { const p = lat * Math.PI / 180, l = lon * Math.PI / 180; return [Math.cos(p) * Math.cos(l), Math.cos(p) * Math.sin(l), Math.sin(p)]; };
+  const along = (a, b, f) => {
+    const A = V(a), B = V(b), w = Math.acos(A[0] * B[0] + A[1] * B[1] + A[2] * B[2]);
+    const k1 = Math.sin((1 - f) * w) / Math.sin(w), k2 = Math.sin(f * w) / Math.sin(w);
+    const [x, y, z] = A.map((c, i) => c * k1 + B[i] * k2);
+    return { lat: Math.atan2(z, Math.hypot(x, y)) * 180 / Math.PI, lon: Math.atan2(y, x) * 180 / Math.PI };
+  };
+  const LHR = { lat: 51.47, lon: -0.46 }, NRT = { lat: 35.77, lon: 140.39 };
+  const HNL = { lat: 21.32, lon: -157.92 }, AKL = { lat: -37.01, lon: 174.79 };
+  let el;
+
+  // 1. Countries: asked for and absent is SAID, in four different words.
+  OvGeomap.countries = null;
+  el = fresh({ countries: '' });
+  ok('countries asked for and none given is said', /COUNTRIES NOT LOADED/.test(key(el)), key(el));
+  ok('...and no land is drawn', !el.querySelector('.ov-geomap__land'), '');
+  control('CONTROL: absent outlines read as an empty ocean (must fail)', !/COUNTRIES/.test(key(el)), key(el));
+  el = fresh({});
+  ok('a map that never asked for countries makes no claim about them', !/COUNTRIES/.test(key(el)), key(el));
+
+  el = fresh({ countries: '' });
+  OvGeomap.countries = COUNTRIES;
+  ok('outlines given later reach a map already on the page', !!el.querySelector('.ov-geomap__land'), '');
+  ok('...and the refusal is gone', !/COUNTRIES/.test(key(el)), key(el));
+  ok('no land run jumps across the map (Chukotka and Fiji cross 180)', maxJump(el.querySelector('.ov-geomap__land').getAttribute('d')) < 180,
+    maxJump(el.querySelector('.ov-geomap__land').getAttribute('d')));
+  ok('no border run jumps across the map', maxJump(el.querySelector('.ov-geomap__border').getAttribute('d')) < 180,
+    maxJump(el.querySelector('.ov-geomap__border').getAttribute('d')));
+  el.countriesData = { arcs: 'no' };
+  ok('unreadable outline data is said', /COUNTRIES UNREADABLE/.test(key(el)), key(el));
+  el = fresh({ countries: 'nowhere/ov-countries.js' });
+  ok('a named outline module says LOADING while it loads', /COUNTRIES LOADING/.test(key(el)), key(el));
+  await until(() => /FAILED/.test(key(el)));
+  ok('...and FAILED TO LOAD, by name, when it cannot be imported', /COUNTRIES FAILED TO LOAD: nowhere\/ov-countries\.js/.test(key(el)), key(el));
+
+  // 2. The finding: the route is the great circle, and the screen line is measured.
+  el = fresh({ naive: '' });
+  el.routes = [{ id: 'ln', label: 'LHR-NRT', from: LHR, to: NRT }];
+  const title = trip(el, 'ln').querySelector('.ov-geomap__label tspan').textContent;
+  const gcKm = Number((title.match(/([\d,]+) km/) || [])[1]?.replace(/,/g, ''));
+  ok('LHR-NRT is measured as flown, 9,591 km (within 15)', Math.abs(gcKm - 9591) < 15, title);
+  const line = Number((sub(el, 'ln').match(/SCREEN LINE ([\d,]+) km/) || [])[1]?.replace(/,/g, ''));
+  ok('the straight screen line is measured on the ground, and is 1,500 km longer or more', line > gcKm + 1500, sub(el, 'ln'));
+  const north = 90 - Math.min(...runs(trip(el, 'ln').querySelector('.ov-geomap__route.is-ahead').getAttribute('d')).flat().map((p) => p[1]));
+  ok('the drawn route is the great circle, north of 60 N (the straight line never leaves 52 N)', north > 60, north);
+  control('CONTROL: the route drawn along the straight line (must fail)', north < 52, north);
+  el.routes = [{ id: 'hx', label: 'HNL-AKL', from: HNL, to: AKL }];
+  const hx = trip(el, 'hx').querySelector('.ov-geomap__route.is-ahead').getAttribute('d');
+  ok('a route over the antimeridian is broken at the edge, not drawn across the map', runs(hx).length >= 2 && maxJump(hx) < 180, [runs(hx).length, maxJump(hx)]);
+
+  // 3. The states of a fix.
+  el = fresh({ fresh: '60' });
+  el.routes = [{ id: 'p', label: 'PLAN', from: LHR, to: NRT }];
+  ok('no position is a plan, and says NO POSITION', state(el, 'p') === 'plan' && /NO POSITION/.test(sub(el, 'p')), [state(el, 'p'), sub(el, 'p')]);
+  ok('...with no flown leg, no head and no ping', !trip(el, 'p').querySelector('.is-flown, .ov-geomap__head, .ov-geomap__ping'), '');
+
+  el.routes = [{ id: 'f', label: 'F', from: LHR, to: NRT, pos: { ...along(LHR, NRT, 0.4), at: NOW } }];
+  ok('one fresh report is HELD, never live: nothing has moved yet', state(el, 'f') === 'held', state(el, 'f'));
+  ok('...it says NOT MOVED', /NOT MOVED/.test(sub(el, 'f')), sub(el, 'f'));
+  ok('...and draws no ping', !el.querySelector('.ov-geomap__ping'), '');
+  control('CONTROL: a single report called live (must fail)', state(el, 'f') === 'live', state(el, 'f'));
+  NOW += 2000;
+  el.routes = [{ id: 'f', label: 'F', from: LHR, to: NRT, pos: { ...along(LHR, NRT, 0.42), at: NOW } }];
+  ok('a second report that moved is LIVE', state(el, 'f') === 'live', state(el, 'f'));
+  ok('...the only state that pings', el.querySelectorAll('.ov-geomap__ping').length === 1, el.querySelectorAll('.ov-geomap__ping').length);
+  ok('...its flown leg is drawn to the fix', !!trip(el, 'f').querySelector('.ov-geomap__route.is-flown'), '');
+  ok('a fresh fix prints its clock time, never an age that stops counting', /FIX \d\d:\d\d:\d\dZ$/.test(sub(el, 'f')), sub(el, 'f'));
+  NOW += 2000;
+  el.routes = [{ id: 'f', label: 'F', from: LHR, to: NRT, pos: { ...along(LHR, NRT, 0.42), at: NOW } }];
+  ok('a later report in the same place is HELD again', state(el, 'f') === 'held', state(el, 'f'));
+  NOW += 61000;
+  el.paint();
+  ok('past `fresh` the fix is STALE', state(el, 'f') === 'stale', state(el, 'f'));
+  ok('...stale draws no ping', !el.querySelector('.ov-geomap__ping'), '');
+  ok('...its head is hollow and dashed, not only a different colour',
+    getComputedStyle(trip(el, 'f').querySelector('.ov-geomap__head circle')).strokeDasharray !== 'none', '');
+  ok('...under two minutes it prints the time of the fix', /LAST FIX \d\d:\d\d:\d\dZ/.test(sub(el, 'f')), sub(el, 'f'));
+  NOW += 180000;
+  el.paint();
+  ok('...after that, whole minutes', /LAST FIX 4 MIN AGO/.test(sub(el, 'f')), sub(el, 'f'));
+
+  el.routes = [
+    { id: 'u', from: LHR, to: NRT, pos: { ...along(LHR, NRT, 0.3) } },
+    { id: 'a', from: LHR, to: NRT, pos: { ...along(LHR, NRT, 0.3), at: NOW + 3600e3 } },
+  ];
+  ok('a fix with no time is UNDATED, neither fresh nor stale', state(el, 'u') === 'undated' && /FIX UNDATED/.test(sub(el, 'u')), [state(el, 'u'), sub(el, 'u')]);
+  ok('a fix timed in the future is refused as AHEAD OF THIS CLOCK', state(el, 'a') === 'ahead' && /AHEAD OF THIS CLOCK/.test(sub(el, 'a')), [state(el, 'a'), sub(el, 'a')]);
+
+  el.routes = [{ id: 'o', from: LHR, to: NRT, pos: { lat: 40, lon: 60, at: NOW } }];
+  ok('a fix far off its route says how far', /[\d,]+ km OFF ROUTE/.test(sub(el, 'o')), sub(el, 'o'));
+  const headAt = trip(el, 'o').querySelector('.ov-geomap__head').getAttribute('transform');
+  ok('...and its head is drawn where it was reported, not snapped onto the line', headAt === 'translate(240.00 50.00)', headAt);
+  el.routes = [{ id: 'n', from: LHR, to: NRT, pos: { ...along(LHR, NRT, 0.5), at: NOW } }];
+  ok('a fix on its route claims nothing about being off it', !/OFF ROUTE/.test(sub(el, 'n')), sub(el, 'n'));
+
+  // 4. What cannot be placed is counted, never dropped or drawn at NaN.
+  el.routes = [
+    { id: 'x', from: LHR, to: { lat: null, lon: 10 } },
+    { id: 'y', from: { lat: 'north', lon: 'east' }, to: NRT },
+    { id: 'z', from: LHR, to: NRT },
+  ];
+  ok('routes without both ends are counted', /2 ROUTES WITHOUT BOTH ENDS/.test(key(el)), key(el));
+  ok('...and nothing is drawn at NaN', !el.innerHTML.includes('NaN'), el.innerHTML.match(/.{0,20}NaN.{0,20}/)?.[0]);
+  control('CONTROL: unplaceable routes dropped without a word (must fail)', !/WITHOUT BOTH ENDS/.test(key(el)), key(el));
+  el = fresh({ source: 'nobody' });
+  await settle(200);
+  ok('a named source that never emits says NO FEED', /NO FEED/.test(key(el)), key(el));
+  el = fresh({ view: 'north of here' });
+  ok('an unreadable view is said, and the world is shown', /VIEW UNREADABLE/.test(key(el)), key(el));
+
+  // 5. Nothing ticks, and yet a fix goes stale on time.
+  el = fresh({ fresh: '0.3' });
+  el.routes = [{ id: 't', from: LHR, to: NRT, pos: { ...along(LHR, NRT, 0.2), at: NOW } }];
+  // Let a new element's first resize callbacks run BEFORE the clock moves: one
+  // that lands after would repaint and pass this check with no timer at all.
+  await settle(150);
+  ok('fresh straight after the report', state(el, 't') === 'held', state(el, 't'));
+  NOW += 1000;                                   // the clock moves; nobody calls paint
+  await settle(700);
+  ok('the map turns the fix stale on its own timer, unprompted', state(el, 't') === 'stale', state(el, 't'));
+  const text = await (await fetch(new URL(SRC, location.href))).text();
+  ok('the element never asks for an animation frame', !/requestAnimationFrame/.test(text), '');
+
+  report();
+} catch (e) {
+  report(e);
+}
+</script>

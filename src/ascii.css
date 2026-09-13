@@ -1,0 +1,134 @@
+/* ---- CASCADE LAYER ------------------------------------------------------
+ *
+ * Everything the kit ships sits in ONE layer named `overscan`, so a consumer's
+ * own CSS beats it without a specificity fight and without !important. That is
+ * close to mandatory for a distributed kit: an app should be able to restyle a
+ * panel by writing a plain rule.
+ *
+ * ⚠️ ONE layer, deliberately, NOT a sub-layer per file. Sub-layers look tidier
+ * and would silently reorder the kit against itself: layer order beats
+ * specificity, so a high-specificity rule in an early file that currently wins
+ * would start losing to a low-specificity rule in a later one. A single layer
+ * preserves source order exactly, so nothing inside the kit changes.
+ *
+ * Unlayered author CSS wins over all of it. That is the point.
+ */
+
+@layer overscan {
+/* Character-cell instruments. See src/ov-ascii.js.
+ *
+ * Nothing here is drawn: every mark is a character in the element's own
+ * resolved face, which is why the face is measured before it is trusted.
+ */
+
+ov-spark,
+ov-cellbar {
+  position: relative;
+  display: block;
+  font-family: var(--ov-font-mono);
+  font-size: var(--ov-size-3);
+  /* The ladder is only monotonic if the cells sit on one baseline with no
+   * leading between them. A line box taller than the glyph reintroduces the
+   * vertical drift the cells exist to remove. */
+  line-height: 1;
+  white-space: pre;
+  color: var(--ov-accent);
+  letter-spacing: 0;
+}
+
+/* ---- sparkline --------------------------------------------------------- */
+
+/* A gap is marked twice over, in shape and in colour, because colour is never
+ * the only channel anything is reported in. The glyph is full cell height and
+ * broken, so it cannot be read as a low sample even in a monochrome theme. */
+.ov-spark__gap { color: var(--ov-alarm); }
+
+/* Past the axis. Marked at the boundary, never clipped to it. */
+.ov-spark__over { color: var(--ov-alarm); }
+
+.ov-spark__refuse,
+.ov-cellbar__refuse { color: var(--ov-alarm); }
+
+/* ---- cell bar ---------------------------------------------------------- */
+
+.ov-cellbar__on { color: var(--ov-accent); }
+
+/* Drawn, not hidden, for the reason the segment readout draws its dark
+ * segments: an instrument with an unlit half is telling you where the top of
+ * the scale is. */
+.ov-cellbar__off { color: var(--ov-line); }
+
+.ov-cellbar__over { color: var(--ov-alarm); }
+
+/* ---- what the instrument says about itself ----------------------------- */
+
+/* The refusal idiom, unchanged from the segment readout: the reason on the
+ * element, in the alarm colour, never a number. */
+ov-spark[data-ov-refusal]::after,
+ov-cellbar[data-ov-refusal]::after {
+  content: attr(data-ov-refusal);
+  margin-inline-start: 8px;
+  font-size: var(--ov-size-1);
+  letter-spacing: 1.2px;
+  text-transform: uppercase;
+  color: var(--ov-alarm);
+}
+
+/* 🔴 A STOPPED FEED HAS TO LOOK STOPPED. The strip keeps its shape - that is
+ * what a reader came for - and goes faint, with the protocol's own words
+ * beside it. Without this the qualifier is an attribute in the DOM and nothing
+ * on the screen, which is a refusal the reader never receives. Same idiom as
+ * the refusal above, in the qualifier colour rather than the alarm, because a
+ * stale strip is still showing real data. */
+ov-spark[data-ov-qualified="stale"] .ov-spark__cells,
+ov-spark[data-ov-qualified="stale"] { color: var(--ov-faint); }
+ov-spark[data-ov-qualified="stale"]::after {
+  content: attr(data-ov-qualifier-text);
+  margin-inline-start: 8px;
+  font-size: var(--ov-size-1);
+  letter-spacing: 1.2px;
+  text-transform: uppercase;
+  color: var(--ov-faint);
+}
+
+/* ⚠️ The probe standing down is NOT a refusal. It is the instrument saying it
+ * could not check itself, which is a different claim from the data being
+ * undrawable, and it is drawn in the qualifier colour rather than the alarm. */
+ov-spark[data-ov-unprobed]::after,
+ov-cellbar[data-ov-unprobed]::after {
+  content: "ladder unverified";
+  margin-inline-start: 8px;
+  font-size: var(--ov-size-1);
+  letter-spacing: 1.2px;
+  text-transform: uppercase;
+  color: var(--ov-faint);
+}
+
+/* Opt-in, because fifty of these down a table do not each want a footnote. */
+.ov-ascii--report ov-spark[data-ov-decimated]::after {
+  content: attr(data-ov-decimated);
+  margin-inline-start: 8px;
+  font-size: var(--ov-size-1);
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  color: var(--ov-faint);
+}
+
+.ov-ascii--report ov-spark[data-ov-quantised]::before,
+.ov-ascii--report ov-cellbar[data-ov-quantised]::before {
+  content: attr(data-ov-quantised);
+  display: block;
+  font-size: var(--ov-size-1);
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  color: var(--ov-faint);
+  margin-block-end: 3px;
+}
+
+/* Inline in a table cell, where the instrument is furniture rather than the
+ * subject and a caption underneath every row would be the noise. */
+.ov-ascii--inline {
+  display: inline-block;
+  vertical-align: middle;
+}
+}

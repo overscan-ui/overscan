@@ -1,0 +1,64 @@
+/* ---- CASCADE LAYER ------------------------------------------------------
+ *
+ * Everything the kit ships sits in ONE layer named `overscan`, so a consumer's
+ * own CSS beats it without a specificity fight and without !important. That is
+ * close to mandatory for a distributed kit: an app should be able to restyle a
+ * panel by writing a plain rule.
+ *
+ * ⚠️ ONE layer, deliberately, NOT a sub-layer per file. Sub-layers look tidier
+ * and would silently reorder the kit against itself: layer order beats
+ * specificity, so a high-specificity rule in an early file that currently wins
+ * would start losing to a low-specificity rule in a later one. A single layer
+ * preserves source order exactly, so nothing inside the kit changes.
+ *
+ * Unlayered author CSS wins over all of it. That is the point.
+ */
+
+@layer overscan {
+/* Target brackets over a scene. */
+
+ov-reticle {
+  position: absolute;
+  inset: 0;
+  display: block;
+  pointer-events: none;
+  z-index: 2;
+}
+
+.ov-reticle__svg { inline-size: 100%; block-size: 100%; display: block; }
+
+.ov-reticle__bracket {
+  fill: none;
+  stroke: var(--ov-accent);
+  stroke-width: 1;
+  vector-effect: non-scaling-stroke;
+}
+
+/* Held at the last fix rather than removed. Vanishing would say "nothing
+ * there", which is a different claim from "no longer tracking". */
+.ov-reticle__bracket.is-lost {
+  stroke: var(--ov-alarm);
+  stroke-dasharray: 3 3;
+  vector-effect: non-scaling-stroke;
+}
+
+.ov-reticle__labels { position: absolute; inset: 0; }
+
+.ov-reticle__tag {
+  position: absolute;
+  transform: translateY(3px);
+  white-space: nowrap;
+  font-family: var(--ov-font-mono);
+  font-size: var(--ov-size-1);
+  letter-spacing: 1px;
+  color: var(--ov-accent);
+}
+
+.ov-reticle__tag b { font-weight: 400; text-transform: uppercase; }
+.ov-reticle__tag i { font-style: normal; color: var(--ov-faint); margin-inline-start: 6px; }
+
+.ov-reticle__tag.is-lost { color: var(--ov-alarm); }
+
+/* A detection with no score is not a detection with a good score. */
+.ov-reticle__tag.is-unscored { color: var(--ov-alarm); }
+}

@@ -1,0 +1,63 @@
+/* ---- CASCADE LAYER ------------------------------------------------------
+ *
+ * Everything the kit ships sits in ONE layer named `overscan`, so a consumer's
+ * own CSS beats it without a specificity fight and without !important. That is
+ * close to mandatory for a distributed kit: an app should be able to restyle a
+ * panel by writing a plain rule.
+ *
+ * ⚠️ ONE layer, deliberately, NOT a sub-layer per file. Sub-layers look tidier
+ * and would silently reorder the kit against itself: layer order beats
+ * specificity, so a high-specificity rule in an early file that currently wins
+ * would start losing to a low-specificity rule in a later one. A single layer
+ * preserves source order exactly, so nothing inside the kit changes.
+ *
+ * Unlayered author CSS wins over all of it. That is the point.
+ */
+
+@layer overscan {
+/* Attitude, speed and altitude, the way a flight display fails. */
+
+ov-horizon {
+  display: grid;
+  gap: 6px;
+  font-family: var(--ov-font-mono);
+  font-size: var(--ov-size-1);
+  letter-spacing: 1px;
+  color: var(--ov-dim);
+}
+
+.ov-horizon__svg {
+  display: block;
+  inline-size: 100%;
+  max-inline-size: var(--ov-horizon-size, 420px);
+  background: var(--ov-field);
+  border: var(--ov-bezel) solid var(--ov-line-strong);
+}
+
+/* The theme tints the world; the split and the line carry the meaning. */
+.ov-horizon__sky { fill: color-mix(in srgb, var(--ov-accent-2) 26%, var(--ov-field)); }
+.ov-horizon__ground { fill: color-mix(in srgb, var(--ov-accent) 16%, var(--ov-field)); }
+.ov-horizon__line { stroke: var(--ov-ink); stroke-width: 1.5; }
+.ov-horizon__rung { stroke: var(--ov-ink); stroke-width: 1; }
+.ov-horizon__frame { fill: none; stroke: var(--ov-line-strong); stroke-width: 1; }
+.ov-horizon__blank { fill: var(--ov-field); }
+.ov-horizon__aircraft { fill: none; stroke: var(--ov-accent); stroke-width: 3; stroke-linejoin: round; }
+.ov-horizon__nose { fill: var(--ov-accent); }
+.ov-horizon__bank { fill: var(--ov-ink); }
+.ov-horizon__tick { stroke: var(--ov-ink); stroke-width: 1; }
+
+.ov-horizon__tapebg { fill: color-mix(in srgb, var(--ov-ink) 6%, var(--ov-field)); stroke: var(--ov-line); }
+.ov-horizon__window { fill: var(--ov-field); stroke: var(--ov-accent); stroke-width: 1.2; }
+.ov-horizon__value { font: 13px var(--ov-font-mono); fill: var(--ov-ink); }
+.ov-horizon__num, .ov-horizon__unit { font: 8px var(--ov-font-mono); fill: var(--ov-dim); letter-spacing: 0.5px; }
+.ov-horizon__trend { stroke: var(--ov-accent); stroke-width: 2; }
+
+/* Flags are the only thing drawn where a failed instrument was. */
+.ov-horizon__flag { font: 13px var(--ov-font-mono); letter-spacing: 2px; fill: var(--ov-alarm); }
+.ov-horizon__flagbox { fill: none; stroke: var(--ov-alarm); stroke-width: 1.5; }
+.ov-horizon__check { font: 11px var(--ov-font-mono); letter-spacing: 2px; fill: var(--ov-accent-2); }
+.ov-horizon__checkbox { fill: var(--ov-field); stroke: var(--ov-accent-2); stroke-width: 1; }
+
+.ov-horizon__readout { display: flex; flex-wrap: wrap; gap: 4px 16px; }
+.ov-horizon__readout .is-flag { color: var(--ov-alarm); }
+}

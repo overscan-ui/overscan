@@ -1,0 +1,299 @@
+/* ---- CASCADE LAYER ------------------------------------------------------
+ *
+ * Everything the kit ships sits in ONE layer named `overscan`, so a consumer's
+ * own CSS beats it without a specificity fight and without !important. That is
+ * close to mandatory for a distributed kit: an app should be able to restyle a
+ * panel by writing a plain rule.
+ *
+ * ⚠️ ONE layer, deliberately, NOT a sub-layer per file. Sub-layers look tidier
+ * and would silently reorder the kit against itself: layer order beats
+ * specificity, so a high-specificity rule in an early file that currently wins
+ * would start losing to a low-specificity rule in a later one. A single layer
+ * preserves source order exactly, so nothing inside the kit changes.
+ *
+ * Unlayered author CSS wins over all of it. That is the point.
+ */
+
+@layer overscan {
+/* Interactive controls: dial, slider, button variants, hold-to-commit, popover. */
+
+/* ---- dial -------------------------------------------------------------- */
+
+ov-dial {
+  position: relative;
+  display: block;
+  inline-size: var(--ov-dial-size, 92px);
+  aspect-ratio: 1;
+  cursor: ns-resize;
+  touch-action: none;
+}
+
+.ov-dial__svg { inline-size: 100%; block-size: 100%; display: block; }
+
+.ov-dial__tick { stroke: var(--ov-line-strong); stroke-width: 1.2; }
+
+.ov-dial__body {
+  fill: var(--ov-raised);
+  stroke: var(--ov-line-strong);
+  stroke-width: var(--ov-bezel);
+}
+
+.ov-dial__pointer {
+  stroke: var(--ov-accent);
+  stroke-width: 2.4;
+  stroke-linecap: butt;
+}
+
+.ov-dial__read {
+  position: absolute;
+  inset-block-end: -2px;
+  inset-inline: 0;
+  text-align: center;
+  font-size: var(--ov-size-1);
+  color: var(--ov-dim);
+  font-variant-numeric: tabular-nums;
+}
+
+ov-dial:focus-visible { outline: 2px solid var(--ov-accent); outline-offset: 2px; }
+
+/* ---- slider ------------------------------------------------------------ */
+
+/* A real <input type=range>. The keyboard behaviour, the announcement and the
+ * value semantics come free, and none of them are worth reimplementing. */
+.ov-slider {
+  appearance: none;
+  inline-size: 100%;
+  background: none;
+  cursor: pointer;
+}
+
+.ov-slider::-webkit-slider-runnable-track {
+  block-size: 6px;
+  background: var(--ov-panel);
+  border: var(--ov-rule) solid var(--ov-line-strong);
+}
+
+.ov-slider::-moz-range-track {
+  block-size: 6px;
+  background: var(--ov-panel);
+  border: var(--ov-rule) solid var(--ov-line-strong);
+}
+
+.ov-slider::-webkit-slider-thumb {
+  appearance: none;
+  inline-size: 10px;
+  block-size: 18px;
+  margin-block-start: -7px;
+  background: var(--ov-accent);
+  border: 0;
+}
+
+.ov-slider::-moz-range-thumb {
+  inline-size: 10px;
+  block-size: 18px;
+  border-radius: 0;
+  background: var(--ov-accent);
+  border: 0;
+}
+
+.ov-slider:focus-visible { outline: 2px solid var(--ov-accent); outline-offset: 4px; }
+
+/* ---- button variants --------------------------------------------------- */
+
+/* ⭐ ONE SHAPE, SEVERAL CONTROLS. A segmented group and a split button are the
+ * same idea with different contents: the members announce separately, because
+ * they do separate things, but the ASSEMBLY is a single object. Two things
+ * follow from that and both were missing from the split button, which said
+ * "two controls in one shape" in a comment and drew two shapes.
+ *
+ * 1. The seam between members is a single rule, not two adjacent borders.
+ * 2. Only the OUTER edges carry the theme's corner treatment. A member in the
+ *    middle of a shape has no outside to cut, and a member at one end cuts
+ *    only the two corners that ARE on the outside.
+ *
+ * 🔴 The cut edge has to follow the clip. The diagonals are drawn from tokens
+ * and know nothing about clip-path, so a member whose corner is not cut but
+ * whose size token survives sprouts a stroke across the middle of the
+ * assembly. Every corner is zeroed here and then given back by position. */
+.ov-btn-group,
+.ov-btn--split { display: inline-flex; }
+
+.ov-btn-group .ov-btn,
+.ov-btn--split > .ov-btn {
+  clip-path: none;
+  --ov-cut-tl: 0px;
+  --ov-cut-tr: 0px;
+  --ov-cut-bl: 0px;
+  --ov-cut-br: 0px;
+}
+
+.ov-btn-group .ov-btn + .ov-btn,
+.ov-btn--split > .ov-btn + .ov-btn {
+  margin-inline-start: calc(var(--ov-btn-border) * -1);
+}
+
+/* The leading end: the two corners on the left are outside, the two on the
+   right are a seam. */
+.ov-btn-group .ov-btn:first-child,
+.ov-btn--split > .ov-btn:first-child {
+  --ov-cut-tl: var(--ov-ctl-chamfer);
+  --ov-cut-bl: var(--ov-ctl-chamfer);
+  clip-path: polygon(
+    var(--ov-ctl-chamfer) 0,
+    100% 0,
+    100% 100%,
+    var(--ov-ctl-chamfer) 100%,
+    0 calc(100% - var(--ov-ctl-chamfer)),
+    0 var(--ov-ctl-chamfer));
+}
+
+/* The trailing end: the two on the right are outside, and the bottom right is
+   also where the single cut corner goes when a theme uses one. */
+.ov-btn-group .ov-btn:last-child,
+.ov-btn--split > .ov-btn:last-child {
+  --ov-cut-tr: var(--ov-ctl-chamfer);
+  --ov-cut-br: calc(var(--ov-ctl-corner) + var(--ov-ctl-chamfer));
+  clip-path: polygon(
+    0 0,
+    calc(100% - var(--ov-ctl-chamfer)) 0,
+    100% var(--ov-ctl-chamfer),
+    100% calc(100% - var(--ov-ctl-corner) - var(--ov-ctl-chamfer)),
+    calc(100% - var(--ov-ctl-corner) - var(--ov-ctl-chamfer)) 100%,
+    0 100%);
+}
+
+/* ⭐ AND THE FURNITURE BELONGS TO THE ASSEMBLY, NOT THE MEMBER - but only for
+ * the split button, and the difference is the point. A SPLIT BUTTON IS ONE
+ * ACTION with a menu attached, so its ticks and its leading bar mark the ends
+ * of the whole thing; left per-member, machina drew three framed cells and
+ * neo drew two bars, which is two controls sitting next to each other. A
+ * SEGMENTED GROUP is several exclusive CHOICES, so its furniture stays on each
+ * member, where it separates them - and in a theme with no border that bar is
+ * the only thing that does. */
+.ov-btn--split > .ov-btn + .ov-btn {
+  --ov-tick-tl: 0px;
+  --ov-tick-bl: 0px;
+  --ov-ctl-edge: 0px;
+}
+.ov-btn--split > .ov-btn:not(:last-child) {
+  --ov-tick-tr: 0px;
+  --ov-tick-br: 0px;
+}
+
+/* A single-member assembly is just the control, so it keeps the whole shape
+   rather than the leading end's. */
+.ov-btn-group .ov-btn:only-child,
+.ov-btn--split > .ov-btn:only-child {
+  --ov-cut-tl: var(--ov-ctl-chamfer);
+  --ov-cut-bl: var(--ov-ctl-chamfer);
+  clip-path: var(--ov-ctl-clip);
+}
+
+.ov-btn--icon { padding-inline: 10px; }
+
+/* Split button: a primary action and a menu for its variants. The shape is
+ * handled with the segmented group above, because it is the same shape. */
+.ov-btn--split > .ov-btn:last-child { padding-inline: 9px; }
+
+.ov-btn--quiet {
+  background: none;
+  border-color: transparent;
+  color: var(--ov-dim);
+}
+.ov-btn--quiet:hover { color: var(--ov-ink); border-color: var(--ov-line); }
+
+.ov-btn--danger { color: var(--ov-alarm); border-color: var(--ov-alarm); }
+.ov-btn--danger:hover { background: var(--ov-alarm); color: var(--ov-field); }
+
+/* ---- hold to commit ---------------------------------------------------- */
+
+ov-hold { display: inline-block; }
+
+.ov-hold__btn {
+  position: relative;
+  overflow: hidden;
+  display: inline-flex;
+  align-items: baseline;
+  gap: 12px;
+}
+
+/* The progress of the commitment, behind the label. */
+.ov-hold__fill {
+  position: absolute;
+  inset-block: 0;
+  inset-inline-start: 0;
+  inline-size: 0;
+  background: var(--ov-accent);
+  opacity: 0.26;
+  pointer-events: none;
+}
+
+.ov-hold__label, .ov-hold__price { position: relative; }
+
+/* The price is ON the control. Not in a tooltip, and not in a confirmation
+ * that appears after you have already decided. */
+.ov-hold__price { color: var(--ov-alarm); font-size: var(--ov-size-1); }
+
+ov-hold[data-ov-committed] .ov-hold__btn { border-color: var(--ov-accent); }
+ov-hold[data-ov-committed] .ov-hold__label::after { content: " / committed"; color: var(--ov-accent); }
+
+/* Letting go early cancels, and says so. A silent cancel is indistinguishable
+ * from a control that does not work. */
+ov-hold[data-ov-cancelled] .ov-hold__label::after { content: " / cancelled"; color: var(--ov-alarm); }
+
+@media (prefers-reduced-motion: reduce) {
+  .ov-hold__fill { transition: none !important; }
+}
+
+/* ---- popover ----------------------------------------------------------- */
+
+/* The Popover API puts this in the TOP LAYER, which is the same lesson the
+ * dialog taught: `.ov-finish` sets isolation:isolate, so anything positioned
+ * inside a themed surface is painted within that surface's stacking context
+ * and later sections cover it. Nothing but the top layer escapes that. */
+[popover].ov-pop {
+  margin: 0;
+  padding: 4px 0 calc(4px + var(--ov-corner));
+  inline-size: max-content;
+  min-inline-size: 170px;
+  background: var(--ov-raised);
+  color: var(--ov-ink);
+  font-family: var(--ov-font-mono);
+  font-size: var(--ov-size-2);
+  letter-spacing: var(--ov-track);
+  border: var(--ov-bezel) solid var(--ov-line-strong);
+  position-area: block-end span-inline-end;
+  position-try-fallbacks: block-start span-inline-end, block-end span-inline-start;
+}
+
+[popover].ov-pop:popover-open { display: block; }
+
+.ov-pop__item {
+  display: flex;
+  gap: 20px;
+  justify-content: space-between;
+  padding: 6px 14px;
+  text-transform: var(--ov-case);
+  cursor: pointer;
+}
+
+.ov-pop__item:hover,
+.ov-pop__item:focus-visible {
+  background: var(--ov-lit-bg);
+  color: var(--ov-lit-fg);
+  outline: none;
+}
+
+.ov-pop__item span { color: var(--ov-faint); }
+.ov-pop__item[aria-disabled="true"] { color: var(--ov-faint); cursor: not-allowed; }
+
+.ov-pop__sep { block-size: var(--ov-rule); background: var(--ov-line); margin: 4px 0; }
+
+/* ---- sound switch ------------------------------------------------------ */
+
+ov-sound-switch { display: inline-flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+
+.ov-sound__cat { font-size: var(--ov-size-1); color: var(--ov-faint); }
+ov-sound-switch[data-ov-on] .ov-sound__cat { color: var(--ov-dim); }
+.ov-sound__cat input:disabled { opacity: 0.4; cursor: not-allowed; }
+}

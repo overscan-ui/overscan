@@ -1,0 +1,56 @@
+/* ---- CASCADE LAYER ------------------------------------------------------
+ *
+ * Everything the kit ships sits in ONE layer named `overscan`, so a consumer's
+ * own CSS beats it without a specificity fight and without !important. That is
+ * close to mandatory for a distributed kit: an app should be able to restyle a
+ * panel by writing a plain rule.
+ *
+ * ⚠️ ONE layer, deliberately, NOT a sub-layer per file. Sub-layers look tidier
+ * and would silently reorder the kit against itself: layer order beats
+ * specificity, so a high-specificity rule in an early file that currently wins
+ * would start losing to a low-specificity rule in a later one. A single layer
+ * preserves source order exactly, so nothing inside the kit changes.
+ *
+ * Unlayered author CSS wins over all of it. That is the point.
+ */
+
+@layer overscan {
+/* A shape that is normal only when every spoke says so. */
+
+ov-polygon {
+  display: grid;
+  gap: 6px;
+  font-family: var(--ov-font-mono);
+  font-size: var(--ov-size-1);
+  letter-spacing: 1px;
+  color: var(--ov-dim);
+}
+
+.ov-polygon__svg {
+  display: block;
+  inline-size: 100%;
+  max-inline-size: var(--ov-polygon-size, 340px);
+  background: var(--ov-field);
+  border: var(--ov-bezel) solid var(--ov-line-strong);
+}
+
+.ov-polygon__spoke { stroke: var(--ov-line); stroke-width: 1; }
+/* Normal is a shape, faint and dashed, so the live one is compared to it. */
+.ov-polygon__ref { fill: color-mix(in srgb, var(--ov-accent) 8%, transparent); stroke: var(--ov-line-strong); stroke-dasharray: 3 3; }
+.ov-polygon__edge { stroke: var(--ov-accent); stroke-width: 2; stroke-linecap: round; }
+.ov-polygon__edge.is-doubt { stroke-dasharray: 4 4; opacity: 0.8; }
+.ov-polygon__point { fill: var(--ov-accent); }
+.ov-polygon__point.is-out { fill: var(--ov-alarm); }
+.ov-polygon__point.is-doubt { fill: var(--ov-field); stroke: var(--ov-accent); stroke-width: 1.5; }
+.ov-polygon__configured { fill: none; stroke: var(--ov-accent-2); stroke-width: 1.2; }
+.ov-polygon__gap { font: 10px var(--ov-font-mono); fill: var(--ov-alarm); letter-spacing: 1px; }
+.ov-polygon__label { font: 9px var(--ov-font-mono); fill: var(--ov-dim); letter-spacing: 1px; text-transform: uppercase; }
+
+.ov-polygon__void {
+  display: grid; place-items: center; min-block-size: 120px; max-inline-size: 340px;
+  color: var(--ov-alarm); text-transform: uppercase;
+  border: 1px dashed var(--ov-line-strong);
+}
+.ov-polygon__readout { display: flex; flex-wrap: wrap; gap: 4px 16px; }
+.ov-polygon__readout .is-flag { color: var(--ov-alarm); }
+}

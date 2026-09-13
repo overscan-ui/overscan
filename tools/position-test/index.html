@@ -1,0 +1,323 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>ov-position harness</title>
+<!-- The refusal gate for the ov-position element. Serve the repo root
+     (tools/serve.py) and open /tools/position-test/. The last line must read
+     GATE: PASS, and every CONTROL (an assertion false on purpose) must fail. -->
+<link rel="stylesheet" href="../../src/tokens.css">
+<link rel="stylesheet" href="../../src/chrome.css">
+<link rel="stylesheet" href="../../src/position.css">
+<style>
+  body { background: #06060a; color: #cfe; font: 13px ui-monospace, monospace; padding: 20px; }
+  pre { white-space: pre-wrap; }
+  #stage { max-inline-size: 640px; container-type: inline-size; }
+</style>
+<div id="stage" data-ov-theme="aegis"></div>
+<pre id="out">running...</pre>
+<script>
+  // Count animation frames asked for: the element must ask for none.
+  window.__raf = 0;
+  const raf = window.requestAnimationFrame.bind(window);
+  window.requestAnimationFrame = (f) => { window.__raf++; return raf(f); };
+
+  // 🔴 A THROW IS A RED GATE, NOT A HANG.
+  const fatal = (what) => {
+    const out = document.getElementById('out');
+    if (out) out.textContent = `THREW: ${what}\n\nGATE: FAIL`;
+  };
+  addEventListener('error', (e) => fatal(e.error?.stack || e.message || e));
+  addEventListener('unhandledrejection', (e) => fatal(e.reason?.stack || e.reason));
+</script>
+<script type="module">
+// ?src=mut/<mutant>.js runs the same gate against a copy with
+// one refusal broken on purpose: every mutant must turn the gate red.
+const SRC = new URLSearchParams(location.search).get('src') || '../../src/ov-position.js';
+// ⚠️ `mut/x.js` is a BARE SPECIFIER to the module loader and will not
+// resolve; it has to be made a URL against this page first.
+const { OvPosition } = await import(new URL(SRC, location.href).href);
+
+const stage = document.getElementById('stage');
+const results = [];
+const ok = (name, cond, got) => results.push({ name, pass: !!cond, got });
+const controls = [];
+const control = (name, cond, got) => controls.push({ name, pass: !!cond, got });
+const settle = () => new Promise((r) => setTimeout(r, 0));
+
+let NOW = 1_800_000_000_000;
+OvPosition.now = () => NOW;
+const step = (s) => { NOW += s * 1000; };
+
+const make = (attrs = {}) => {
+  const el = document.createElement('ov-position');
+  for (const [k, v] of Object.entries(attrs)) el.setAttribute(k, v);
+  stage.replaceChildren(el);
+  return el;
+};
+
+const q = (p, s) => (p ? p.querySelector(s) : null);
+const text = (p, s) => (p ? q(p, s)?.textContent ?? null : null);
+const mode = (p) => text(p, '.ov-position__modeword');
+const why = (p) => text(p, '.ov-position__why');
+const said = (p) => text(p, '.ov-position__say');
+const latlon = (p) => text(p, '.ov-position__latlon');
+const notfor = (p) => text(p, '.ov-position__notfor');
+const radius = (p, cls) => Number(q(p, `.ov-position__${cls}`)?.getAttribute('r'));
+/* 🔴 Ask what PAINTS, not what an attribute says. And refuse to answer for a
+ * DETACHED element: getComputedStyle returns empty strings off the document,
+ * so `"" !== "none"` reads as visible and the check silently passes. A throw
+ * is a red gate here, which is the only safe answer. */
+const shows = (el) => {
+  if (!el) return false;
+  if (!el.isConnected) throw new Error(`shows() on a detached element: ${el.getAttribute?.('class') || el.tagName}`);
+  return getComputedStyle(el).display !== 'none';
+};
+const ringLabels = (p) => [...p.querySelectorAll('.ov-position__rl')].map((e) => e.textContent);
+const dashes = (el) => getComputedStyle(el).strokeDasharray.replace(/px/g, '').replace(/,\s*/g, ' ').trim();
+
+/* A good fix: the Boston approaches, and a receiver that says so. */
+const GOOD = {
+  lat: 42.3601, lon: -70.9500, mode: 'fix',
+  accuracy: 20, containment: 185, containmentP: 1e-7,
+  integrity: 'high', integrityBy: 'protection level from RAIM',
+};
+let p;
+
+// ---- 1. A fix says it is a fix, and carries both rings ------------------
+p = make({ label: 'OWN SHIP', requirement: '200', 'requirement-for': '3 NM SEPARATION' });
+p.fix = { ...GOOD };
+await settle();
+ok('a fresh element announces nothing', said(p) === '', said(p));
+ok('a fix reads FIX and nothing else', mode(p) === 'FIX' && why(p) === '', [mode(p), why(p)]);
+ok('...and is not qualified or refused', p.getAttribute('data-ov-qualified') === null && p.getAttribute('data-ov-refusal') === null, [p.getAttribute('data-ov-qualified'), p.getAttribute('data-ov-refusal')]);
+ok('the host is a group, not an img (its fact rows must stay readable)', p.getAttribute('role') === 'group', p.getAttribute('role'));
+ok('the rings are the only aria-hidden part', q(p, '.ov-position__rings')?.getAttribute('aria-hidden') === 'true' && p.getAttribute('aria-hidden') === null, p.getAttribute('aria-hidden'));
+ok('⭐ accuracy and containment are TWO rings, of different size', radius(p, 'acc') > 0 && radius(p, 'cont') > 0 && radius(p, 'cont') > radius(p, 'acc') * 2, [radius(p, 'acc'), radius(p, 'cont')]);
+ok('...each labelled in words on its own ring, so the plot is never alone', ringLabels(p).join(' | ') === 'REQUIRED 200 m | CONTAINMENT 185 m | ACCURACY 20 m', ringLabels(p));
+/* 🔴 MEASURED, NOT ASSUMED. The first version placed these on their own rings
+ * and spaced them by a percentage of the plot, which is smaller than a label
+ * is tall once the plot shrinks - so two close radii overprinted, and two
+ * close radii is exactly the case this element exists for. The check is now
+ * the complaint itself: no label may overlap another, or the point. */
+const boxes = (el) => [...el.querySelectorAll('.ov-position__rl')].map((e) => e.getBoundingClientRect());
+const hits = (el) => {
+  const bs = boxes(el);
+  const pt = el.querySelector('.ov-position__pt').getBoundingClientRect();
+  let n = 0;
+  const over = (a, b) => a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom;
+  for (let i = 0; i < bs.length; i++) {
+    if (over(bs[i], pt)) n++;
+    for (let j = i + 1; j < bs.length; j++) if (over(bs[i], bs[j])) n++;
+  }
+  return n;
+};
+ok('⭐ no ring label overlaps another, or the point', hits(p) === 0, hits(p));
+ok('...they are laid out outermost first, the order the rings read in', [...p.querySelectorAll('.ov-position__rl')].map((e) => e.dataset.ring).join(',') === 'req,cont,acc', [...p.querySelectorAll('.ov-position__rl')].map((e) => e.dataset.ring));
+ok('...and each carries a key drawn in its own ring\u2019s stroke', getComputedStyle(q(p, '.ov-position__rl[data-ring="cont"] i')).borderTopStyle === 'dashed' && getComputedStyle(q(p, '.ov-position__rl[data-ring="req"] i')).borderTopStyle === 'dotted', [getComputedStyle(q(p, '.ov-position__rl[data-ring="cont"] i')).borderTopStyle, getComputedStyle(q(p, '.ov-position__rl[data-ring="req"] i')).borderTopStyle]);
+control('CONTROL: the labels are allowed to overlap (must fail)', hits(p) > 0, hits(p));
+ok('...and both stated as text beside the plot', text(p, '.ov-position__accv') === '±20 m' && text(p, '.ov-position__contv') === '±185 m at 1e-7/h', [text(p, '.ov-position__accv'), text(p, '.ov-position__contv')]);
+ok('the requirement is drawn and printed', radius(p, 'req') > 0 && /NEEDS 200 m · 3 NM SEPARATION/.test(text(p, '.ov-position__rulebox')), text(p, '.ov-position__rulebox'));
+ok('a bound inside the requirement says nothing about what it is not for', notfor(p) === '', notfor(p));
+ok('integrity HIGH carries the method that earned it', /^HIGH · protection level from RAIM$/.test(text(p, '.ov-position__intv')), text(p, '.ov-position__intv'));
+control('CONTROL: one ring stands for both claims (must fail)', Math.abs(radius(p, 'acc') - radius(p, 'cont')) < 0.01, [radius(p, 'acc'), radius(p, 'cont')]);
+// Kept for the unbounded case below to compare against.
+const BOUNDED_DASH = dashes(q(p, '.ov-position__cont'));
+
+// ---- 2. The headline: a derived position never looks like a fix ---------
+// The Royal Majesty: the GPS lost its satellites and dead reckoned for hours
+// while the console changed "in no perceivable way".
+p = make({ label: 'OWN SHIP', requirement: '200', 'requirement-for': '3 NM SEPARATION' });
+p.fix = { ...GOOD };
+await settle();
+p.fix = { ...GOOD, mode: 'dr', since: NOW - 11_880_000, accuracy: 12, containment: 4200, integrity: 'low', integrityBy: 'plausibility on one receiver' };
+await settle();
+ok('⭐ a dead-reckoned position says so, in words', mode(p) === 'DEAD RECKONED', mode(p));
+ok('⭐ ...with the time of the last valid fix and how long ago it was', /^DEAD RECKONED FROM FIX AT \d\d:\d\d:\d\d · 3h 18m AGO/.test(why(p)), why(p));
+ok('...and the element marks itself derived, so its form can differ too', p.hasAttribute('data-ov-derived') && p.getAttribute('data-ov-mode') === 'dr', [p.hasAttribute('data-ov-derived'), p.getAttribute('data-ov-mode')]);
+ok('⭐ ...it keeps its number, carrying `estimated` WITH ITS CAUSE', p.getAttribute('data-ov-qualified') === 'estimated' && /^42\.36/.test(latlon(p)), [p.getAttribute('data-ov-qualified'), latlon(p)]);
+ok('...so it is a qualifier, not a refusal: the position is still needed', p.getAttribute('data-ov-refusal') === null, p.getAttribute('data-ov-refusal'));
+ok('...the cause reaches CSS and speech as the same words', /dead reckoned from fix at/.test(p.getAttribute('data-ov-qualifier-text')), p.getAttribute('data-ov-qualifier-text'));
+ok('⭐ ...and the change of mode is ANNOUNCED, which is the whole point', /no longer a fix, dead reckoned, last fix 3h 18m ago/.test(said(p)), said(p));
+ok('...the accessible name states the mode, not just the digits', /42\.36\d+° N .*dead reckoned/.test(p.getAttribute('aria-label')), p.getAttribute('aria-label'));
+control('CONTROL: a dead-reckoned position reads as a fix (must fail)', mode(p) === 'FIX', mode(p));
+control('CONTROL: the change of mode passes in silence (must fail)', said(p) === '', said(p));
+
+// It is not `stale` and not `frozen`: it is fresh, moving, and machine-made.
+step(2);
+p.fix = { ...GOOD, mode: 'dr', since: NOW - 11_882_000, lat: 42.3611, accuracy: 12, containment: 4300, integrity: 'low' };
+await settle();
+ok('⭐ a DR position that MOVES is still marked: this is not staleness', p.hasAttribute('data-ov-derived') && latlon(p) !== '—', [p.getAttribute('data-ov-mode'), latlon(p)]);
+ok('...and the age of the last fix keeps climbing while it moves', /3h 18m AGO/.test(why(p)), why(p));
+
+// A fix coming back is announced too.
+p.fix = { ...GOOD };
+await settle();
+ok('a fix restored is announced', /fix restored/.test(said(p)), said(p));
+ok('...and the derived marking is gone', !p.hasAttribute('data-ov-derived') && p.getAttribute('data-ov-qualified') === null, p.getAttribute('data-ov-qualified'));
+
+// HELD is the other failure output the NTSB bench-tested: frozen, not moving.
+p.fix = { ...GOOD, mode: 'held', since: NOW - 600_000 };
+await settle();
+ok('a HELD position is derived too, and names the fix it is held at', mode(p) === 'HELD AT LAST FIX' && /FROM FIX AT .* · 10m 00s AGO/.test(why(p)), [mode(p), why(p)]);
+p.fix = { ...GOOD, mode: 'dr' };
+await settle();
+ok('a derived position with no time of last fix says THAT, not a guess', /NO TIME OF LAST FIX/.test(why(p)), why(p));
+p.fix = { ...GOOD, mode: 'augmented', augmentedBy: 'WAAS' };
+await settle();
+ok('an augmented fix names what augmented it, and is not derived', mode(p) === 'AUGMENTED BY WAAS' && !p.hasAttribute('data-ov-derived'), mode(p));
+
+// ---- 3. A position with no mode flag is not a fix by default -----------
+p = make({ label: 'OWN SHIP' });
+p.fix = { lat: 42.36, lon: -70.95, accuracy: 20, containment: 185, containmentP: 1e-7, integrity: 'high' };
+await settle();
+ok('⭐ no mode flag means the mode is NOT STATED, never assumed a fix', p.getAttribute('data-ov-state') === 'nomode' && mode(p) === 'MODE NOT STATED', [p.getAttribute('data-ov-state'), mode(p)]);
+ok('...and that is a refusal', p.getAttribute('data-ov-refusal') === 'unknown', p.getAttribute('data-ov-refusal'));
+ok('...saying what is missing', /this position does not say how it was derived/.test(why(p)), why(p));
+control('CONTROL: a position with no mode flag is taken as a fix (must fail)', mode(p) === 'FIX', mode(p));
+p.fix = { lat: 42.36, lon: -70.95, mode: 'gps-ish', accuracy: 20 };
+await settle();
+ok('a mode this element does not know is not silently accepted', p.getAttribute('data-ov-state') === 'nomode' && /could not read/.test(text(p, '.ov-position__foot')), text(p, '.ov-position__foot'));
+
+// ---- 4. A containment with no stated probability is not a bound --------
+p = make({ label: 'TARGET', requirement: '200', 'requirement-for': '3 NM SEPARATION' });
+p.fix = { ...GOOD, containment: 185, containmentP: null };
+await settle();
+ok('⭐ a containment radius with no probability is UNBOUNDED', p.report.unbounded === true && p.getAttribute('data-ov-refusal') === 'containment-unbounded', [p.report.unbounded, p.getAttribute('data-ov-refusal')]);
+ok('...said in words beside the plot', /UNBOUNDED, NO PROBABILITY GIVEN/.test(text(p, '.ov-position__contv')), text(p, '.ov-position__contv'));
+ok('⭐ ...and its ring is BROKEN at the plot edge, not a tight circle', q(p, '.ov-position__cont').hasAttribute('data-ov-unbounded') && radius(p, 'cont') > 90, [q(p, '.ov-position__cont').hasAttribute('data-ov-unbounded'), radius(p, 'cont')]);
+ok('...which is a dash pattern with gaps big enough not to close', dashes(q(p, '.ov-position__cont')) === '30 32', dashes(q(p, '.ov-position__cont')));
+ok('...where a BOUNDED containment drew a ring that closes', BOUNDED_DASH === '6 4', BOUNDED_DASH);
+control('CONTROL: bounded and unbounded draw the same ring (must fail)', dashes(q(p, '.ov-position__cont')) === BOUNDED_DASH, [dashes(q(p, '.ov-position__cont')), BOUNDED_DASH]);
+ok('...its label says UNBOUNDED too', ringLabels(p).includes('CONTAINMENT UNBOUNDED'), ringLabels(p));
+ok('⭐ ...and an unbounded bound cannot meet any requirement', p.report.missesReq === true && /ISR · 3 NM SEPARATION NOT AVAILABLE · BOUND UNBOUNDED AGAINST 200 m REQUIRED/.test(notfor(p)), notfor(p));
+ok('...it is announced', /containment unbounded/.test(said(p)), said(p));
+control('CONTROL: an unbounded containment draws as a closed ring (must fail)', !q(p, '.ov-position__cont').hasAttribute('data-ov-unbounded'), radius(p, 'cont'));
+control('CONTROL: an unbounded bound satisfies the requirement (must fail)', p.report.missesReq === false, p.report.missesReq);
+p.fix = { ...GOOD, containment: null };
+await settle();
+ok('no containment at all is NOT STATED, and draws no ring', text(p, '.ov-position__contv') === 'NOT STATED' && !shows(q(p, '.ov-position__cont')), [text(p, '.ov-position__contv'), shows(q(p, '.ov-position__cont'))]);
+
+// ---- 5. Integrity is graded, and MEDIUM must be earned -----------------
+p = make({ label: 'OWN SHIP' });
+p.fix = { ...GOOD, integrity: 'none', integrityBy: null };
+await settle();
+ok('integrity none is NONE in the standard\u2019s own words, never a pass', text(p, '.ov-position__intv') === 'NONE · unavailable integrity evaluation', text(p, '.ov-position__intv'));
+ok('...and the mode line says INTEGRITY NOT EVALUATED outright', /INTEGRITY NOT EVALUATED/.test(why(p)), why(p));
+ok('...with a dotted rule, so it differs in form from a graded one', getComputedStyle(q(p, '.ov-position__facts > div:nth-child(3)')).borderInlineStartStyle === 'dotted', getComputedStyle(q(p, '.ov-position__facts > div:nth-child(3)')).borderInlineStartStyle);
+control('CONTROL: integrity none reads as evaluated (must fail)', !/NOT EVALUATED|unavailable/.test(text(p, '.ov-position__intv') + why(p)), text(p, '.ov-position__intv'));
+p.fix = { ...GOOD, integrity: 'medium', integrityBy: 'compared with the second source',
+  second: { id: 'LORAN-C', lat: 42.3605, lon: -70.9498, shares: 'gyro and speed log' } };
+await settle();
+ok('⭐ MEDIUM claimed on a cross-check that shares inputs is DEMOTED', p.report.integrity === 'low' && p.getAttribute('data-ov-integrity') === 'low', [p.report.integrity, p.getAttribute('data-ov-integrity')]);
+ok('...and the element says what the two share', /CROSS-CHECK NOT INDEPENDENT · SHARES GYRO AND SPEED LOG/.test(why(p)), why(p));
+ok('...and that MEDIUM was claimed, so the demotion is visible', /demoted: MEDIUM claimed, cross-check shares gyro and speed log/.test(text(p, '.ov-position__intv')), text(p, '.ov-position__intv'));
+ok('...it is announced', /cross-check not independent, shares gyro and speed log/.test(said(p)), said(p));
+control('CONTROL: a claimed MEDIUM survives a shared cross-check (must fail)', p.report.integrity === 'medium', p.report.integrity);
+
+p.fix = { ...GOOD, integrity: 'medium', second: { id: 'LORAN-C', lat: 42.3605, lon: -70.9498 } };
+await settle();
+ok('an independent second source leaves MEDIUM standing', p.report.integrity === 'medium' && p.report.notIndependent === null, [p.report.integrity, p.report.notIndependent]);
+ok('...the second source is drawn at its own offset, with a link', shows(q(p, '.ov-position__secpt')) && Number(q(p, '.ov-position__secpt').getAttribute('cy')) !== 0, q(p, '.ov-position__secpt').getAttribute('cy'));
+ok('...and its discrepancy is printed as a distance', /^LORAN-C · \d+ m away · INDEPENDENT$/.test(text(p, '.ov-position__secv')), text(p, '.ov-position__secv'));
+p.fix = { ...GOOD, integrity: 'high' };
+await settle();
+ok('with no second source that row is hidden, and actually hides', !shows(q(p, '.ov-position__secrow')), getComputedStyle(q(p, '.ov-position__secrow')).display);
+
+// ---- 6. Digits are capped by the stated accuracy -----------------------
+p = make({ label: 'OWN SHIP' });
+p.fix = { ...GOOD, accuracy: 500 };
+await settle();
+ok('⭐ a position known to half a kilometre is not printed to four decimals', p.report.places === 3 && /^42\.360° N/.test(latlon(p)), [p.report.places, latlon(p)]);
+ok('...and the element says which accuracy capped it', /DIGITS CAPPED BY ±500 m ACCURACY · 3 DECIMALS/.test(text(p, '.ov-position__cap')), text(p, '.ov-position__cap'));
+control('CONTROL: a half-kilometre position prints four decimals (must fail)', p.report.places === 4, p.report.places);
+p.fix = { ...GOOD, accuracy: 5 };
+await settle();
+ok('a metre-accurate position gets the four decimals the standard allows', p.report.places === 4 && /^42\.3601° N/.test(latlon(p)), [p.report.places, latlon(p)]);
+ok('...and is not described as capped', /THE MOST THIS BLOCK SHOWS/.test(text(p, '.ov-position__cap')), text(p, '.ov-position__cap'));
+p.fix = { ...GOOD, accuracy: null };
+await settle();
+ok('⭐ with no accuracy stated there is nothing to cap the digits BY', p.report.places === null && /NO ACCURACY STATED/.test(text(p, '.ov-position__cap')), [p.report.places, text(p, '.ov-position__cap')]);
+ok('...so the element shows whole degrees rather than inventing precision', latlon(p) === '42° N   71° W', latlon(p));
+ok('...and draws no accuracy ring it cannot size', !shows(q(p, '.ov-position__acc')), shows(q(p, '.ov-position__acc')));
+
+// ---- 7. A bound that misses the requirement does not hide the position -
+p = make({ label: 'TRACK 4412', requirement: '10', 'requirement-for': '3 NM SEPARATION' });
+p.fix = { ...GOOD, containment: 185, containmentP: 1e-7 };
+await settle();
+ok('⭐ a bound past the requirement says what the position is NOT for', /ISR · 3 NM SEPARATION NOT AVAILABLE · BOUND 185 m AGAINST 10 m REQUIRED/.test(notfor(p)), notfor(p));
+ok('⭐ ...and the position STAYS: withholding it would be worse', /^42\.3601° N/.test(latlon(p)) && p.getAttribute('data-ov-refusal') === null, latlon(p));
+ok('...and it is announced', /not for 3 nm separation/.test(said(p)), said(p));
+control('CONTROL: a position that misses the requirement is withheld (must fail)', latlon(p) === '—', latlon(p));
+p = make({ label: 'TRACK 4412' });
+p.fix = { ...GOOD, containment: 185, containmentP: 1e-7 };
+await settle();
+ok('with no requirement declared the element says so, and judges nothing', text(p, '.ov-position__rulebox') === 'NO REQUIREMENT' && notfor(p) === '' && p.report.missesReq === false, [text(p, '.ov-position__rulebox'), p.report.missesReq]);
+
+// ---- 8. Nothing at all --------------------------------------------------
+p = make({ label: 'OWN SHIP' });
+await settle();
+ok('an element with no position says NO POSITION, not zero', mode(p) === 'NO POSITION' && latlon(p) === '—', [mode(p), latlon(p)]);
+ok('...and draws no rings rather than rings of nothing', !shows(q(p, '.ov-position__rings')), getComputedStyle(q(p, '.ov-position__rings')).display);
+p.fix = { lat: null, lon: null, mode: 'fix' };
+await settle();
+ok('a fix with no coordinates is NO POSITION too', p.getAttribute('data-ov-state') === 'nofix' && p.getAttribute('data-ov-refusal') === 'unknown', p.getAttribute('data-ov-state'));
+
+// ---- 8b. data-ov-chrome="bare" hides prose and never a refusal --------
+p = make({ label: 'TRACK 4412', requirement: '10', 'requirement-for': '3 NM SEPARATION', 'data-ov-chrome': 'bare' });
+p.fix = { ...GOOD, mode: 'dr', ago: 600, containment: 900, containmentP: null };
+await settle();
+ok('data-ov-chrome=bare hides the declared-rules footnote', !shows(q(p, '.ov-position__rulebox')), getComputedStyle(q(p, '.ov-position__rulebox')).display);
+ok('...and the digit-cap note', !shows(q(p, '.ov-position__cap')), getComputedStyle(q(p, '.ov-position__cap')).display);
+ok('⭐ ...and NEVER the refusal: the mode badge still says it is derived', shows(q(p, '.ov-position__mode')) && mode(p) === 'DEAD RECKONED', mode(p));
+ok('⭐ ...nor what the position may not be used for', shows(q(p, '.ov-position__notfor')) && notfor(p) !== '', notfor(p));
+ok('⭐ ...nor the unbounded containment, nor the coordinates', /CONTAINMENT UNBOUNDED/.test(ringLabels(p).join(' ')) && /^42\./.test(latlon(p)), [ringLabels(p), latlon(p)]);
+control('CONTROL: bare is allowed to hide the refusal (must fail)', !shows(q(p, '.ov-position__notfor')), 'notfor');
+
+/* 🔴 The accessible name is the half a screen reader gets, and `bare` is a
+ * LOOK. Build the two elements one after the other - the stage holds one at a
+ * time - and insist the full name is non-empty, so two blanks cannot agree. */
+const DR = { ...GOOD, mode: 'dr', ago: 600, containment: 900, containmentP: null };
+p = make({ label: 'TRACK 4412', requirement: '10', 'requirement-for': '3 NM SEPARATION' });
+p.fix = { ...DR };
+await settle();
+const ariaFull = p.getAttribute('aria-label');
+p = make({ label: 'TRACK 4412', requirement: '10', 'requirement-for': '3 NM SEPARATION', 'data-ov-chrome': 'bare' });
+p.fix = { ...DR };
+await settle();
+const ariaBare = p.getAttribute('aria-label');
+ok('⭐ ...and the accessible name is UNCHANGED by it', ariaFull === ariaBare && /dead reckoned/i.test(ariaFull), [ariaFull, ariaBare]);
+
+// ---- 9. What the element must not do -----------------------------------
+/* 🔴 THE CLAIM IS ABOUT THIS ELEMENT'S CODE, SO IT IS CHECKED THERE. A
+ * page-wide rAF count stopped being a statement about this element the moment
+ * ov-source began driving feeds on a frame ticker: it was measuring whether
+ * the page had arrived yet, and passing by luck. Nor can a delta isolate it,
+ * because that ticker keeps counting in the background. So the assertion is
+ * static and exact - this module never asks for a frame at all. */
+{
+  const text = await (await fetch(new URL(SRC, location.href).href)).text();
+  const asks = /requestAnimationFrame/.test(text);
+  ok('the element never asks for an animation frame, anywhere in its source', !asks, asks);
+  control('CONTROL: the element draws on a frame (must fail)', asks, asks);
+}
+p = make({ label: 'OWN SHIP' });
+p.fix = { ...GOOD, mode: 'dr', since: NOW - 60_000 };
+await settle();
+const said1 = said(p);
+step(5); p.evaluate(); p.evaluate();
+await settle();
+ok('an age climbing on a steady mode is not announced again every second', said(p) === said1, [said1, said(p)]);
+p.remove();
+ok('a removed element stops its timer', p._timer === 0, p._timer);
+
+// ---- report ----
+const bad = results.filter((r) => !r.pass);
+const liveControls = controls.filter((c) => c.pass);
+const lines = [];
+for (const r of results) lines.push(`${r.pass ? 'ok  ' : 'FAIL'} ${r.name}${r.pass ? '' : `\n       got: ${JSON.stringify(r.got)}`}`);
+lines.push('');
+for (const c of controls) lines.push(`${c.pass ? 'CONTROL DID NOT FAIL' : 'control failed as required'}  ${c.name}${c.pass ? `\n       got: ${JSON.stringify(c.got)}` : ''}`);
+lines.push('');
+lines.push(`${results.length - bad.length}/${results.length} checks, ${controls.length - liveControls.length}/${controls.length} controls failed as required`);
+lines.push(bad.length === 0 && liveControls.length === 0 ? 'GATE: PASS' : 'GATE: FAIL');
+document.getElementById('out').textContent = lines.join('\n');
+</script>

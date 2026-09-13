@@ -1,0 +1,7 @@
+{
+  "name": "overscan-consumer-test",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "description": "Fixture project for tools/consumer-test.sh. Installs the PACKED tarball, never the repo, so a broken exports map or a missing file in `files` fails here rather than on someone else's machine."
+}

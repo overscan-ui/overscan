@@ -1,0 +1,115 @@
+/* ---- CASCADE LAYER ------------------------------------------------------
+ *
+ * Everything the kit ships sits in ONE layer named `overscan`, so a consumer's
+ * own CSS beats it without a specificity fight and without !important. That is
+ * close to mandatory for a distributed kit: an app should be able to restyle a
+ * panel by writing a plain rule.
+ *
+ * ⚠️ ONE layer, deliberately, NOT a sub-layer per file. Sub-layers look tidier
+ * and would silently reorder the kit against itself: layer order beats
+ * specificity, so a high-specificity rule in an early file that currently wins
+ * would start losing to a low-specificity rule in a later one. A single layer
+ * preserves source order exactly, so nothing inside the kit changes.
+ *
+ * Unlayered author CSS wins over all of it. That is the point.
+ */
+
+@layer overscan {
+/* Data grid. */
+
+ov-table {
+  display: flex;
+  flex-direction: column;
+  min-block-size: 0;
+  font-family: var(--ov-font-mono);
+  font-size: var(--ov-size-2);
+  color: var(--ov-ink);
+  border: var(--ov-bezel) solid var(--ov-line-strong);
+  background: var(--ov-panel);
+}
+
+.ov-table__head {
+  display: grid;
+  grid-template-columns: repeat(var(--ov-table-cols, 3), minmax(0, 1fr));
+  border-block-end: var(--ov-rule) solid var(--ov-line-strong);
+  background: var(--ov-raised);
+}
+
+.ov-table__h {
+  font: inherit;
+  letter-spacing: calc(var(--ov-track) + 0.8px);
+  text-transform: uppercase;
+  font-size: var(--ov-size-1);
+  text-align: start;
+  background: none;
+  border: 0;
+  padding: 7px 10px;
+  color: var(--ov-dim);
+  cursor: pointer;
+}
+
+.ov-table__h:hover { color: var(--ov-accent); }
+/* 🔴 ONE backslash. `\\2191` is an escaped BACKSLASH followed by the text
+ * "2191", so the header read "STATE \2191" on screen instead of showing an
+ * arrow. It rendered that way on every sorted column and nobody had looked,
+ * because until the `dir` collision was fixed no column ever sorted. */
+.ov-table__h[aria-sort="ascending"]::after { content: " \2191"; color: var(--ov-accent); }
+.ov-table__h[aria-sort="descending"]::after { content: " \2193"; color: var(--ov-accent); }
+.ov-table__h:focus-visible { outline: 2px solid var(--ov-accent); outline-offset: -2px; }
+
+/* The wrapper ARIA has no role for. It is why this cannot pass
+ * aria-required-children, and it is not going away: a virtual grid needs
+ * something scrollable between the grid and its rows. */
+.ov-table__scroll { flex: 1 1 auto; min-block-size: 0; overflow: auto; }
+
+/* The scroll channel is not styled here any more. It is one list in
+ * chrome.css covering all eight scrolling surfaces in the kit, because seven
+ * of them kept the browser's light 15px default for as long as this rule sat
+ * in table.css alone. The rule it applies, and the `::-webkit-scrollbar` trap
+ * that shaped it, are written up there. */
+
+.ov-table__pad { position: relative; }
+.ov-table__rows { position: absolute; inset-inline: 0; inset-block-start: 0; }
+
+.ov-table__row {
+  display: grid;
+  grid-template-columns: repeat(var(--ov-table-cols, 3), minmax(0, 1fr));
+  block-size: var(--ov-table-row-h, 22px);
+  align-items: center;
+}
+
+.ov-table__row:nth-child(even) { background: var(--ov-raised); }
+
+.ov-table__cell {
+  padding-inline: 10px;
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+/* Right-aligned, tabular, and never tracked, so decimal points line up. */
+.ov-table__cell[data-num] {
+  text-align: end;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0;
+}
+
+.ov-table__foot {
+  padding: 5px 10px;
+  border-block-start: var(--ov-rule) solid var(--ov-line);
+  font-size: var(--ov-size-1);
+  color: var(--ov-dim);
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+/* The defect, printed on the thing that has it. */
+ov-table[data-ov-aria]::after {
+  content: attr(data-ov-aria);
+  display: block;
+  padding: 5px 10px;
+  border-block-start: var(--ov-rule) solid var(--ov-line);
+  font-size: var(--ov-size-1);
+  line-height: 1.5;
+  color: var(--ov-alarm);
+}
+}

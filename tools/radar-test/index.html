@@ -1,0 +1,131 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>ov-radar harness</title>
+<!-- The gate for ov-radar's options: motion-only, stalks, trail and glow.
+     Serve the repo root (python3 tools/serve.py) and open tools/radar-test/.
+     Runs in real time (about 8 s): the sweep is the thing under test. The
+     last line must read GATE: PASS, and every CONTROL must fail. -->
+<link rel="stylesheet" href="../../src/tokens.css">
+<link rel="stylesheet" href="../../src/radar.css">
+<link rel="stylesheet" href="../../src/track.css">
+<style>
+  body { background: #06060a; color: #cfe; font: 13px ui-monospace, monospace; padding: 20px; }
+  pre { white-space: pre-wrap; }
+</style>
+<div id="stage" data-ov-theme="aegis"></div>
+<pre id="out">running...</pre>
+<script type="module">
+import '../../src/ov-source.js';
+import '../../src/ov-radar.js';
+
+const stage = document.getElementById('stage');
+const results = [];
+const ok = (name, cond, got) => results.push({ name, pass: !!cond, got });
+const controls = [];
+const control = (name, cond, got) => controls.push({ name, pass: !!cond, got });
+const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+
+// Contacts: a mover with speed, a still one with speed 0, a drifter with no
+// speed (moves between sweeps), a parked one with no speed (does not), and
+// elevation above, below, level and unknown.
+let T = 0;
+Overscan.source('rm', (t) => { T = t; return [
+  { id: 'fast', bearing: 30, range: 400, speed: 300, elevation: 200 },
+  { id: 'parked', bearing: 120, range: 500, speed: 0, elevation: -150 },
+  { id: 'drift', bearing: (200 + t * 40) % 360, range: 600 },
+  { id: 'still', bearing: 300, range: 300, elevation: 0 },
+]; }, { hz: 20 });
+
+const fresh = (attrs) => {
+  const el = document.createElement('ov-radar');
+  el.setAttribute('source', 'rm');
+  el.setAttribute('range', '800');
+  el.setAttribute('period', '0.4');
+  el.style.setProperty('--ov-radar-size', '240px');
+  for (const [k, v] of Object.entries(attrs)) el.setAttribute(k, v);
+  stage.replaceChildren(el);
+  return el;
+};
+const blips = (el) => el.querySelectorAll('.ov-radar__blip').length;
+const note = (el) => el.getAttribute('data-ov-note-text') || '';
+
+// 1. Without modes: everything with a fix is drawn, no note (unchanged radar).
+let el = fresh({});
+await wait(1000);
+ok('default radar draws all four', blips(el) === 4, blips(el));
+ok('...and carries no mode note', !el.hasAttribute('data-ov-note'), note(el));
+
+// 2. THE REFUSAL: motion-only draws movers, leaves off still AND unknown.
+// Restart the sweep once the feed has arrived, then look after exactly one
+// revolution: every contact seen once. (A fresh radar gets its first contact
+// list up to 50 ms after subscribing, and the beam passes 30 degrees at 33.)
+el = fresh({ 'motion-only': '' });
+await wait(80);
+el.plotted.clear(); el.lastAngle = 0; el.t0 = performance.now();
+await wait(405);
+ok('after one sweep only the reported mover shows', blips(el) === 1, blips(el));
+ok('...speed 0 is STILL, the two with no speed are MOTION UNKNOWN', /MOTION ONLY · 1 STILL NOT SHOWN · 2 MOTION UNKNOWN/.test(note(el)), note(el));
+control('CONTROL: an unknown-motion contact drawn as a mover (must fail)', blips(el) >= 2, blips(el));
+await wait(1100);
+ok('after more sweeps the drifter is seen to move', blips(el) === 2, blips(el));
+ok('...the parked one and the speed-0 one are STILL NOT SHOWN', /MOTION ONLY · 2 STILL NOT SHOWN/.test(note(el)), note(el));
+ok('the note says MOTION ONLY so an empty scope is not read as empty', /^MOTION ONLY/.test(note(el)), note(el));
+ok('the accessible name carries it too', /motion only/.test(el.getAttribute('aria-label')), el.getAttribute('aria-label'));
+
+// 3. Stalks: above, below, level; none for unknown.
+el = fresh({ stalks: '' });
+await wait(1000);
+const up = [...el.querySelectorAll('.ov-radar__stalk:not(.ov-radar__stalk--level)')];
+ok('two elevation stalks (above and below)', up.length === 2, up.length);
+const dirs = up.map((l) => Math.sign(Number(l.getAttribute('y1')) - Number(l.getAttribute('y2'))));
+ok('...one up, one down', dirs.includes(1) && dirs.includes(-1), dirs);
+ok('elevation 0 is a level tick, a different mark', el.querySelectorAll('.ov-radar__stalk--level').length === 1, '');
+ok('a contact with no elevation gets no stalk, and is counted', /1 WITHOUT ELEVATION/.test(note(el)), note(el));
+control('CONTROL: the unknown-elevation contact got a stalk (must fail)', el.querySelectorAll('.ov-radar__stalk').length === 4, el.querySelectorAll('.ov-radar__stalk').length);
+
+// 4. With symbols, the modes combine: symbols decide HOW, motion-only WHAT.
+el = fresh({ 'motion-only': '', symbols: '' });
+await wait(1400);
+ok('motion-only with symbols draws symbols for movers only', el.querySelectorAll('.ov-track__sym').length === 2, el.querySelectorAll('.ov-track__sym').length);
+
+// 5. Trail: persistence, only when asked for, following the arm.
+el = fresh({});
+await wait(200);
+ok('no trail unless asked for', !el.querySelector('.ov-radar__trail'), '');
+el = fresh({ trail: '' });
+await wait(300);
+const a1 = el.querySelector('.ov-radar__trail').style.getPropertyValue('--ov-radar-angle');
+await wait(150);
+const a2 = el.querySelector('.ov-radar__trail').style.getPropertyValue('--ov-radar-angle');
+ok('the trail follows the arm', a1 && a2 && a1 !== a2, [a1, a2]);
+ok('the trail sits under the scope', el.firstElementChild.classList.contains('ov-radar__trail'), el.firstElementChild.className);
+
+// 6. Glow: the theme's bloom, on what the beam paints, never the graticule.
+el = fresh({ glow: '' });
+await wait(300);
+const f = el.querySelector('filter');
+ok('the glow filter covers the scope, not a bounding box', f && f.getAttribute('filterUnits') === 'userSpaceOnUse', f && f.outerHTML.slice(0, 80));
+ok('the sweep and the blips carry it, the rings do not',
+  !!el.querySelector('.ov-radar__sweep[filter]') && !!el.querySelector('.ov-radar__blips[filter]') && !el.querySelector('.ov-radar__ring[filter]'), '');
+const std = Number(el.querySelector('.ov-radar__bloom').getAttribute('stdDeviation'));
+const want = parseFloat(getComputedStyle(el).getPropertyValue('--ov-bloom')) * 4;
+ok('blur is the theme bloom x4', Math.abs(std - want) < 0.01, [std, want]);
+stage.dataset.ovTheme = 'antiseptic';
+await wait(1200);
+ok('antiseptic, bloom 0, has no glow', Number(el.querySelector('.ov-radar__bloom').getAttribute('stdDeviation')) === 0, el.querySelector('.ov-radar__bloom').getAttribute('stdDeviation'));
+control('CONTROL: antiseptic glows (must fail)', Number(el.querySelector('.ov-radar__bloom').getAttribute('stdDeviation')) > 0, '');
+stage.dataset.ovTheme = 'aegis';
+
+const passed = results.filter((x) => x.pass).length;
+const failed = results.length - passed;
+const controlsFailed = controls.filter((x) => !x.pass).length;
+const gate = failed === 0 && controlsFailed === controls.length && controls.length > 0;
+const out = document.getElementById('out');
+out.textContent = [
+  ...results.map((x) => `${x.pass ? 'PASS' : 'FAIL'}  ${x.name}${x.pass ? '' : '  got ' + JSON.stringify(x.got)}`),
+  ...controls.map((x) => `${x.pass ? 'CONTROL PASSED (BAD)' : 'CONTROL FAILED (good)'}  ${x.name}`),
+  '', `${passed} passed, ${failed} failed, ${controlsFailed}/${controls.length} controls failed as required`,
+  `GATE: ${gate ? 'PASS' : 'FAIL'}`,
+].join('\n');
+out.setAttribute('data-gate', gate ? 'pass' : 'fail');
+</script>

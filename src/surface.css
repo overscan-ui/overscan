@@ -1,0 +1,221 @@
+/* ---- CASCADE LAYER ------------------------------------------------------
+ *
+ * Everything the kit ships sits in ONE layer named `overscan`, so a consumer's
+ * own CSS beats it without a specificity fight and without !important. That is
+ * close to mandatory for a distributed kit: an app should be able to restyle a
+ * panel by writing a plain rule.
+ *
+ * ⚠️ ONE layer, deliberately, NOT a sub-layer per file. Sub-layers look tidier
+ * and would silently reorder the kit against itself: layer order beats
+ * specificity, so a high-specificity rule in an early file that currently wins
+ * would start losing to a low-specificity rule in a later one. A single layer
+ * preserves source order exactly, so nothing inside the kit changes.
+ *
+ * Unlayered author CSS wins over all of it. That is the point.
+ */
+
+@layer overscan {
+/* Map, waveform, vertical writing, variable axes, and the elbow. */
+
+/* ---- map --------------------------------------------------------------- */
+
+ov-map {
+  position: relative;
+  display: block;
+  aspect-ratio: auto;
+  background: var(--ov-panel);
+  border: var(--ov-bezel) solid var(--ov-line-strong);
+}
+
+.ov-map__svg { inline-size: 100%; aspect-ratio: 16 / 10; display: block; }
+
+.ov-map__grid { stroke: var(--ov-line); stroke-width: 0.3; }
+.ov-map__grid-l {
+  fill: var(--ov-faint);
+  font-family: var(--ov-font-mono);
+  font-size: 3px;
+}
+
+/* The circle everyone ships. Drawn dashed, because it is a claim about the
+ * screen and not about the ground. */
+.ov-map__naive {
+  fill: none;
+  stroke: var(--ov-alarm);
+  stroke-width: 0.5;
+  stroke-dasharray: 2 2;
+  vector-effect: non-scaling-stroke;
+}
+
+/* The ring the projection actually implies. */
+.ov-map__true {
+  fill: none;
+  stroke: var(--ov-accent);
+  stroke-width: 0.6;
+  vector-effect: non-scaling-stroke;
+}
+
+.ov-map__mark { fill: var(--ov-accent-2); }
+.ov-map__label {
+  fill: var(--ov-ink);
+  font-family: var(--ov-font-mono);
+  font-size: 3.2px;
+}
+
+.ov-map__key {
+  /* In the flow, under the plot. Overlaid it collided with the graticule at
+   * any narrow width, and a key that covers the thing it explains is worse
+   * than no key. */
+  display: flex;
+  padding: 6px 8px;
+  border-block-start: var(--ov-rule) solid var(--ov-line);
+  flex-direction: column;
+  gap: 2px;
+  font-size: var(--ov-size-1);
+  color: var(--ov-dim);
+}
+.ov-map__key i {
+  display: inline-block;
+  inline-size: 12px;
+  block-size: 2px;
+  margin-inline-end: 7px;
+  vertical-align: middle;
+}
+.ov-map__key i.is-naive { background: var(--ov-alarm); }
+.ov-map__key i.is-true { background: var(--ov-accent); }
+/* What the plot could not place, in words: never a silent drop. */
+.ov-map__unplaced {
+  font-weight: 400;
+  letter-spacing: .06em;
+  color: var(--ov-alarm);
+}
+
+/* ---- waveform ---------------------------------------------------------- */
+
+ov-wave {
+  position: relative;
+  display: block;
+  block-size: var(--ov-wave-height, 110px);
+  background: var(--ov-panel);
+  border: var(--ov-bezel) solid var(--ov-line-strong);
+}
+
+.ov-wave__svg { inline-size: 100%; block-size: 100%; display: block; }
+
+.ov-wave__trace {
+  fill: none;
+  stroke: var(--ov-accent);
+  stroke-width: 1.2;
+}
+
+.ov-wave__note {
+  position: absolute;
+  inset-block-end: 3px;
+  inset-inline-start: 7px;
+  font-size: var(--ov-size-1);
+  color: var(--ov-dim);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---- vertical writing -------------------------------------------------- */
+
+/* 🔴 VERTICAL WRITING IS A SCRIPT PROPERTY, NOT A ROTATION. `text-orientation:
+ * mixed` stands Han and Hangul upright and leaves Thai on its side, which is
+ * CORRECT: Thai is not written vertically. A wall that treats "Asian signage"
+ * as one texture is wrong about at least one script, and Thai is
+ * the one nobody tests.
+ *
+ * ⭐ And correct typesetting is also the most compact: the same string measures
+ * 147px with `mixed`, 221px forced `upright`, and 143px with
+ * `text-combine-upright: all`. */
+.ov-vertical {
+  writing-mode: vertical-rl;
+  text-orientation: mixed;
+  line-height: 1.6;
+}
+
+.ov-vertical--upright { text-orientation: upright; }
+
+/* Tate-chu-yoko: a short run of Latin set across the column. */
+.ov-tcy { text-combine-upright: all; }
+
+/* 🔴 `ch` does NOT turn with the writing mode. In vertical-rl it sizes a
+ * column's THICKNESS while looking like it sizes its length, so nothing here
+ * is sized in ch. */
+
+/* ---- variable axes ----------------------------------------------------- */
+
+/* The axes that matter on Recursive are not weight: MONO moves between a
+ * proportional sans and a monospace, and CASL between a neutral and a casual
+ * drawing. They are tokens because a theme should be able to say where on those
+ * axes it sits. */
+.ov-var {
+  font-family: var(--ov-font-var, var(--ov-font-mono));
+  font-variation-settings:
+    "MONO" var(--ov-axis-mono, 1),
+    "CASL" var(--ov-axis-casl, 0),
+    "wght" var(--ov-axis-wght, 400);
+}
+
+/* An axis you cannot verify is loaded is an axis you are guessing at, so the
+ * demo checks document.fonts and says which it got. */
+.ov-var[data-ov-nofont] { text-decoration: underline dotted var(--ov-alarm); }
+
+/* ---- elbow ------------------------------------------------------------- */
+
+/* The LCARS elbow: the one FUI language that became a real design system, and
+ * the shape this kit could not make. It is a single element, not a corner
+ * assembled from three, so the sweep is continuous. */
+.ov-elbow {
+  --ov-elbow-arm: 46px;
+  --ov-elbow-bar: 26px;
+  --ov-elbow-r: 30px;
+  position: relative;
+  display: block;
+  inline-size: 100%;
+  block-size: 100%;
+  background: var(--ov-accent);
+  clip-path: polygon(
+    0 0,
+    100% 0,
+    100% var(--ov-elbow-bar),
+    calc(var(--ov-elbow-arm) + var(--ov-elbow-r)) var(--ov-elbow-bar),
+    var(--ov-elbow-arm) calc(var(--ov-elbow-bar) + var(--ov-elbow-r)),
+    var(--ov-elbow-arm) 100%,
+    0 100%
+  );
+}
+
+.ov-elbow--alt { background: var(--ov-accent-2); }
+
+/* The bay the elbow frames.
+ *
+ * 🔴 The elbow column was a flat `200px`, which is a track that CANNOT shrink.
+ * Dropped into a `repeat(4, minmax(0, 1fr))` cell about 183px wide, the two
+ * tracks summed to 307px and the bay overflowed its own cell by ~123px, so
+ * the elbow and its head ran off the right edge of the surface and were cut
+ * by the page. It looked like a corner clip eating content, which is a bug
+ * this kit has now had five of, so it read as the sixth. It was not: nothing
+ * was clipped, the grid was simply wider than its box.
+ *
+ * ⚠️ The tell that separates the two: a clip removes a triangle and leaves
+ * the layout intact, an overflow moves content out of the box and leaves a
+ * straight vertical cut at the container edge. This was a straight cut.
+ *
+ * The column is now bounded by the bay: it wants 38% but never takes more
+ * than 200px, and never less than the arm plus its radius (76px), which is
+ * the narrowest the elbow can be and still read as an elbow rather than as a
+ * bar. minmax(0, 1fr) on the second track lets the content column shrink to
+ * nothing rather than forcing the bay open from the inside. */
+.ov-elbow-bay {
+  display: grid;
+  grid-template-columns:
+    clamp(calc(var(--ov-elbow-arm, 46px) + var(--ov-elbow-r, 30px)), 38%, 200px)
+    minmax(0, 1fr);
+  grid-template-rows: 84px minmax(0, 1fr);
+  gap: 0;
+  block-size: 100%;
+}
+.ov-elbow-bay > .ov-elbow { grid-area: 1 / 1 / 3 / 2; }
+.ov-elbow-bay > .ov-elbow-head { grid-area: 1 / 2; padding: 8px 12px; }
+.ov-elbow-bay > .ov-elbow-body { grid-area: 2 / 2; padding: 12px; min-block-size: 0; }
+}

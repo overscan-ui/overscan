@@ -1,0 +1,61 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>ov-histogram tests</title>
+<!-- Over tools/serve.py: /tools/histogram-test/ . The last case is a CONTROL that must fail. -->
+<link rel="stylesheet" href="../../src/tokens.css">
+<link rel="stylesheet" href="../../src/finish.css">
+<link rel="stylesheet" href="../../src/histogram.css">
+<style>
+  body { margin: 0; background: #08080a; color: #ccc; font: 12px ui-monospace, monospace; }
+  .row { display: grid; grid-template-columns: repeat(auto-fill, minmax(380px, 1fr)); gap: 22px; padding: 16px 24px; align-items: start; }
+  .cap { color: #888; margin-block-end: 6px; }
+  #tests { white-space: pre; color: #9f9; padding: 16px 24px; }
+  #tests.fail { color: #f77; }
+</style>
+<section class="ov ov-finish row" data-ov-theme="esper" id="a"></section>
+<div id="tests">running…</div>
+<script type="module">
+  import '../../src/ov-histogram.js';
+  await customElements.whenDefined('ov-histogram');
+  // Seeded, so every run is the same reading.
+  let seed = 7; const rnd = () => (seed = seed * 48271 % 2147483647) / 2147483647;
+  const gauss = () => { let s = 0; for (let i = 0; i < 6; i++) s += rnd(); return s - 3; };
+  // Latency: log-normal-ish, some past the 100 ms axis, a few with no value.
+  const latency = Array.from({ length: 1200 }, () => +(Math.exp(3.4 + 0.62 * gauss())).toFixed(2));
+  for (let i = 0; i < 6; i++) latency[i * 150] = null;
+  latency[3] = -2;                                       // one below the axis
+  // Two clusters with nothing between them.
+  const bimodal = [...Array.from({ length: 300 }, () => 20 + 4 * gauss()), ...Array.from({ length: 200 }, () => 72 + 5 * gauss())];
+  const few = [12, 18, 19, 23, 31, 44, 47];
+  const mk = (cap, data, attrs = {}) => { const d = document.createElement('div'); d.innerHTML = `<div class="cap">${cap}</div>`; const el = document.createElement('ov-histogram'); for (const [k, v] of Object.entries(attrs)) el.setAttribute(k, v); d.append(el); document.getElementById('a').append(d); el.histogram = data; return el; };
+  const lat = mk('latency, 0-100 ms, 20 bins', { values: latency }, { min: 0, max: 100, bins: 20, unit: 'ms' });
+  const bi = mk('two clusters, a gap between', { values: bimodal }, { min: 0, max: 100, bins: 25 });
+  const tiny = mk('seven samples', { values: few }, { min: 0, max: 60, unit: 's' });
+  const brackets = mk('unequal bins, pre-binned', { edges: [0, 10, 20, 40, 80, 160], counts: [120, 260, 310, 180, 40], overflow: 12 }, { unit: 'kW' });
+  const auto = mk('no bins, no range given', { values: bimodal });
+  const tinyBinned = mk('pre-binned, too few', { edges: [0, 1, 2, 3], counts: [2, 0, 3] });
+  const broken = mk('counts that do not match their edges', { edges: [0, 1, 2], counts: [4, 5, 6] });
+  const none = mk('nothing', null);
+  const bars = (el) => [...el.querySelectorAll('.ov-histogram__bar')];
+  const text = (el) => el.querySelector('.ov-histogram__readout')?.textContent || '';
+  const cases = [
+    ['every sample is accounted for: in range + below + above + no value = total', () => { const m = /n = ([\d,]+)/.exec(text(lat)); const nv = /(\d+) no value/.exec(text(lat)); return m && nv && +m[1].replace(/,/g, '') + +nv[1] === 1200; }],
+    ['values past the axis are counted in their own bin, not dropped or piled into the last', () => { const over = lat.querySelector('.ov-histogram__out.is-over'); const n = +over.querySelector('title').textContent.split(': ')[1]; return n > 0 && text(lat).includes(`${n} above 100 ms`) && lat.querySelector('.ov-histogram__out.is-under:not(.is-zero)'); }],
+    ['a value that is not a number is counted as no value', () => text(lat).includes('6 no value')],
+    ['an empty bin stays empty: a hollow mark, counted, no bar', () => bi.querySelectorAll('.ov-histogram__empty').length > 0 && text(bi).includes(`${bi.querySelectorAll('.ov-histogram__empty').length} empty bin`) && bars(bi).length + bi.querySelectorAll('.ov-histogram__empty').length === 25],
+    ['there is no curve: nothing but rects and axis lines is drawn', () => !lat.querySelector('path, polyline, polygon')],
+    ['too few for a shape: a rug of the values, no bars, and a refusal', () => bars(tiny).length === 0 && tiny.querySelectorAll('.ov-histogram__rug').length === 7 && tiny.getAttribute('data-ov-refusal') === 'unknown' && text(tiny).includes('not a distribution') && !/bin/.test(text(tiny))],
+    ['pre-binned and too few: counts as numbers, no bars', () => bars(tinyBinned).length === 0 && tinyBinned.querySelectorAll('.ov-histogram__num').length === 3],
+    ['unequal bins are drawn as density, and say so', () => { const b = bars(brackets), h = b.map((r) => +r.getAttribute('height')); return brackets.getAttribute('data-ov-shape') === 'density' && text(brackets).includes('count per kW') && h[1] > h[2]; }],
+    ['the binning is stated: who chose it', () => text(lat).includes('20 bins') && !text(lat).includes('Sturges') && text(auto).includes("by Sturges' rule") && text(auto).includes('range from the data')],
+    ['with no range given, nothing is out of range and no side bins are drawn', () => !auto.querySelector('.ov-histogram__out')],
+    ['bins that do not match their edges are refused, not guessed', () => broken.getAttribute('data-ov-refusal') === 'unknown' && broken.textContent.includes('NOT DRAWN')],
+    ['no data is a refusal', () => none.getAttribute('data-ov-refusal') === 'unknown'],
+    ['bar height is proportional to count, from zero', () => { const b = bars(lat); const c = b.map((r) => +r.querySelector('title').textContent.split(': ')[1].replace(/,/g, '')); const h = b.map((r) => +r.getAttribute('height')); const i = c.indexOf(Math.max(...c)), j = c.findIndex((x) => x > 0 && x < c[i] / 2); return Math.abs(h[j] / h[i] - c[j] / c[i]) < 0.02; }],
+    ['CONTROL: a false claim is caught', () => bars(tiny).length > 0],
+  ];
+  let bad = 0;
+  const res = cases.map(([name, fn]) => { let r = false; try { r = !!fn(); } catch (e) { r = false; } const c = name.startsWith('CONTROL'); const pass = c ? !r : r; if (!pass) bad += 1; return `${pass ? 'ok  ' : 'FAIL'} ${name}${c ? ' (must fail)' : ''}`; });
+  const el = document.getElementById('tests'); el.textContent = `${cases.length - bad} of ${cases.length} pass\n` + res.join('\n'); el.classList.toggle('fail', bad > 0);
+  window.histResults = { total: cases.length, bad, out: res };
+</script>

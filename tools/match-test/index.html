@@ -1,0 +1,84 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>ov-match tests</title>
+<!-- Over tools/serve.py: /tools/match-test/ . The last case is a CONTROL that must fail. -->
+<link rel="stylesheet" href="../../src/tokens.css">
+<link rel="stylesheet" href="../../src/finish.css">
+<link rel="stylesheet" href="../../src/match.css">
+<style>
+  body { margin: 0; background: #08080a; color: #ccc; font: 12px ui-monospace, monospace; }
+  .row { display: flex; flex-wrap: wrap; gap: 18px; padding: 16px 24px; align-items: start; }
+  .row > div { inline-size: 330px; }
+  .cap { color: #888; margin-block-end: 6px; }
+  #tests { white-space: pre; color: #9f9; padding: 16px 24px; }
+  #tests.fail { color: #f77; }
+</style>
+<section class="ov ov-finish row" data-ov-theme="esper" id="a"></section>
+<section class="ov ov-finish row" data-ov-theme="machina" id="b"></section>
+<div id="tests">running…</div>
+<script type="module">
+  import '../../src/ov-match.js';
+  await customElements.whenDefined('ov-match');
+  // Deterministic signatures: a base vector, and near or far variants of it.
+  const base = Array.from({ length: 48 }, (_, i) => 0.5 + 0.4 * Math.sin(i * 1.7) * Math.cos(i * 0.3));
+  const vary = (seed, amt) => base.map((v, i) => Math.max(0, Math.min(1, v + amt * Math.sin(i * 2.3 + seed * 5.1))));
+  const fields = [{ name: 'designation', value: 'K-4471-0816', confidence: 0.97 }, { name: 'incept date', value: '2016-01-08', confidence: 0.91 },
+                  { name: 'origin', value: 'SECTOR 9 FOUNDRY', confidence: 0.83 }, { name: 'last seen', value: 'SECTOR 4', confidence: 0.42 }];
+  const cand = (id, label, score, amt) => ({ id, label, score, signature: vary(id.length, amt), fields });
+  const R = {
+    match: { probe: { label: 'probe', signature: vary(9, 0.04) }, searched: 48210,
+             candidates: [cand('c1', 'HALVORSEN', 0.93, 0.05), cand('c22', 'OKAFOR', 0.72, 0.3), cand('c333', 'MIRZA', 0.61, 0.4)] },
+    low: { probe: { label: 'probe', signature: vary(9, 0.04) }, searched: 48210,
+           candidates: [cand('c1', 'HALVORSEN', 0.61, 0.35), cand('c22', 'OKAFOR', 0.55, 0.4)] },
+    close: { probe: { label: 'probe', signature: vary(9, 0.04) }, searched: 48210,
+             candidates: [cand('c1', 'HALVORSEN', 0.88, 0.22), cand('c22', 'OKAFOR', 0.86, 0.25)] },
+    nosize: { probe: { label: 'probe', signature: vary(9, 0.04) },
+              candidates: [cand('c1', 'HALVORSEN', 0.95, 0.05), cand('c22', 'OKAFOR', 0.5, 0.4)] },
+    alone: { probe: { label: 'probe', signature: vary(9, 0.04) }, searched: 48210,
+             candidates: [cand('c1', 'HALVORSEN', 0.95, 0.05)] },
+  };
+  const mk = (host, cap, result) => {
+    const d = document.createElement('div'); d.innerHTML = `<div class="cap">${cap}</div>`;
+    const el = document.createElement('ov-match'); d.append(el); document.getElementById(host).append(d); el.result = result; return el;
+  };
+  const m = mk('a', 'a clear match', R.match), low = mk('a', 'below threshold', R.low), close = mk('a', 'two too close', R.close);
+  const nosize = mk('b', 'search size not reported', R.nosize), alone = mk('b', 'no runner-up', R.alone), none = mk('b', 'no probe', null);
+  const V = (el) => el.getAttribute('data-ov-verdict');
+  const cases = [
+    ['a clear match says MATCH with score, margin and records', () => V(m) === 'match' && /0\.93.*margin 0\.21.*48,210 records/.test(m.textContent)],
+    ['below threshold: NO DETERMINATION', () => V(low) === 'none' && low.textContent.includes('threshold 0.80')],
+    ['two too close: AMBIGUOUS, shows both, picks neither', () => V(close) === 'ambiguous' && close.querySelectorAll('.ov-match__disc').length === 3 && !close.querySelector('.ov-match__card')],
+    ['a score with no search size is not a match', () => V(nosize) === 'none' && nosize.textContent.includes('search size not reported')],
+    ['no runner-up means no margin, so no match', () => V(alone) === 'none' && alone.textContent.includes('no runner-up')],
+    ['no record card without a determination', () => !low.querySelector('.ov-match__card') && low.textContent.includes('NO RECORD SHOWN')],
+    ['a field below its confidence is WITHHELD', () => { const w = [...m.querySelectorAll('dd.is-withheld')]; return w.length === 1 && w[0].textContent.includes('0.42'); }],
+    ['disagreeing signature bars are marked on the candidate', () => close.querySelectorAll('.ov-match__disc')[1].querySelectorAll('.is-off').length > 0],
+    ['no probe is a refusal', () => none.getAttribute('data-ov-refusal') === 'unknown'],
+    ['every signature mode draws one mark per present feature, and gaps for the rest', () => {
+      const sig = vary(9, 0.04).map((v, i) => (i % 7 === 3 ? null : v));
+      const r = { probe: { label: 'probe', signature: sig }, searched: 48210, candidates: [cand('c1', 'HALVORSEN', 0.91, 0.12), cand('c22', 'OKAFOR', 0.7, 0.3)] };
+      const missing = sig.filter((v) => v === null).length, present = sig.length - missing;
+      return ['bars', 'trace', 'strip', 'ring', 'dots'].every((mode) => {
+        const el = document.createElement('ov-match'); el.setAttribute('signature', mode); document.body.append(el); el.result = r;
+        const probe = el.querySelector('.ov-match__disc');
+        const marks = probe.querySelectorAll(mode === 'ring' ? '.ov-match__cell:not(.is-gap)' : mode === 'trace' ? '.ov-match__trace' : mode === 'dots' ? '.ov-match__dot' : '.ov-match__bar').length;
+        const gaps = probe.querySelectorAll('.ov-match__gap, .ov-match__gapdot, .ov-match__cell.is-gap').length;
+        const label = probe.querySelector('.ov-match__disclabel').textContent.includes(`${missing} MISSING`);
+        el.remove();
+        return gaps === missing && label && (mode === 'trace' ? marks >= 2 : marks === present);
+      });
+    }],
+    ['CONTROL: a false claim is caught', () => V(low) === 'match'],
+  ];
+  let bad = 0;
+  const out = cases.map(([name, fn]) => {
+    let r = false; try { r = !!fn(); } catch (e) { r = false; }
+    const control = name.startsWith('CONTROL'); const pass = control ? !r : r;
+    if (!pass) bad += 1;
+    return `${pass ? 'ok  ' : 'FAIL'} ${name}${control ? ' (must fail)' : ''}`;
+  });
+  const el = document.getElementById('tests');
+  el.textContent = `${cases.length - bad} of ${cases.length} pass\n` + out.join('\n');
+  el.classList.toggle('fail', bad > 0);
+  window.matchResults = { total: cases.length, bad, out };
+</script>

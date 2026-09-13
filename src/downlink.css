@@ -1,0 +1,93 @@
+@layer overscan {
+/* The delayed link panel. See ov-downlink.js for the refusal.
+ *
+ * 🔴 NO LINK STATE RESTS ON COLOUR. LINK, NO SIGNAL and TERMINATED are words
+ * the element writes; the state box's border style differs too (solid, dashed,
+ * double), and the history dims when the link is down so a glance cannot
+ * read old lines as a live feed. The ages are always there in words.
+ */
+
+ov-downlink {
+  display: grid;
+  gap: 6px;
+  min-inline-size: 0;
+  font-family: var(--ov-font-mono);
+  font-size: var(--ov-size-1, 10px);
+  color: var(--ov-ink);
+}
+
+.ov-downlink__head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 2ch;
+  padding-block-end: 6px;
+  border-block-end: var(--ov-rule, 1px) solid var(--ov-line);
+}
+.ov-downlink__label {
+  font-size: var(--ov-size-2, 12px);
+  letter-spacing: .14em;
+  text-transform: uppercase;
+}
+.ov-downlink__state {
+  padding: 2px 6px;
+  border: var(--ov-rule, 1px) solid var(--ov-accent);
+  color: var(--ov-accent);
+  letter-spacing: .14em;
+  white-space: nowrap;
+}
+ov-downlink[data-ov-link="silent"] .ov-downlink__state,
+ov-downlink[data-ov-link="never"] .ov-downlink__state {
+  border-style: dashed;
+  border-color: var(--ov-alarm);
+  color: var(--ov-alarm);
+}
+ov-downlink[data-ov-link="terminated"] .ov-downlink__state {
+  border: 3px double var(--ov-alarm);
+  color: var(--ov-alarm);
+}
+
+.ov-downlink__delay,
+.ov-downlink__foot {
+  letter-spacing: .1em;
+  color: var(--ov-faint);
+}
+.ov-downlink__delay:empty,
+.ov-downlink__foot:empty { display: none; }
+ov-downlink:not([data-ov-link="live"]) .ov-downlink__foot { color: var(--ov-alarm); }
+
+.ov-downlink__lines {
+  display: grid;
+  gap: 3px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.ov-downlink__line {
+  display: grid;
+  grid-template-columns: minmax(9ch, max-content) 1fr;
+  gap: 1.5ch;
+  line-height: 1.4;
+}
+/* The age column. Fixed-width digits so a column of ages lines up. */
+.ov-downlink__age {
+  color: var(--ov-faint);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.ov-downlink__line[data-ov-age="unknown"] .ov-downlink__age,
+.ov-downlink__line[data-ov-age="skew"] .ov-downlink__age { color: var(--ov-alarm); }
+.ov-downlink__text { overflow-wrap: anywhere; }
+
+/* Link down: the history stays, dimmed, so it reads as history. */
+ov-downlink:not([data-ov-link="live"]) .ov-downlink__text { color: var(--ov-faint); }
+
+.ov-downlink__say {
+  position: absolute;
+  inline-size: 1px;
+  block-size: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+}

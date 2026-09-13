@@ -1,0 +1,66 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>ov-topology tests</title>
+<!-- Over tools/serve.py: /tools/topology-test/ . The last case is a CONTROL that must fail. -->
+<link rel="stylesheet" href="../../src/tokens.css">
+<link rel="stylesheet" href="../../src/finish.css">
+<link rel="stylesheet" href="../../src/topology.css">
+<style>
+  body { margin: 0; background: #08080a; color: #ccc; font: 12px ui-monospace, monospace; }
+  .row { display: grid; grid-template-columns: repeat(auto-fill, minmax(520px, 1fr)); gap: 22px; padding: 16px 24px; align-items: start; }
+  .cap { color: #888; margin-block-end: 6px; }
+  #tests { white-space: pre; color: #9f9; padding: 16px 24px; }
+  #tests.fail { color: #f77; }
+</style>
+<section class="ov ov-finish row" data-ov-theme="industrial" id="a"></section>
+<div id="tests">running…</div>
+<script type="module">
+  import '../../src/ov-topology.js';
+  await customElements.whenDefined('ov-topology');
+  const mk = (cap, data, attrs = {}) => { const d = document.createElement('div'); d.innerHTML = `<div class="cap">${cap}</div>`; const el = document.createElement('ov-topology'); for (const [k, v] of Object.entries(attrs)) el.setAttribute(k, v); d.append(el); document.getElementById('a').append(d); el.topology = data; return el; };
+  // A core router down: everything behind it is unreachable, including a
+  // switch whose last report (from before the break) was UP.
+  const site = mk('a core router down', { nodes: [
+    { id: 'core', label: 'CORE-RTR-1', state: 'down', age: 4 },
+    { id: 'edge', label: 'EDGE-RTR-2', state: 'up', age: 3 },
+    { id: 'swa', label: 'SW-A', parents: ['core'], state: 'up', age: 95 },
+    { id: 'swb', label: 'SW-B', parents: ['core'] },
+    { id: 'db', label: 'DB-1', parents: ['swa'], state: 'up', age: 97 },
+    { id: 'web', label: 'WEB-1', parents: ['edge'], state: 'up', age: 75 },
+    { id: 'nas', label: 'NAS-3', parents: ['edge'] },
+    { id: 'cam', label: 'CAM-7', parents: ['edge'], state: 'down', age: 6 },
+    { id: 'lens', label: 'LENS-7', parents: ['cam'], state: 'up', age: 400 },
+  ] }, { 'max-age': 60 });
+  const redundant = mk('two paths, one down', { nodes: [
+    { id: 'a', label: 'RTR-A', state: 'down', age: 2 },
+    { id: 'b', label: 'RTR-B', state: 'up', age: 2 },
+    { id: 'h', label: 'APP-1', parents: ['a', 'b'], state: 'up', age: 2 },
+  ] });
+  const loop = mk('a loop of parents', { nodes: [{ id: 'x', parents: ['y'] }, { id: 'y', parents: ['x'] }] });
+  const undef = mk('a parent not defined', { nodes: [{ id: 'x', label: 'SW-9', parents: ['ghost'] }] });
+  const none = mk('nothing', null);
+  const host = (el, id) => el.querySelector(`.ov-topology__host[data-id="${id}"]`);
+  const status = (el, id) => [...host(el, id).classList].find((c) => c.startsWith('is-')).slice(3);
+  const text = (el) => el.querySelector('.ov-topology__readout')?.textContent || '';
+  const links = (el) => [...el.querySelectorAll('.ov-topology__link')];
+  const cases = [
+    ['a host behind a down router is UNREACHABLE, not DOWN', () => status(site, 'swb') === 'unreachable' && host(site, 'swb').textContent.includes('UNREACHABLE')],
+    ['a last report of UP from behind the break is history, not a state', () => status(site, 'swa') === 'unreachable' && /last up 1m35s ago/.test(host(site, 'swa').textContent)],
+    ['unreachability runs all the way down, not one hop', () => status(site, 'db') === 'unreachable'],
+    ['the router blocking the path is named, with how many are behind it', () => text(site).includes('CORE-RTR-1 blocking 3') && text(site).includes('CAM-7 blocking 1')],
+    ['the down router itself is DOWN', () => status(site, 'core') === 'down'],
+    ['an unpolled host is UNPOLLED, and the link to it is not lit', () => status(site, 'nas') === 'unpolled' && links(site).filter((l) => l.classList.contains('is-unpolled')).length === 1 && !links(site).find((l) => l.classList.contains('is-unpolled') && l.classList.contains('is-lit'))],
+    ['a link is lit only when the host at its end answered', () => { const lit = links(site).filter((l) => l.classList.contains('is-lit')).length; return lit === 2; }],
+    ['a stale report is marked, and still counted as up', () => text(site).includes('1 stale') && /STALE 75s/.test(host(site, 'web').textContent) && status(site, 'web') === 'up'],
+    ['one up parent is a path: redundancy keeps a host reachable', () => status(redundant, 'h') === 'up'],
+    ['a loop of parents is refused', () => loop.getAttribute('data-ov-refusal') === 'unknown' && loop.textContent.includes('LOOP')],
+    ['a parent that is not defined is refused', () => undef.getAttribute('data-ov-refusal') === 'unknown' && /parent ghost of sw-9 is not defined/i.test(undef.textContent)],
+    ['no hosts is a refusal', () => none.getAttribute('data-ov-refusal') === 'unknown'],
+    ['every count adds up to the hosts', () => { const n = (w) => +(new RegExp(`(\\d+) ${w}`).exec(text(site)) || [0, 0])[1]; return n('up') + n('down') + n('unreachable') + n('unpolled') === 9; }],
+    ['CONTROL: a false claim is caught', () => status(site, 'swb') === 'down'],
+  ];
+  let bad = 0;
+  const res = cases.map(([name, fn]) => { let r = false; try { r = !!fn(); } catch (e) { r = false; } const c = name.startsWith('CONTROL'); const pass = c ? !r : r; if (!pass) bad += 1; return `${pass ? 'ok  ' : 'FAIL'} ${name}${c ? ' (must fail)' : ''}`; });
+  const el = document.getElementById('tests'); el.textContent = `${cases.length - bad} of ${cases.length} pass\n` + res.join('\n'); el.classList.toggle('fail', bad > 0);
+  window.topoResults = { total: cases.length, bad, out: res };
+</script>

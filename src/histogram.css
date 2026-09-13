@@ -1,0 +1,58 @@
+/* ---- CASCADE LAYER ------------------------------------------------------
+ *
+ * Everything the kit ships sits in ONE layer named `overscan`, so a consumer's
+ * own CSS beats it without a specificity fight and without !important. That is
+ * close to mandatory for a distributed kit: an app should be able to restyle a
+ * panel by writing a plain rule.
+ *
+ * ⚠️ ONE layer, deliberately, NOT a sub-layer per file. Sub-layers look tidier
+ * and would silently reorder the kit against itself: layer order beats
+ * specificity, so a high-specificity rule in an early file that currently wins
+ * would start losing to a low-specificity rule in a later one. A single layer
+ * preserves source order exactly, so nothing inside the kit changes.
+ *
+ * Unlayered author CSS wins over all of it. That is the point.
+ */
+
+@layer overscan {
+/* Counts in bins, and nothing between them. */
+
+ov-histogram {
+  display: grid;
+  gap: 6px;
+  font-family: var(--ov-font-mono);
+  font-size: var(--ov-size-1);
+  letter-spacing: 1px;
+  color: var(--ov-dim);
+}
+
+.ov-histogram__svg {
+  display: block;
+  inline-size: 100%;
+  max-inline-size: var(--ov-histogram-size, 420px);
+  background: var(--ov-field);
+  border: var(--ov-bezel) solid var(--ov-line-strong);
+}
+
+.ov-histogram__axis { stroke: var(--ov-line-strong); stroke-width: 1; }
+.ov-histogram__tick { stroke: var(--ov-line-strong); stroke-width: 1; }
+.ov-histogram__text { font: 8px var(--ov-font-mono); fill: var(--ov-faint); letter-spacing: 0.4px; }
+.ov-histogram__text.is-out { fill: var(--ov-alarm); }
+.ov-histogram__bar { fill: color-mix(in srgb, var(--ov-accent) 55%, transparent); stroke: var(--ov-accent); stroke-width: 0.6; }
+/* An empty bin is a hollow mark on the baseline: present, counted, zero. */
+.ov-histogram__empty { fill: none; stroke: var(--ov-accent-2); stroke-width: 0.8; stroke-dasharray: 2 1.5; }
+/* Out of range: set apart, dashed, never folded into the end bins. */
+.ov-histogram__out { fill: color-mix(in srgb, var(--ov-alarm) 18%, transparent); stroke: var(--ov-alarm); stroke-width: 0.8; stroke-dasharray: 3 2; }
+.ov-histogram__out.is-zero { fill: none; stroke: var(--ov-line-strong); }
+.ov-histogram__rug { stroke: var(--ov-accent); stroke-width: 1.2; }
+.ov-histogram__num { font: 10px var(--ov-font-mono); fill: var(--ov-ink); }
+.ov-histogram__num.is-empty { fill: var(--ov-accent-2); }
+
+.ov-histogram__void {
+  display: grid; place-items: center; min-block-size: 110px; max-inline-size: 420px;
+  color: var(--ov-alarm); text-transform: uppercase;
+  border: 1px dashed var(--ov-line-strong);
+}
+.ov-histogram__readout { display: flex; flex-wrap: wrap; gap: 4px 16px; max-inline-size: 420px; }
+.ov-histogram__readout .is-flag { color: var(--ov-accent-2); }
+}

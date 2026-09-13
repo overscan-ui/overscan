@@ -1,0 +1,164 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>ov-score harness</title>
+<!-- The refusal gate for ov-score. Serve the repo root (tools/serve.py)
+     and open /tools/score-test/. The last line must read GATE: PASS, and
+     every CONTROL must fail. ?src=mut/<name>.js runs it against a copy with
+     one refusal broken, which must turn it red. -->
+<link rel="stylesheet" href="../../src/tokens.css">
+<link rel="stylesheet" href="../../src/chrome.css">
+<link rel="stylesheet" href="../../src/score.css">
+<style>
+  body { background: #06060a; color: #cfe; font: 13px ui-monospace, monospace; padding: 20px; }
+  pre { white-space: pre-wrap; }
+  #stage { max-inline-size: 560px; container-type: inline-size; }
+</style>
+<div id="stage" data-ov-theme="aegis"></div>
+<pre id="out" data-gate="pending">running...</pre>
+<script>
+  window.__raf = 0;
+  const raf = window.requestAnimationFrame.bind(window);
+  window.requestAnimationFrame = (f) => { window.__raf++; return raf(f); };
+  // 🔴 A THROW IS A RED GATE, NOT A HANG.
+  const fatal = (what) => {
+    const out = document.getElementById('out');
+    if (out) { out.textContent = `THREW: ${what}\n\nGATE: FAIL`; out.dataset.gate = 'fail'; }
+  };
+  addEventListener('error', (e) => fatal(e.error?.stack || e.message || e));
+  addEventListener('unhandledrejection', (e) => fatal(e.reason?.stack || e.reason));
+</script>
+<script type="module">
+const SRC = new URLSearchParams(location.search).get('src') || '../../src/ov-score.js';
+await import(new URL(SRC, location.href).href);
+
+const stage = document.getElementById('stage');
+const results = [], controls = [];
+const ok = (n, c, g) => results.push({ name: n, pass: !!c, got: g });
+const control = (n, c, g) => controls.push({ name: n, pass: !!c, got: g });
+const settle = () => new Promise((r) => setTimeout(r, 0));
+
+const make = (attrs = {}) => {
+  const el = document.createElement('ov-score');
+  for (const [k, v] of Object.entries(attrs)) el.setAttribute(k, v);
+  stage.replaceChildren(el);
+  return el;
+};
+const q = (c, s) => (c ? c.querySelector(s) : null);
+const text = (c, s) => q(c, s)?.textContent ?? null;
+const total = (c) => text(c, '.ov-score__total');
+const why = (c) => text(c, '.ov-score__why');
+const row = (c, n) => q(c, `[data-ov-param="${n}"]`);
+const ATTRS = { label: 'NEWS2', thresholds: '0,5,7', 'single-red': '3' };
+
+/* A NEWS2 observation. Respiration 22 scores 2, SpO2 91 on scale 1 scores 3. */
+const FULL = () => ({
+  scale: 1, oxygen: { on: false },
+  parameters: [
+    { name: 'respiration', value: 22, unit: '/min', score: 2 },
+    { name: 'SpO2', value: 96, unit: '%', score: 0 },
+    { name: 'blood pressure', value: 118, unit: 'mmHg', score: 0 },
+    { name: 'pulse', value: 88, unit: '/min', score: 0 },
+    { name: 'consciousness', value: 'A', score: 0 },
+    { name: 'temperature', value: 37.1, unit: 'C', score: 0 },
+  ],
+});
+let s;
+
+// ---- 1. A missing parameter is never scored zero -----------------------
+s = make(ATTRS);
+const withGap = FULL();
+withGap.parameters[2] = { name: 'blood pressure', missing: 'no-equipment' };
+s.reading = withGap;
+await settle();
+ok('the total is still CALCULATED, as the guidance requires', total(s) === '2', total(s));
+ok('⭐ ...and marked INCOMPLETE, naming what is missing', s.getAttribute('data-ov-state') === 'incomplete' && /MISSING BLOOD PRESSURE/.test(why(s)), why(s));
+ok('...counting how many of the parameters it had', /INCOMPLETE · 5 OF 6 PARAMETERS/.test(why(s)), why(s));
+ok('⭐ ...and the absent parameter scores a DASH, never a 0', text(row(s, 'blood pressure'), '.ov-score__pscore') === '—', text(row(s, 'blood pressure'), '.ov-score__pscore'));
+ok('...which it says in words too', /NO EQUIPMENT · NOT SCORED/.test(text(row(s, 'blood pressure'), '.ov-score__pnote')), text(row(s, 'blood pressure'), '.ov-score__pnote'));
+ok('⭐ incomplete is a QUALIFIER, not a refusal: the score is not withheld', s.getAttribute('data-ov-qualified') === 'unchecked' && s.getAttribute('data-ov-refusal') === null, [s.getAttribute('data-ov-qualified'), s.getAttribute('data-ov-refusal')]);
+ok('the host is a group, not an img', s.getAttribute('role') === 'group', s.getAttribute('role'));
+control('CONTROL: the missing parameter scores zero (must fail)', text(row(s, 'blood pressure'), '.ov-score__pscore') === '0', text(row(s, 'blood pressure'), '.ov-score__pscore'));
+control('CONTROL: an incomplete score passes as complete (must fail)', s.getAttribute('data-ov-state') === 'complete', s.getAttribute('data-ov-state'));
+
+s.reading = FULL();
+await settle();
+ok('a complete observation says so, from all of them', s.getAttribute('data-ov-state') === 'complete' && /FROM ALL 6/.test(text(s, '.ov-score__of')), text(s, '.ov-score__of'));
+
+// ---- 2. Two absences are not one absence -------------------------------
+s = make(ATTRS);
+const unobtainable = FULL();
+unobtainable.parameters[5] = { name: 'temperature', missing: 'not-obtainable' };
+s.reading = unobtainable;
+await settle();
+ok('⭐ NOT OBTAINABLE despite equipment is an immediate response, not a gap', s.hasAttribute('data-ov-urgent') && /IMMEDIATE RESPONSE/.test(why(s)), why(s));
+ok('...and its row is marked urgent, not merely absent', row(s, 'temperature').hasAttribute('data-ov-urgent'), row(s, 'temperature').getAttribute('data-ov-absent'));
+ok('...while no-equipment is NOT urgent: the two are kept apart', (() => { const g = FULL(); g.parameters[5] = { name: 'temperature', missing: 'no-equipment' }; s.reading = g; return !s.hasAttribute('data-ov-urgent') && s.getAttribute('data-ov-state') === 'incomplete'; })(), 'see above');
+control('CONTROL: both absences are treated alike (must fail)', (() => { const g = FULL(); g.parameters[5] = { name: 'temperature', missing: 'not-obtainable' }; s.reading = g; const a = s.hasAttribute('data-ov-urgent'); const h = FULL(); h.parameters[5] = { name: 'temperature', missing: 'no-equipment' }; s.reading = h; return a === s.hasAttribute('data-ov-urgent'); })(), 'urgency');
+
+// ---- 3. A single red cannot hide under a low total ---------------------
+s = make(ATTRS);
+const red = FULL();
+red.parameters[1] = { name: 'SpO2', value: 91, unit: '%', score: 3 };
+s.reading = red;
+await settle();
+ok('a single 3 is surfaced on its own, beside the total', s.hasAttribute('data-ov-red') && /SINGLE RED 3 IN SPO2/.test(why(s)), why(s));
+ok('⭐ ...and says it is urgent REGARDLESS of the total', /URGENT REVIEW REGARDLESS OF THE TOTAL/.test(why(s)), why(s));
+ok('...its row is boxed, so it is visible without reading the total', row(s, 'SpO2').hasAttribute('data-ov-red') && getComputedStyle(row(s, 'SpO2')).borderTopStyle === 'solid', getComputedStyle(row(s, 'SpO2')).borderTopStyle);
+ok('...even though the total is only 5', total(s) === '5', total(s));
+control('CONTROL: a single red is folded into the total and vanishes (must fail)', !s.hasAttribute('data-ov-red'), s.hasAttribute('data-ov-red'));
+
+// ---- 4. The second scale needs a named decision maker -------------------
+s = make(ATTRS);
+const sc2 = FULL(); sc2.scale = 2;
+s.reading = sc2;
+await settle();
+ok('⭐ scale 2 with nobody recorded is refused as a scale', s.report.scaleRefused === true && /SCALE 2 WITH NO DECISION MAKER RECORDED/.test(why(s)), why(s));
+ok('...and says so where the scale is shown', /NOBODY RECORDED/.test(text(s, '.ov-score__scales')), text(s, '.ov-score__scales'));
+/* ⚠️ Compared against the block's OWN accent rather than against the token
+ * text: getComputedStyle returns rgb(), a custom property returns whatever was
+ * authored, and the two never match as strings. The claim is that the sentence
+ * is not in the colour the clean total is drawn in, so that is what is asked. */
+ok('⭐ ...and is NOT drawn in the colour of a clean observation', s.hasAttribute('data-ov-paperwork') && getComputedStyle(q(s, '.ov-score__why')).color !== getComputedStyle(q(s, '.ov-score__out')).color, [getComputedStyle(q(s, '.ov-score__why')).color, getComputedStyle(q(s, '.ov-score__out')).color]);
+control('CONTROL: an unsigned scale 2 passes (must fail)', s.report.scaleRefused === false, s.report.scaleRefused);
+control('CONTROL: the paperwork refusal is unmarked (must fail)', !s.hasAttribute('data-ov-paperwork'), s.hasAttribute('data-ov-paperwork'));
+s.reading = { ...FULL(), scale: 2, scaleBy: 'Dr Ahmed, 14:02' };
+await settle();
+ok('...and a recorded decision maker settles it', s.report.scaleRefused === false && /Dr Ahmed/.test(text(s, '.ov-score__scales')), text(s, '.ov-score__scales'));
+ok('⭐ the scale NOT in use is crossed out, not omitted', (() => { const el = [...s.querySelectorAll('.ov-score__scale')].find((x) => !x.hasAttribute('data-ov-on')); return el && getComputedStyle(el).textDecorationLine === 'line-through'; })(), 'scale 1');
+
+// ---- 5. Oxygen carries its own paperwork -------------------------------
+s = make(ATTRS);
+s.reading = { ...FULL(), oxygen: { on: true } };
+await settle();
+ok('oxygen with no rate or device recorded is marked', s.report.oxygenUndocumented === true && /OXYGEN WITH NO RATE OR DEVICE RECORDED/.test(why(s)), why(s));
+ok('...and the line says which is missing', /RATE NOT RECORDED · DEVICE NOT RECORDED/.test(text(s, '.ov-score__oxygen')), text(s, '.ov-score__oxygen'));
+control('CONTROL: undocumented oxygen passes quietly (must fail)', s.report.oxygenUndocumented === false, s.report.oxygenUndocumented);
+s.reading = { ...FULL(), oxygen: { on: true, rate: '2 L/min', device: 'nasal cannula' } };
+await settle();
+ok('...and a documented one does not complain', s.report.oxygenUndocumented === false && /2 L\/min · nasal cannula/.test(text(s, '.ov-score__oxygen')), text(s, '.ov-score__oxygen'));
+
+// ---- 6. Nothing, and what it must not do -------------------------------
+s = make(ATTRS);
+await settle();
+ok('with no observation the element says so rather than showing 0', total(s) === 'NO OBSERVATION' && s.getAttribute('data-ov-refusal') === 'unknown', total(s));
+control('CONTROL: no observation reads as a score of zero (must fail)', total(s) === '0', total(s));
+const srcText = await (await fetch(new URL(SRC, location.href).href)).text();
+ok('the element never asks for an animation frame', !/requestAnimationFrame/.test(srcText), true);
+ok('...and starts no timer: a score changes when it is taken, not on a clock', !/setInterval/.test(srcText), true);
+control('CONTROL: the element draws on a frame (must fail)', /requestAnimationFrame/.test(srcText), 'source');
+
+// ---- report ----
+const bad = results.filter((r) => !r.pass);
+const live = controls.filter((x) => x.pass);
+const lines = [];
+for (const r of results) lines.push(`${r.pass ? 'ok  ' : 'FAIL'} ${r.name}${r.pass ? '' : `\n       got: ${JSON.stringify(r.got)}`}`);
+lines.push('');
+for (const x of controls) lines.push(`${x.pass ? 'CONTROL DID NOT FAIL' : 'control failed as required'}  ${x.name}${x.pass ? `\n       got: ${JSON.stringify(x.got)}` : ''}`);
+lines.push('');
+lines.push(`${results.length - bad.length}/${results.length} checks, ${controls.length - live.length}/${controls.length} controls failed as required`);
+const pass = bad.length === 0 && live.length === 0;
+lines.push(pass ? 'GATE: PASS' : 'GATE: FAIL');
+const out = document.getElementById('out');
+out.textContent = lines.join('\n');
+out.dataset.gate = pass ? 'pass' : 'fail';
+</script>

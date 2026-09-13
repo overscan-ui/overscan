@@ -1,0 +1,69 @@
+@layer overscan {
+/* Track symbols. See ov-track.js for the rule and the refusals.
+ *
+ * 🔴 NO IDENTITY RESTS ON COLOUR. The frame's SHAPE is the identity and its
+ * dash is the hedge; colour only repeats it, and the tag says it in words.
+ * Styled on the symbol group, not the element, so ov-radar's symbols (which
+ * have no <ov-track> around them) take exactly the same rules.
+ */
+
+ov-track {
+  --ov-track-size: 64px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--ov-font-mono);
+  color: var(--ov-ink);
+  vertical-align: middle;
+}
+
+.ov-track__svg {
+  inline-size: var(--ov-track-size);
+  block-size: var(--ov-track-size);
+  flex: none;
+  overflow: visible;
+}
+
+/* Strokes are in SCREEN pixels (non-scaling), so a symbol drawn at 0.16 on a
+ * radar scope keeps the same line weight as one drawn at 64px on its own.
+ * At 1.8 user units the radar's frames came out under one pixel. */
+.ov-track__frame {
+  fill: none;
+  stroke: var(--ov-accent);
+  stroke-width: 1.6;
+  stroke-linejoin: miter;
+  vector-effect: non-scaling-stroke;
+}
+.ov-track__leader {
+  stroke: var(--ov-accent);
+  stroke-width: 1.2;
+  stroke-linecap: butt;
+  vector-effect: non-scaling-stroke;
+}
+
+/* Hostile and suspect take the alarm colour; neutral and the unknown family
+ * take plain ink, because they are claims of NOT being either side. */
+.ov-track__sym[data-ov-family="hostile"] .ov-track__frame,
+.ov-track__sym[data-ov-family="hostile"] .ov-track__leader { stroke: var(--ov-alarm); }
+.ov-track__sym[data-ov-family="neutral"] .ov-track__frame,
+.ov-track__sym[data-ov-family="unknown"] .ov-track__frame,
+.ov-track__sym[data-ov-family="neutral"] .ov-track__leader,
+.ov-track__sym[data-ov-family="unknown"] .ov-track__leader { stroke: var(--ov-ink); }
+
+/* The hedge. A dash long enough to read as deliberate at 20px, not as a
+ * rendering fault. */
+.ov-track__sym[data-ov-hedged] .ov-track__frame { stroke-dasharray: 4 3; }
+
+.ov-track__text {
+  display: grid;
+  gap: 3px;
+  font-size: var(--ov-size-1, 10px);
+  letter-spacing: .1em;
+  text-transform: uppercase;
+  line-height: 1.2;
+}
+.ov-track__label { color: var(--ov-ink); font-size: var(--ov-size-2, 12px); }
+.ov-track__tag { color: var(--ov-faint); }
+ov-track[data-ov-identity="hostile"] .ov-track__tag,
+ov-track[data-ov-identity="suspect"] .ov-track__tag { color: var(--ov-alarm); }
+}

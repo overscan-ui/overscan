@@ -1,0 +1,76 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>ov-gauge harness</title>
+<!-- The accessible-name gate for src/ov-gauge.js. Serve the repo root
+     (python3 tools/serve.py) and open tools/gauge-test/. The last line must
+     read GATE: PASS, and every CONTROL (an assertion false on purpose) must
+     fail. -->
+<link rel="stylesheet" href="../../src/tokens.css">
+<link rel="stylesheet" href="../../src/gauge.css">
+<style>
+  body { background: #06060a; color: #cfe; font: 13px ui-monospace, monospace; padding: 20px; }
+  pre { white-space: pre-wrap; }
+  #stage { display: flex; gap: 16px; flex-wrap: wrap; }
+  ov-gauge { inline-size: 140px; }
+</style>
+<div id="stage" data-ov-theme="industrial"></div>
+<pre id="out">running...</pre>
+<script type="module">
+import '../../src/ov-gauge.js';
+await customElements.whenDefined('ov-gauge');
+
+const stage = document.getElementById('stage');
+const results = [];
+const ok = (name, cond, got) => results.push({ name, pass: !!cond, got });
+const controls = [];
+const control = (name, cond, got) => controls.push({ name, pass: !!cond, got });
+const mk = (attrs) => {
+  const el = document.createElement('ov-gauge');
+  for (const [k, v] of Object.entries(attrs)) el.setAttribute(k, v);
+  stage.append(el);
+  return el;
+};
+const name = (el) => el.getAttribute('aria-label') || '';
+
+// 1. Over range on its own: the value, the unit and the scale it passed.
+const plain = mk({ min: '0', max: '100', value: '150', unit: 'bar' });
+ok('over range names the value and the scale', name(plain) === '150 bar, past the scale of 0 to 100', name(plain));
+
+// 2. THE BUG: over range while substituted was named "stale, undefined
+// seconds old". A hand-entered value is not stale, and has no age.
+const subst = mk({ min: '0', max: '100', value: '150', unit: 'bar', substituted: 'gauge swap' });
+ok('over range + substituted says substituted, with its note',
+  name(subst) === '150 bar, past the scale of 0 to 100, substituted by hand: gauge swap', name(subst));
+ok('...and never says undefined', !/undefined/.test(name(subst)), name(subst));
+control('CONTROL: the substituted gauge is named stale (must fail)', /stale/.test(name(subst)), name(subst));
+
+// 3. Over range while genuinely stale keeps its age.
+const stale = mk({ min: '0', max: '100', value: '150', unit: 'bar', 'max-age': '10', age: '30' });
+ok('over range + stale keeps the age', name(stale) === '150 bar, past the scale of 0 to 100, stale, 30 seconds old', name(stale));
+
+// 4. Over range while frozen names how long it has not moved.
+const frozen = mk({ min: '0', max: '100', value: '150', unit: 'bar', deadband: '1', 'frozen-after': '0.05' });
+await new Promise((r) => setTimeout(r, 120));
+frozen.setAttribute('value', '150.2');
+ok('over range + frozen says frozen, not stale', /past the scale of 0 to 100, frozen, unchanged for \d+ seconds$/.test(name(frozen)), name(frozen));
+ok('...and never says undefined', !/undefined/.test(name(frozen)), name(frozen));
+
+// 5. In range, the qualifier still comes from apply() alone.
+const inside = mk({ min: '0', max: '100', value: '40', unit: 'bar', substituted: '' });
+ok('in range + substituted is named by apply()', name(inside) === '40 bar, substituted by hand', name(inside));
+
+const passed = results.filter((x) => x.pass).length;
+const failed = results.length - passed;
+const controlsFailed = controls.filter((x) => !x.pass).length;
+const gate = failed === 0 && controlsFailed === controls.length && controls.length > 0;
+const lines = [
+  ...results.map((x) => `${x.pass ? 'PASS' : 'FAIL'}  ${x.name}${x.pass ? '' : '  got ' + JSON.stringify(x.got)}`),
+  ...controls.map((x) => `${x.pass ? 'CONTROL PASSED (BAD)' : 'CONTROL FAILED (good)'}  ${x.name}`),
+  '',
+  `${passed} passed, ${failed} failed, ${controlsFailed}/${controls.length} controls failed as required`,
+  `GATE: ${gate ? 'PASS' : 'FAIL'}`,
+];
+const out = document.getElementById('out');
+out.textContent = lines.join('\n');
+out.setAttribute('data-gate', gate ? 'pass' : 'fail');
+</script>

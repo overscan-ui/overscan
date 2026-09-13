@@ -1,0 +1,64 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>ov-log first-out tests</title>
+<!-- Over tools/serve.py: /tools/firstout-test/ . The last case is a CONTROL that must fail. -->
+<link rel="stylesheet" href="../../src/tokens.css">
+<link rel="stylesheet" href="../../src/chrome.css">
+<link rel="stylesheet" href="../../src/motion.css">
+<link rel="stylesheet" href="../../src/finish.css">
+<link rel="stylesheet" href="../../src/log.css">
+<style>
+  body { margin: 0; background: #08080a; color: #ccc; font: 12px ui-monospace, monospace; }
+  .row { display: flex; flex-wrap: wrap; gap: 28px; padding: 16px 24px; align-items: start; }
+  .cap { color: #888; margin-block-end: 6px; }
+  #tests { white-space: pre; color: #9f9; padding: 16px 24px; }
+  #tests.fail { color: #f77; }
+</style>
+<section class="ov ov-finish row" data-ov-theme="industrial" id="a"></section>
+<div id="tests">running…</div>
+<script type="module">
+  import '../../src/ov-log.js';
+  await customElements.whenDefined('ov-log');
+  const T = Date.UTC(2126, 8, 11, 4, 12, 7, 0);
+  const mk = (cap, events, lines = 12) => { const d = document.createElement('div'); d.innerHTML = `<div class="cap">${cap}</div>`; const el = document.createElement('ov-log'); el.setAttribute('first-out', ''); el.setAttribute('lines', lines); d.append(el); document.getElementById('a').append(d); for (const e of events) el.push(e); return el; };
+  // Events ARRIVE out of order: the pump trip arrives last and happened first.
+  const clear = mk('a clear first out (arrived last)', [
+    { text: 'LOW FLOW', t: T + 40, uncertainty: 1, source: 'FT-201' },
+    { text: 'HIGH TEMP', t: T + 95, uncertainty: 1, source: 'TT-104' },
+    { text: 'PUMP B TRIP', t: T + 12, uncertainty: 1, source: 'P-B' },
+  ]);
+  const tie = mk('two within their clocks', [
+    { text: 'BREAKER 4 OPEN', t: T + 3, uncertainty: 2, source: 'CB-4' },
+    { text: 'BUS UNDERVOLT', t: T + 5, uncertainty: 1, source: 'BUS-2' },
+    { text: 'ALARM HORN', t: T + 60, uncertainty: 1, source: 'ANN' },
+  ]);
+  const unsynced = mk('one clock not synchronized', [
+    { text: 'VALVE V3 CLOSED', t: T + 1, uncertainty: 1, source: 'V3', synced: false },
+    { text: 'LOW PRESSURE', t: T + 20, uncertainty: 1, source: 'PT-7' },
+    { text: 'OPERATOR ACK', source: 'CONSOLE' },
+  ]);
+  const none = mk('nothing on a synchronized clock', [
+    { text: 'RELAY 9', t: T, uncertainty: 1, source: 'R9', synced: false },
+  ]);
+  const head = (el) => el.querySelector('.ov-log__first');
+  const cases = [
+    ['the event that happened first is first, not the one that arrived first', () => head(clear).textContent.includes('PUMP B TRIP') && head(clear).classList.contains('is-first')],
+    ['events whose windows overlap are a TIE, not an order', () => head(tie).classList.contains('is-tie') && tie.querySelector('.ov-log__tie')?.querySelectorAll('.ov-log__event').length === 2],
+    ['an unsynced clock is listed UNORDERED, not placed first', () => head(unsynced).textContent.includes('LOW PRESSURE') && unsynced.querySelectorAll('.ov-log__unordered .ov-log__event').length === 2],
+    ['with events unordered, first out is only first among the synchronized', () => head(unsynced).textContent.includes('2 unordered could precede it') && !head(clear).textContent.includes('unordered')],
+    ['with nothing on a synchronized clock, first out cannot be determined', () => head(none).classList.contains('is-none')],
+    ['event time is shown to the millisecond with its uncertainty', () => /04:12:07\.012 ±1/.test(clear.textContent)],
+    ['a plain feed is unchanged without first-out', () => { const el = document.createElement('ov-log'); document.body.append(el); el.push('plain line'); const ok = el.querySelectorAll('.ov-log__line').length === 1 && !el.querySelector('.ov-log__first'); el.remove(); return ok; }],
+    ['the strip draws one window per timed event, the tied ones overlapping', () => {
+      const w = [...tie.querySelectorAll('.ov-log__win.is-tie')].map((r) => [+r.getAttribute('x'), +r.getAttribute('x') + +r.getAttribute('width')]);
+      return tie.querySelectorAll('.ov-log__win').length === 3 && w.length === 2 && w[0][1] > w[1][0] && w[1][1] > w[0][0]; }],
+    ['a clear first is a window standing alone', () => { const f = clear.querySelector('.ov-log__win.is-first'), o = [...clear.querySelectorAll('.ov-log__win:not(.is-first)')];
+      return f && o.every((r) => +r.getAttribute('x') > +f.getAttribute('x') + +f.getAttribute('width')); }],
+    ['unordered events are drawn off the axis, as NO TIME', () => unsynced.querySelectorAll('.ov-log__win.is-unordered').length === 2 && unsynced.querySelector('.ov-log__striptext.is-unordered')?.textContent === 'NO TIME'],
+    ['CONTROL: a false claim is caught', () => head(tie).classList.contains('is-first')],
+  ];
+  let bad = 0;
+  const res = cases.map(([name, fn]) => { let r = false; try { r = !!fn(); } catch (e) { r = false; } const c = name.startsWith('CONTROL'); const pass = c ? !r : r; if (!pass) bad += 1; return `${pass ? 'ok  ' : 'FAIL'} ${name}${c ? ' (must fail)' : ''}`; });
+  const el = document.getElementById('tests'); el.textContent = `${cases.length - bad} of ${cases.length} pass\n` + res.join('\n'); el.classList.toggle('fail', bad > 0);
+  window.soeResults = { total: cases.length, bad, out: res };
+</script>

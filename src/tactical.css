@@ -1,0 +1,80 @@
+@layer overscan {
+/* The situation display with a camera that banks. See ov-tactical.js.
+ *
+ * 🔴 NOTHING RESTS ON COLOUR. The ring on the ground is solid and the screen
+ * circle dashed, a stale track's mark is dashed and it draws no heading line,
+ * a site is a circle and a track a diamond, a flown leg is solid and the leg
+ * ahead dashed, and every state is a word in its label.
+ */
+
+ov-tactical {
+  display: block;
+  position: relative;
+  min-inline-size: 0;
+  overflow: hidden;
+  background: var(--ov-panel);
+  border: var(--ov-bezel) solid var(--ov-line-strong);
+}
+ov-tactical[orbit] { touch-action: none; cursor: grab; user-select: none; }
+ov-tactical[orbit]:active { cursor: grabbing; }
+ov-tactical:focus-visible { outline: var(--ov-rule, 1px) dashed var(--ov-accent); outline-offset: 3px; }
+.ov-tactical__svg { display: block; inline-size: 100%; block-size: auto; }
+.ov-tactical__grid { fill: none; stroke: var(--ov-line); stroke-width: .6; }
+.ov-tactical__land { fill: color-mix(in oklab, var(--ov-accent) 5%, transparent); }
+.ov-tactical__border { fill: none; stroke: color-mix(in oklab, var(--ov-accent) 40%, transparent); stroke-width: .8; stroke-linejoin: round; }
+.ov-tactical__true { fill: none; stroke: var(--ov-accent); stroke-width: 1.4; }
+.ov-tactical__naive { fill: none; stroke: var(--ov-alarm); stroke-width: 1.2; stroke-dasharray: 5 4; }
+.ov-tactical__route { fill: none; stroke-width: 1.4; }
+.ov-tactical__route.is-flown { stroke: var(--ov-ink); }
+.ov-tactical__route.is-ahead { stroke: var(--ov-faint); stroke-dasharray: 4 4; }
+.ov-tactical__end { fill: var(--ov-panel); stroke: var(--ov-ink); stroke-width: 1; }
+.ov-tactical__head circle { fill: var(--ov-ink); stroke: var(--ov-ink); stroke-width: 1.4; }
+:is([data-ov-state="stale"], [data-ov-state="undated"], [data-ov-state="ahead"]) > .ov-tactical__head circle {
+  fill: var(--ov-panel);
+  stroke: var(--ov-alarm);
+  stroke-dasharray: 2 1.5;
+}
+.ov-tactical__ping {
+  fill: none !important;
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: ov-tactical-ping 1.6s ease-out infinite;
+}
+@keyframes ov-tactical-ping { from { transform: scale(1); opacity: .9; } to { transform: scale(3); opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { .ov-tactical__ping { animation: none; opacity: 0; } }
+.ov-tactical__lead { stroke: var(--ov-accent); stroke-width: 1; }
+.ov-tactical__mark { fill: none; stroke: var(--ov-accent); stroke-width: 1.2; }
+[data-ov-state="site"] > .ov-tactical__mark { stroke: var(--ov-accent-2); }
+:is([data-ov-state="stale"], [data-ov-state="undated"], [data-ov-state="ahead"]) > .ov-tactical__mark { stroke: var(--ov-alarm); stroke-dasharray: 2 2; }
+.ov-tactical__label {
+  fill: var(--ov-accent);
+  font: 10px/1 var(--ov-font-mono);
+  letter-spacing: .12em;
+  text-transform: uppercase;
+  paint-order: stroke;
+  stroke: var(--ov-panel);
+  stroke-width: 3px;
+  stroke-linejoin: round;
+}
+.ov-tactical__label.is-site { fill: var(--ov-accent-2); }
+.ov-tactical__label:is(.is-plan, .is-live, .is-held) { fill: var(--ov-ink); }
+.ov-tactical__sub { fill: var(--ov-dim); font-size: 9px; letter-spacing: .08em; }
+.ov-tactical__label:is(.is-stale, .is-undated, .is-ahead) .ov-tactical__sub { fill: var(--ov-alarm); }
+.ov-tactical__key {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 18px;
+  padding: 6px 8px;
+  border-block-start: var(--ov-rule) solid var(--ov-line);
+  font: var(--ov-size-1, 11px)/1.5 var(--ov-font-mono);
+  color: var(--ov-faint);
+  font-variant-numeric: tabular-nums;
+}
+.ov-tactical__key i { display: inline-block; inline-size: 12px; block-size: 2px; margin-inline-end: 6px; vertical-align: middle; }
+.ov-tactical__key i.is-true { background: var(--ov-accent); }
+.ov-tactical__key i.is-naive { background: repeating-linear-gradient(90deg, var(--ov-alarm) 0 4px, transparent 4px 7px); }
+.ov-tactical__refuse { color: var(--ov-alarm); font-weight: 400; letter-spacing: .06em; }
+/* ⚠️ Its own class, never `.ov-aside`: a rule naming the kit's aside class
+ * reads, to tools/harness_sheets.py, as this sheet styling every aside. */
+.ov-tactical__rule { flex-basis: 100%; color: var(--ov-dim); }
+}

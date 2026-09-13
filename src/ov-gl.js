@@ -1,0 +1,895 @@
+/* OvGL - the shared plumbing for every GL element in the kit.
+ *
+ * ── ONE CONTEXT, MANY ELEMENTS ────────────────────────────────────────────
+ *
+ * 🔴 A browser will not give a page a WebGL context per element. Chrome's cap
+ * is about 16 live contexts, and past it `getContext` DOES NOT RETURN NULL:
+ * it hands back a context and EVICTS the oldest one, which goes blank. A
+ * demo page with five themes, ten fields and twenty-five ornaments asks for
+ * 45 and gets a screen of dead canvases with no error anywhere.
+ *
+ * ⚠️ And a probe that only checks whether `getContext` returns null will
+ * happily report "64 contexts available", because null is not the failure
+ * mode. Ask instead whether the FIRST context still draws after the last one
+ * is created. That is the third time in this project that a confident wrong
+ * number came from the instrument rather than the thing measured.
+ *
+ * So there is exactly ONE WebGL context for the whole kit. Each element owns
+ * a cheap 2D canvas; every frame the shared context draws that element's
+ * shader at that element's size, and the result is blitted across with
+ * drawImage. One context, one rAF, N draws, and the element count is then
+ * limited by nothing but time.
+ *
+ * ── Where a shader is allowed to sit ──────────────────────────────────────
+ *
+ * The kit's rule has always been "shaders paint fields and instrument
+ * interiors, CSS paints chrome", justified by: a GLSL pass cannot sample the
+ * DOM. That justification is right and the rule drawn from it was slightly too
+ * strong. The real constraint is that a shader cannot READ what is underneath
+ * it. It says nothing about drawing OVER it.
+ *
+ * So the test is not "behind or in front", it is whether the effect needs the
+ * image beneath:
+ *
+ *   NEEDS IT (must be CSS)    scanlines, vignette, bloom, chroma, any CRT
+ *                             finish. All of these MULTIPLY with what is
+ *                             under them. A shader that cannot see the page
+ *                             cannot multiply with it.
+ *
+ *   DOES NOT (may be GL)      a field, drawn behind everything. An instrument
+ *                             interior, drawn inside its own box. And a
+ *                             SCREEN FAULT, drawn over the top, because a
+ *                             fault belongs to the glass rather than to the
+ *                             image and looks the same whatever is behind it.
+ *
+ * A dead pixel is black over a chart and black over an empty panel. That is
+ * precisely why it can be drawn without sampling anything.
+ *
+ * ── The second theme implementation ───────────────────────────────────────
+ *
+ * A canvas is invisible to the cascade, so every GL element re-implements the
+ * theme contract by hand, reading custom properties and pushing them in as
+ * uniforms. That is a real cost and it is paid deliberately here rather than
+ * discovered later when a theme swap moves only half the screen.
+ */
+
+import { whenArrived } from './ov-core.js';
+import { SHADERS } from './shaders/index.js';
+
+/* 🔴 A TOUCH DEVICE RENDERS AT 1.5x, NOT 2x, AND THIS IS A STOPGAP.
+ *
+ * Measured on the iPad (tools/probe.js, 2026-09-12): 623 per-element
+ * drawImage copies cost 5475ms, which is 8.8ms EACH. The same call on this
+ * Mac costs 0.017ms. Every shader element copies its slice out of the shared
+ * WebGL canvas once per frame, and on iOS that copy is a round trip the Mac
+ * never pays. With ~20 shader elements a frame cannot finish: the device's own
+ * ablation measured 8.5fps, and 28.7fps with the shader surfaces hidden.
+ *
+ * A copy moves width x height pixels, so 1.5x instead of 2x moves 44% fewer of
+ * them: about 5ms a copy rather than 8.8ms. That is better, and it is not the
+ * fix. The fix is to stop copying at all, which is a rework of this file
+ * agreed separately; this buys the page back in the meantime.
+ *
+ * ⚠️ Coarse pointer only, so nothing on a desktop softens: the trade is a
+ * slightly softer shader on a device that currently cannot draw it at all.
+ */
+const COARSE_POINTER = typeof matchMedia === 'function'
+  && matchMedia('(pointer: coarse)').matches;
+
+/* 🔴 THE KIT'S SHADERS ARE MODULES, NOT URLS. They were fetched from
+ * `new URL('shaders/<name>.glsl', import.meta.url)`, which was right for a page
+ * with no build step and wrong for every bundler: Vite cannot see a URL built
+ * at runtime, so it never copied the files, and a bundled app 404'd every
+ * shader while the element sat there reporting `missing` to nobody.
+ *
+ * Before that it was `document.currentScript`, which is always null in a
+ * module and made every page off the repo root look for shaders beside itself.
+ * Two ways of finding a file relative to something, both wrong somewhere.
+ *
+ * A literal `import('./shaders/<name>.js')` has no "relative to what": the
+ * browser, a CDN and every bundler resolve it the same way. The table in
+ * shaders/index.js is generated by tools/gen_shaders.py from the .glsl files,
+ * and holds functions so an element loads only the shader it names. A `src`
+ * attribute is still a plain fetch, because a URL the page supplies is the
+ * page's to resolve. */
+
+const VERT = `attribute vec2 p;void main(){gl_Position=vec4(p,0.,1.);}`;
+
+/* 🔴 REQUIRED. A GLSL ES 1.00 fragment shader has NO default precision for
+ * float, so a shader that declares `uniform float` without one does not
+ * compile. It is not a warning and there is no fallback: the whole program
+ * fails to link and the canvas stays empty.
+ *
+ * This cost the project its entire shader layer. field.glsl and filmloop.glsl
+ * were both written without a precision qualifier, both failed to compile from
+ * the day they were written, and nobody noticed because ov-field caught the
+ * failure with a bare `if (!prog) return` and the CSS finish underneath still
+ * looked like a field. Every theme appeared to work.
+ *
+ * Prepended by the loader rather than written into each shader, because it is
+ * a property of the WebGL version the loader chose, not of any one shader.
+ * highp is not guaranteed in fragment shaders on all hardware, hence the
+ * guard, which is the portable idiom.
+ *
+ * ⚠️ This shifts every line number in a compile error by PRELUDE_LINES. The
+ * compiler wrapper subtracts it back out so a reported line matches the file
+ * the author edits. */
+const PRELUDE = `#ifdef GL_FRAGMENT_PRECISION_HIGH
+precision highp float;
+#else
+precision mediump float;
+#endif
+`;
+const PRELUDE_LINES = PRELUDE.split('\n').length - 1;
+
+/* Plain script, not a module, matching every other file here: the kit loads
+ * with <script defer> and no build step, and one module would force
+ * `type="module"` onto every page that already works. Published as
+ * Overscan.GL, alongside Overscan.source. */
+window.Overscan = window.Overscan || {};
+
+/* ---- a pool of contexts, lent to what is on screen ----------------------- */
+
+/* 🔴 AN ELEMENT THAT OWNS ITS CONTEXT DRAWS FOR NOTHING. Measured on the
+ * reported iPad, per operation at a theme card's size: 8.55ms to copy out of a
+ * shared canvas with drawImage, 5.6ms for the "zero-copy" bitmap transfer, and
+ * 0.08-0.13ms to draw straight into a canvas that owns its context. On the
+ * live page the copy was costing 30ms EACH, six to nine times a frame: the
+ * theme wall ran at 3fps.
+ *
+ * ⚠️ SO WHY NOT ONE CONTEXT PER ELEMENT? Because the device evicts. Twenty-four
+ * contexts were made on that iPad and the FIRST one was dead at the end, with
+ * no error and no null from getContext — which is the trap this file's header
+ * has always described.
+ *
+ * ⭐ But nothing needs a context while it is off screen. Counted down the whole
+ * home page on the device, at most NINE GL elements are within the wake margin
+ * at once, out of twenty-three. So the contexts are a POOL, lent to whatever is
+ * on screen and taken back when it leaves, and twelve is comfortably above the
+ * worst case and comfortably below what the device tolerates (twelve made, the
+ * first still alive).
+ *
+ * 🔴 AND THE CANVAS STAYS THE ELEMENT'S OWN CHILD, which is the other half.
+ * Drawing every shader into one canvas behind the page was tried and hid every
+ * field in the kit: a field is a BACKDROP and has to composite above its
+ * container's background and below its container's content. Only a canvas
+ * inside the element can do that. */
+const POOL_MAX = 12;
+const pool = [];
+const programs = new WeakMap();   // gl -> Map(shader source -> WebGLProgram)
+const shaderSources = new Map();    // src url or kit shader name -> Promise<string|null>
+const live = new Set();
+let raf = 0;
+
+/* How long a GL element may reuse a resolved computed style and the token
+ * values read from it. A theme swap does not wait for this: any change to a
+ * data-ov-theme attribute drops every cache at once (see OvGL.restyle). */
+const STYLE_TTL = 4000;
+
+
+/* The state every draw assumes: one full-screen triangle, bound, and alpha
+ * blending. Set at creation, and again after a restore, which starts from
+ * nothing. */
+function primeGL(gl) {
+  const buf = gl.createBuffer();
+  gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+  gl.bufferData(gl.ARRAY_BUFFER,
+    new Float32Array([-1, -1, 3, -1, -1, 3]), gl.STATIC_DRAW);
+
+  gl.enable(gl.BLEND);
+  gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+}
+
+/* Everything the lost context held is gone: programs, textures, the buffer.
+ * Rebuild the shared state, give each live element its program back, and let
+ * it remake its own textures in ready(). */
+function restoreGL(slot) {
+  const gl = slot.gl;
+  slot.lost = false;
+  primeGL(gl);
+  programs.set(gl, new Map());
+  atlases.delete(gl);
+  // Only the element holding this slot lost anything; the rest are untouched.
+  const el = slot.owner;
+  if (el) {
+    el.prog = el._fsSource ? program(el._fsSource, el.localName, gl) : null;
+    if (!el.prog) el.setAttribute('data-ov-shader', 'failed');
+    else { try { el.ready(); } catch (e) { console.error(`${el.localName}: ready() after restore failed`, e); } }
+  }
+  start();
+}
+
+/* A slot is a canvas and the context that belongs to it. It is lent whole: the
+ * element adopts the canvas as its own child for as long as it is on screen. */
+function slotFor() {
+  const free = pool.find((s) => !s.owner);
+  if (free) return free;
+  if (pool.length >= POOL_MAX) return null;
+
+  const canvas = document.createElement('canvas');
+  const gl = canvas.getContext('webgl', {
+    antialias: false,
+    premultipliedAlpha: false,
+    alpha: true,
+    /* ⚠️ NO `preserveDrawingBuffer`. It was required while the drawing was read
+     * back with drawImage; these canvases are composited by the browser, and
+     * preserving the buffer costs a copy per frame of exactly the kind this
+     * pool exists to remove. */
+  });
+  if (!gl) return null;
+
+  const slot = { canvas, gl, owner: null, lost: false };
+  /* 🔴 A CONTEXT CAN BE TAKEN AWAY. iOS reclaims them under memory pressure,
+   * and a loss that is not cancelled is never restored. Per slot, because a
+   * pool of twelve can lose one and keep eleven. */
+  canvas.addEventListener('webglcontextlost', (e) => { e.preventDefault(); slot.lost = true; });
+  canvas.addEventListener('webglcontextrestored', () => restoreGL(slot));
+  primeGL(gl);
+  programs.set(gl, new Map());
+  pool.push(slot);
+  return slot;
+}
+
+/* ⚠️ The scratch surface and its `fit()` are gone with the copy: a canvas now
+ * belongs to the element that is drawing into it, so it is exactly the size of
+ * that element and nothing has to be grown to hold the largest. The clamp
+ * below still applies to each one. */
+
+/* 🔴 A drawing buffer has a hard platform limit, and exceeding it does not
+ * throw: the canvas goes blank or renders garbage. iOS Safari caps a canvas
+ * dimension at 4096px and the total area well below what a desktop allows.
+ *
+ * A full-bleed <ov-field> is `position: absolute; inset: 0` on a surface that
+ * may be the whole DOCUMENT, not the whole viewport. Narrow the window and
+ * the page gets TALLER: the home page's cards stack into one column, the
+ * surface grows to some twelve thousand CSS pixels, and at dpr 2 the field
+ * asks for a buffer 24000px tall. It fails on iOS and survives on a desktop,
+ * which is exactly the shape of "it breaks at narrow widths and is fine when
+ * wide".
+ *
+ * ⚠️ This only started mattering when the shaders began compiling. The
+ * oversized buffer was always being requested; nothing ever drew into it.
+ *
+ * Clamping each axis independently is correct here rather than lazy: every
+ * shader in the kit works in normalised `uv = gl_FragCoord.xy / u_resolution`
+ * space, so the IMAGE is defined on the unit square and is unchanged by the
+ * buffer's shape. A smaller buffer changes sampling density, which softens
+ * grain slightly, and nothing else. The canvas is stretched back over the
+ * element by CSS. */
+/* ⚠️ 2048 WAS HALF OF WHAT A RETINA TABLET NEEDS, and the cost was not memory,
+ * it was resampling. A 1194 CSS px hero at dpr 2 wants 2388 device pixels and
+ * got a 2048px buffer, which the compositor then had to stretch by 1.16 to
+ * cover the element. Everything the field draws at pixel scale, the grain and
+ * the scanlines both, went through a non-integer resample on the way to the
+ * glass. The canvas was measurably correct and what reached the screen was not.
+ *
+ * 🔴 3072, NOT 4096, AND THE DIFFERENCE MATTERS. 4096 is the documented iOS
+ * Safari cap on a single dimension, and the failure at that cap is the one this
+ * kit already paid for: iOS RETURNS GARBAGE, NOT AN ERROR. A clamp sitting
+ * exactly on a limit whose failure mode is silent corruption, on the same
+ * device class the banding was reported from, is the wrong place to stand.
+ *
+ * 3072 is chosen from what a device actually asks for rather than from the
+ * ceiling. The widest retina tablet is a 12.9" iPad Pro at 1366 CSS px
+ * landscape, which is 2732 device pixels at dpr 2. So 3072 covers every
+ * current iPad with headroom to spare and still sits a quarter below the cap.
+ * Nothing is resampled and nothing is near the edge.
+ *
+ * MAX_AREA is unchanged and is still the real guard: no buffer may exceed about
+ * 4.2M pixels however it is shaped, so a 3072-wide buffer is at most 1365 tall.
+ * The document-tall case that motivated the clamp is caught by the area rule,
+ * not by the per-axis one.
+ *
+ * ⚠️ CORRECTION, and the first version of this comment was too strong. 3072 and
+ * 4096 are identical only up to TABLET widths. Measured at dpr 2:
+ *
+ *     1194 css   2388x1400 @1.00    same at both
+ *     1366 css   2551x1643 @0.93    same at both
+ *     1600 css   2675x1567 @0.84  vs 2730x1536 @0.85   diverge
+ *     1920 css   2705x1550 @0.70  vs 3025x1386 @0.79   diverge
+ *
+ * So on a wide retina DESKTOP window 4096 does buy about 12% more linear
+ * resolution. It is still not taken, because the reason for 3072 is the silent
+ * failure at the cap and not the arithmetic, but "buys nothing" was only true
+ * of the devices in the room.
+ *
+ * 🔴 AND IF THE FIELD EVER LOOKS SOFT ON A WIDE RETINA DISPLAY, MAX_DIM IS THE
+ * WRONG LEVER. In that regime NEITHER value reaches 1:1, because MAX_AREA binds
+ * long first: a 1920 css window at dpr 2 wants 6.76M pixels against a 4.19M
+ * budget, and 2560 css wants 10.24M. Raising MAX_DIM cannot help. That symptom
+ * is a MEMORY decision about MAX_AREA, taken against the iOS ceiling, not a
+ * dimension one. */
+const MAX_DIM = 3072;
+const MAX_AREA = 2048 * 2048;
+
+function clamp(w, h) {
+  w = Math.min(w, MAX_DIM);
+  h = Math.min(h, MAX_DIM);
+  const area = w * h;
+  if (area > MAX_AREA) {
+    const k = Math.sqrt(MAX_AREA / area);
+    w = Math.max(1, Math.floor(w * k));
+    h = Math.max(1, Math.floor(h * k));
+  }
+  return [w, h];
+}
+
+function compile(gl, type, src, who) {
+  const sh = gl.createShader(type);
+  gl.shaderSource(sh, src);
+  gl.compileShader(sh);
+  if (!gl.getShaderParameter(sh, gl.COMPILE_STATUS)) {
+    // Map reported lines back onto the .glsl file the author edits.
+    const log = (gl.getShaderInfoLog(sh) || '').replace(
+      /ERROR: (\d+):(\d+)/g,
+      (_, a, b) => `ERROR: ${a}:${Math.max(1, +b - PRELUDE_LINES)}`);
+    console.error(`${who}: shader failed to compile\n${log}`);
+    return null;
+  }
+  return sh;
+}
+
+/* One program per distinct shader source, shared by every element that uses
+ * it. Twenty ornaments are one program, not twenty. */
+function program(fsSrc, who, gl) {
+  /* 🔴 KEYED BY CONTEXT. A WebGLProgram belongs to the context that linked it:
+   * handed to another slot it draws nothing and reports no error. */
+  const cache = programs.get(gl);
+  if (cache && cache.has(fsSrc)) return cache.get(fsSrc);
+  const vs = compile(gl, gl.VERTEX_SHADER, VERT, who);
+  const fs = compile(gl, gl.FRAGMENT_SHADER, PRELUDE + fsSrc, who);
+  let p = null;
+  if (vs && fs) {
+    p = gl.createProgram();
+    gl.attachShader(p, vs);
+    gl.attachShader(p, fs);
+    gl.linkProgram(p);
+    if (!gl.getProgramParameter(p, gl.LINK_STATUS)) {
+      console.error(`${who}: shader failed to link\n${gl.getProgramInfoLog(p)}`);
+      p = null;
+    }
+  }
+  cache.set(fsSrc, p);
+  return p;
+}
+
+function fetchSource(url) {
+  if (!shaderSources.has(url)) {
+    shaderSources.set(url,
+      fetch(url).then(r => (r.ok ? r.text() : null)).catch(() => null));
+  }
+  return shaderSources.get(url);
+}
+
+/* A kit shader by name. An unknown name is null, the same as a failed fetch,
+ * so the element reports `missing` either way. */
+function loadShader(name) {
+  const key = `kit:${name}`;
+  if (!shaderSources.has(key)) {
+    const load = Object.hasOwn(SHADERS, name) ? SHADERS[name] : null;
+    shaderSources.set(key, load
+      ? load().then(m => (typeof m.default === 'string' ? m.default : null)).catch(() => null)
+      : Promise.resolve(null));
+  }
+  return shaderSources.get(key);
+}
+
+/* ---- glyph atlases ------------------------------------------------------ */
+
+const atlases = new WeakMap();   // gl -> Map(key -> atlas)
+
+/* Render a set of characters into a texture, once, shared by every element
+ * that asks for the same key.
+ *
+ * ⚠️ A shader cannot read a font. The neo field's first version faked its
+ * glyphs with a procedural 4x5 dot matrix, and that was called correctly: it
+ * reads as blocky noise, not as characters. Real glyphs mean a real font, and
+ * the only way a fragment shader gets one is as a texture someone rasterised
+ * for it. That is what this does.
+ *
+ * 🔴 Drawn MIRRORED, which is not a stylistic liberty: the film's glyphs are
+ * horizontally flipped, and unflipped katakana reads as ordinary Japanese text
+ * scrolling past rather than as the effect being quoted.
+ *
+ * ⚠️ Fonts load asynchronously and canvas will silently substitute. If the
+ * face is not ready the atlas is full of tofu, permanently, because a texture
+ * is uploaded once. So the atlas is rebuilt after document.fonts.ready. */
+function glyphAtlas(key, chars, gl, cell = 64, cols = 8) {
+  if (!gl) return null;
+  let byKey = atlases.get(gl);
+  if (!byKey) { byKey = new Map(); atlases.set(gl, byKey); }
+  if (byKey.has(key)) return byKey.get(key);
+
+  const rows = Math.ceil(chars.length / cols);
+  const entry = { tex: gl.createTexture(), cols, rows, count: chars.length };
+  byKey.set(key, entry);
+
+  const paint = () => {
+    const c = document.createElement('canvas');
+    c.width = cols * cell;
+    c.height = rows * cell;
+    const ctx = c.getContext('2d');
+    ctx.fillStyle = '#fff';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    // A stack that actually has half-width katakana on the platforms this
+    // runs on. Hiragino ships on macOS and iOS, which is where it is read.
+    ctx.font = `${Math.round(cell * 0.76)}px "Hiragino Kaku Gothic ProN",`
+      + ` "Noto Sans JP", "Yu Gothic", "MS Gothic", sans-serif`;
+    chars.forEach((ch, i) => {
+      const x = (i % cols) * cell + cell / 2;
+      const y = Math.floor(i / cols) * cell + cell / 2;
+      ctx.save();
+      ctx.translate(x, y);
+      ctx.scale(-1, 1);          // mirrored, see above
+      ctx.fillText(ch, 0, 0);
+      ctx.restore();
+    });
+
+    gl.bindTexture(gl.TEXTURE_2D, entry.tex);
+    // Without this the atlas is upside down, because a canvas's first row is
+    // its top and a texture's first row is its bottom.
+    gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, c);
+    // NPOT is fine in WebGL1 as long as it is CLAMP_TO_EDGE with no mipmaps.
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+  };
+
+  paint();
+  // Repaint once the real face has arrived, in case the first pass got a
+  // fallback. Cheap, and the alternative is a permanent grid of tofu.
+  if (document.fonts && document.fonts.ready) {
+    document.fonts.ready.then(() => { try { paint(); } catch {} });
+  }
+  return entry;
+}
+
+/* One rAF for the whole page, not one per element.
+ *
+ * 🔴 Three things keep this affordable, and the shader itself is the cheapest
+ * of them. A demo page carrying 45 GL elements was close to unusable on an
+ * iPad, and the fragment work was not why:
+ *
+ * 1. OFFSCREEN ELEMENTS DO NOT DRAW. An IntersectionObserver marks each one,
+ *    and a page of five stacked theme sections only ever has a couple in
+ *    view. This is the single biggest win and it scales with page length.
+ * 2. A HIDDEN DOCUMENT DOES NOT DRAW at all. rAF already throttles in a
+ *    background tab, but not in a visible tab behind another window.
+ * 3. EACH ELEMENT KEEPS ITS OWN RATE. Decoration does not need 60fps; an
+ *    ornament asks for 24 and gets a third of the draws a field does.
+ *
+ * The fourth, and the one that actually dominated, is not here: see the
+ * computed-style cache on the element. */
+function tick(now) {
+  {
+    // ⚠️ No `document.hidden` gate. requestAnimationFrame ALREADY stops in a
+    // hidden document, so the check bought nothing, and an embedded or
+    // backgrounded browser view can report hidden while it is plainly on
+    // screen: it silently blocked every draw on the page. Let the platform
+    // decide when frames stop.
+    for (const el of live) {
+      if (!el.visible || el.arriving) continue;
+      // Off screen elements hold no slot, and a slot whose context was taken
+      // keeps its last picture until restoreGL() hands it back.
+      if (!el._glSlot || el._glSlot.lost) continue;
+      if (now - el.last < el.interval) continue;
+      el.last = now;
+      // One element throwing must not take the rest of the page's shaders
+      // down. It must not vanish either: a swallowed exception here is how a
+      // whole class of element goes blank with nothing to find. Recorded on
+      // the element and logged once per element, never silently dropped.
+      try {
+        el.draw(el.gl);
+      } catch (e) {
+        if (!el._threw) {
+          el._threw = true;
+          el.setAttribute('data-ov-error', e.message);
+          console.error(`${el.localName}: draw failed`, e);
+        }
+      }
+    }
+  }
+  raf = live.size ? requestAnimationFrame(tick) : 0;
+}
+
+/* One observer for every GL element on the page, rather than one each. The
+ * generous margin starts an element drawing just before it scrolls in, so it
+ * is never caught mid-fade with a blank canvas. */
+const seen = new IntersectionObserver(entries => {
+  /* 🔴 THE MARGIN IS WHAT MAKES THE POOL WORK. An element takes a context just
+   * before it scrolls in and gives it back once it has left, so the number of
+   * contexts alive is the number of elements on screen rather than the number
+   * on the page. Released first, so a slot is free for the element arriving in
+   * the same batch. */
+  for (const e of entries) if (!e.isIntersecting) { e.target.visible = false; e.target.release?.(); }
+  for (const e of entries) if (e.isIntersecting) { e.target.visible = true; e.target.acquire?.(); }
+  start();
+}, { rootMargin: '200px' });
+
+function start() {
+  /* 🔴 NOT WHILE THE PAGE IS ARRIVING. Every GL element calls this the moment
+   * it upgrades, which on the home page is ~20 shader surfaces starting to
+   * draw while the hero and the topbar are still animating in. ov-core's gate
+   * runs this at once once the page has landed, so an element that upgrades
+   * later still starts immediately. */
+  if (raf || !live.size) return;
+  whenArrived(() => { if (!raf && live.size) raf = requestAnimationFrame(tick); });
+}
+
+/* ---- data textures ------------------------------------------------------ */
+
+/* A shader cannot see the DOM and it cannot see a JavaScript array either. An
+ * instrument interior that draws REAL data therefore has to hand that data
+ * over as a texture, which is what these are for.
+ *
+ * Single channel, 8 bits. That is enough for a trace or a spectrogram cell,
+ * and it keeps the per-frame upload small: a 256x32 history is 8KB, which is
+ * nothing next to the 45 getComputedStyle calls this file already went to
+ * some trouble to avoid. */
+function makeDataTexture(gl) {
+  /* ⚠️ TAKES ITS CONTEXT: a texture made on one slot is silently useless on
+   * another. Callers pass `this.gl`, and ready() is re-run when a slot changes
+   * hands so the textures are remade in the context that will draw them. */
+  if (!gl) return null;
+  const tex = gl.createTexture();
+  gl.bindTexture(gl.TEXTURE_2D, tex);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+  return tex;
+}
+
+function uploadData(tex, data, w, h, gl) {
+  if (!gl || !tex) return;
+  gl.bindTexture(gl.TEXTURE_2D, tex);
+  // 🔴 Explicitly OFF. The glyph atlas turns this on, it is global context
+  // state, and a flipped data texture reads the history backwards in time:
+  // the trace decays toward the newest sweep instead of away from it.
+  gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
+  gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.LUMINANCE, w, h, 0,
+                gl.LUMINANCE, gl.UNSIGNED_BYTE, data);
+}
+
+/* ---- the element -------------------------------------------------------- */
+
+class OvGL extends HTMLElement {
+  /* Subclasses override: which shader to load, when there is no `src`
+   * attribute and no theme property naming one. */
+  get shaderName() { return null; }
+
+  /* Subclasses override: push this element's uniforms. Called with the
+   * element's computed style already resolved. */
+  uniforms(_style, _t) {}
+
+  /* Subclasses override for setup that needs a live context. */
+  ready() {}
+
+  /* Draws per second. Decoration does not need the full frame rate. */
+  get fps() { return 60; }
+
+  /* How much detail this element's buffer is worth. A field carries grain
+   * that wants real pixels; an ornament is a soft wash and does not. */
+  get maxDpr() { return COARSE_POINTER ? 1.5 : 2; }
+
+  /* 🔴 THE COST THAT MATTERED. Reading uniforms meant `getComputedStyle` plus
+   * a dozen `getPropertyValue` calls PER ELEMENT PER FRAME: on the shader demo
+   * that is 45 elements times 60fps, some 2700 forced style resolutions a
+   * second, and it made the page nearly unusable on an iPad. The shading was
+   * never the problem.
+   *
+   * Theme tokens change when a theme is swapped, which is a human action, so
+   * they are re-read on a slow interval instead. The stagger keeps 45 elements
+   * from all re-reading on the same frame.
+   *
+   * A theme swap is a change to a data-ov-theme attribute, and one observer
+   * drops every cache when that happens, so the shaders follow in the same
+   * frame as CSS. `Overscan.GL.restyle()` does the same for code that changes
+   * tokens some other way. */
+  /* 🔴 `computed`, NEVER `style`. This was called `style()` and it shadowed
+   * `HTMLElement.prototype.style` on every GL-backed element, five of them, so
+   * `el.style` returned this FUNCTION and `el.style.setProperty(...)` threw
+   * TypeError on any of them. It surfaced when the scroll reveal tried to set
+   * a custom property on an `<ov-field>`: the throw aborted the loop that was
+   * hiding elements, before it could attach the listeners or arm the watchdog
+   * that would have shown them again, and left a code block on demo/data.html
+   * masked permanently. Same family as `ov-table` keeping its sort direction
+   * on `this.dir`; `api.py` now gates `style` alongside it. */
+  computed() {
+    const now = performance.now();
+    if (!this._style || now > this._styleAt) {
+      this._style = getComputedStyle(this);
+      this._tok = null;
+      this._styleAt = now + STYLE_TTL + Math.random() * STYLE_TTL;
+    }
+    return this._style;
+  }
+
+  async connectedCallback() {
+    const src = this.getAttribute('src');
+    const name = src ? null : this.shaderName;
+    if (!src && !name) return;
+
+    /* No canvas yet: one is LENT when this element is on screen, and taken
+     * back when it leaves. See acquire() below. */
+    const source = await (src ? fetchSource(src) : loadShader(name));
+    if (!source) {
+      /* 🔴 SAID OUT LOUD. The attribute alone was the only trace of a missing
+       * shader, and in a bundled app it was set on every GL element with an
+       * empty console. */
+      this.setAttribute('data-ov-shader', 'missing');
+      console.warn(`${this.localName}: shader ${src ? `at ${src}` : `"${name}"`} did not load`);
+      return;
+    }
+    if (!this.isConnected) return; // Removed while the fetch was in flight.
+
+    this._fsSource = source; // kept, to link in whichever context it is lent
+    this.setAttribute('data-ov-shader', 'ok');
+
+    this.reduced = matchMedia('(prefers-reduced-motion: reduce)');
+    this.t0 = performance.now();
+    this.last = 0;
+    this.interval = 1000 / this.fps;
+    // Assume visible until the observer says otherwise, so an element that is
+    // already on screen paints on the first frame rather than the second.
+    /* ⚠️ NO CONTEXT YET, and not because it is unavailable: the observer below
+     * hands one to whatever is actually on screen, and it reports the element's
+     * real position within a frame. Taking one here meant all twenty-three
+     * elements grabbed at connect and the ten that missed out marked themselves
+     * broken while sitting far below the fold. */
+    this.visible = true;
+    this.resize();
+    this.ro = new ResizeObserver(() => this.resize());
+    this.ro.observe(this);
+    seen.observe(this);
+    this.holdForArrival();
+    this.ready();
+    live.add(this);
+
+    // 🔴 One frame NOW, before the culling can decide this element is
+    // offscreen. Without it an element below the fold has never painted, so
+    // its canvas is transparent and whatever is behind it shows through: on a
+    // long page every instrument reads as broken until you scroll to it, and
+    // a screenshot of the page shows empty boxes. Drawing once costs a single
+    // frame and means an element is never in an unpainted state.
+    // ⚠️ Unless it is arriving: holdForArrival() draws this first frame the
+    // moment the arrival ends instead, which is the whole point of the hold.
+    if (!this.arriving && this.gl) {
+      try { this.draw(this.gl); } catch { /* reported by the loop */ }
+    }
+
+    start();
+  }
+
+  disconnectedCallback() {
+    live.delete(this);
+    this.ro?.disconnect();
+    this._arrivalHold?.disconnect();
+    clearTimeout(this._arrivalCap);
+    seen.unobserve(this);
+    this.release();
+  }
+
+  /* Take a slot and make its canvas this element's own child. The program and
+   * any textures are rebuilt HERE, because both belong to the context in the
+   * slot rather than to the element. */
+  acquire() {
+    /* 🔴 `_glSlot`, NEVER `slot`. HTMLElement.prototype.slot is the shadow-DOM
+     * slot NAME: assigning an object to it writes the string "[object Object]"
+     * into an attribute and hands it back as a string, so every read of it
+     * throws on the next property access. Same family as ov-table keeping its
+     * sort direction on `this.dir`, which this repo has already paid for once
+     * and api.py gates. */
+    if (this._glSlot) return true;
+    if (!this._fsSource) return true;   // nothing to draw yet; not a failure
+    const slot = slotFor();
+    if (!slot) {
+      /* 🔴 SAID OUT LOUD. More elements on screen than the pool can serve is a
+       * blank shader, and a blank shader that says nothing is the failure this
+       * file's header is about. Nine on screen at once is the worst case
+       * measured down the whole home page against a pool of twelve; if this
+       * ever fires, that number is wrong and the attribute is how anyone
+       * finds out. */
+      this.setAttribute('data-ov-shader', 'no-context');
+      return false;
+    }
+    if (this.getAttribute('data-ov-shader') === 'no-context') {
+      this.setAttribute('data-ov-shader', 'ok');
+    }
+
+    slot.owner = this;
+    this._glSlot = slot;
+    this.gl = slot.gl;
+    this.canvas = slot.canvas;
+    /* The blit out of a shared surface is gone, and with it the reason this
+     * canvas had a 2D context at all. */
+    this.appendChild(this.canvas);
+
+    const prog = program(this._fsSource, this.localName, slot.gl);
+    if (!prog) {
+      // Not silent. A shader that does not compile is a missing layer, and
+      // the last one hid for its whole life behind an early return.
+      this.setAttribute('data-ov-shader', 'failed');
+      this.release();
+      return true;
+    }
+    this.prog = prog;
+    this._tok = null;          // uniform locations belong to the new program
+    this.resize();
+    try { this.ready(); } catch (e) { console.error(`${this.localName}: ready() failed`, e); }
+    return true;
+  }
+
+  /* Hand the slot back. The canvas goes with it, so the element shows whatever
+   * is behind it again — which is only ever true off screen, where nobody is
+   * looking, and is what makes twelve contexts enough for twenty-three
+   * elements. */
+  release() {
+    const slot = this._glSlot;
+    if (!slot) return;
+    slot.owner = null;
+    this._glSlot = null;
+    this.prog = null;
+    this.gl = null;
+    if (this.canvas && this.canvas.parentNode === this) this.removeChild(this.canvas);
+    this.canvas = null;
+  }
+
+  /* 🔴 A SHADER DOES NOT DRAW WHILE ITS OWN ELEMENT IS ARRIVING.
+   *
+   * ov-core's gate holds every loop until the page's FIRST SCREENFUL has
+   * landed, which is right for the page and says nothing about a card half way
+   * down it. The theme wall is ten cards, each carrying a field, and each one
+   * starts its shader at the moment it animates in: the arrival and the first
+   * frames of ten shaders land on the same frames, which is what the device
+   * reports as the theme section being the worst of the page.
+   *
+   * An element that is mid-arrival waits for its own arrival to finish and
+   * then starts. Nothing else changes: the visibility gate still decides
+   * whether it draws at all, and this only decides when it may begin.
+   *
+   * ⚠️ A CAP, because the hold must not be able to strand a shader. If an
+   * arrival never completes, the reveal's own guard shows the element within a
+   * few seconds and this lets go regardless: a field that never draws is a
+   * worse failure than a field that draws during its arrival. */
+  holdForArrival() {
+    const arriving = this.closest('.ov-reveal--pending');
+    if (!arriving) return;
+    this.arriving = true;
+    const release = () => {
+      if (!this.arriving) return;
+      this.arriving = false;
+      this._arrivalHold?.disconnect();
+      clearTimeout(this._arrivalCap);
+      // Draw the first frame at once rather than waiting for the next tick.
+      if (this.gl) { try { this.draw(this.gl); } catch { /* reported by the loop */ } }
+      start();
+    };
+    this._arrivalHold = new MutationObserver(() => {
+      if (!arriving.classList.contains('ov-reveal--pending')) release();
+    });
+    this._arrivalHold.observe(arriving, { attributes: true, attributeFilter: ['class'] });
+    this._arrivalCap = setTimeout(release, 6000);
+  }
+
+  resize() {
+    const r = this.getBoundingClientRect();
+    // An element measured while display:none reports 0x0 and would get a 0x0
+    // buffer in silence. Guard rather than trust.
+    const dpr = Math.min(devicePixelRatio || 1, this.maxDpr);
+    const [w, h] = clamp(Math.max(1, Math.round(r.width * dpr)),
+                         Math.max(1, Math.round(r.height * dpr)));
+    // Device pixels per CSS pixel, AFTER clamping. Not the same as dpr: a very
+    // large element gets its buffer clamped, and anything sized in CSS pixels
+    // inside a shader has to scale by what the buffer actually got, or it
+    // silently changes size on a long page.
+    this.scale = w / Math.max(1, r.width);
+    /* 🔴 AND THE VERTICAL ONE SEPARATELY, because the two are NOT equal once a
+     * buffer is clamped. clamp() caps each axis independently, so a retina hero
+     * that is 2358 device px wide gets a 2048px buffer (x1.737) while its
+     * height fits untouched (x2.0). Anything drawn at a fixed CSS size on the Y
+     * axis and scaled by `this.scale` therefore comes out 13% wrong, and a
+     * SCANLINE is exactly that. */
+    this.scaleY = h / Math.max(1, r.height);
+    if (!this.canvas || (w === this.canvas.width && h === this.canvas.height)) return;
+    this.canvas.width = w;
+    this.canvas.height = h;
+
+    // 🔴 RESIZING A CANVAS CLEARS IT, and a culled element never redraws, so
+    // without this an instrument that is offscreen when its size settles stays
+    // blank for the life of the page. The first measurement often IS 0x0 or
+    // provisional, so this hits nearly every element below the fold: it drew
+    // once at connect, got resized by the ResizeObserver a frame later, and
+    // lost that frame with nothing scheduled to replace it.
+    if (this.prog && this.gl) {
+      try { this.draw(this.gl); } catch { /* reported by the loop */ }
+    }
+  }
+
+  /* Push a uniform by name. A name the shader does not declare is skipped
+   * rather than thrown, so one uniforms() can serve several shaders. */
+  set(name, fn, ...v) {
+    const l = this.gl.getUniformLocation(this.prog, name);
+    if (l) fn.call(this.gl, l, ...v);
+  }
+
+  /* 🔴 A computed style is LIVE: reading a property off it after any DOM
+   * write forces a style recalc, so reading tokens every frame cost ~33
+   * forced recalcs a second on the home page even with the style
+   * object cached. Each token is read once per resolved style instead. */
+  token(style, name) {
+    if (!this._tok) this._tok = new Map();
+    let v = this._tok.get(name);
+    if (v === undefined) { v = style.getPropertyValue(name); this._tok.set(name, v); }
+    return v;
+  }
+
+  num(style, name, fallback) {
+    const v = parseFloat(this.token(style, name));
+    return Number.isFinite(v) ? v : fallback;
+  }
+
+  rgb(style, name) {
+    const hex = (this.token(style, name) || '').trim();
+    const m = /^#?([0-9a-f]{6})$/i.exec(hex);
+    if (!m) return [0, 0, 0];
+    const n = parseInt(m[1], 16);
+    return [(n >> 16 & 255) / 255, (n >> 8 & 255) / 255, (n & 255) / 255];
+  }
+
+  draw(gl) {
+    if (!this.prog || !this.canvas) return;
+    const w = this.canvas.width, h = this.canvas.height;
+    if (!w || !h) return;
+
+    gl.useProgram(this.prog);
+    // The vertex buffer is per context and stays bound, but the attribute
+    // LOCATION is per program, so it is re-pointed for each draw.
+    const loc = gl.getAttribLocation(this.prog, 'p');
+    gl.enableVertexAttribArray(loc);
+    gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
+
+    /* The whole canvas, because the canvas belongs to this element. There is
+     * no scratch surface to share and nothing to scissor off. */
+    gl.viewport(0, 0, w, h);
+
+    const s = this.computed();
+    // Reduced motion freezes the clock rather than stopping the draw: the
+    // instrument still reads, it just stops moving.
+    const t = this.reduced.matches ? 0 : (performance.now() - this.t0) / 1000;
+    this.set('u_resolution', gl.uniform2f, w, h);
+    this.set('u_time', gl.uniform1f, t);
+    // For shaders that draw anything at a fixed CSS size. Without it a glyph
+    // or a rule is half the size on a dpr 2 screen as on a dpr 1 one.
+    this.set('u_scale', gl.uniform1f, this.scale || 1);
+    this.set('u_scaleY', gl.uniform1f, this.scaleY || 1);
+    this.uniforms(s, t);
+
+    gl.clearColor(0, 0, 0, 0);
+    gl.clear(gl.COLOR_BUFFER_BIT);
+    gl.drawArrays(gl.TRIANGLES, 0, 3);
+  }
+
+}
+
+/* Drop every cached computed style now. Call after swapping a theme in code
+ * if the shaders must follow in the same frame rather than within STYLE_TTL. */
+OvGL.restyle = () => { for (const el of live) { el._style = null; el._tok = null; } };
+
+/* Themes are swapped by setting data-ov-theme (the picker, pinned demos), so
+ * that is what drops the caches. */
+new MutationObserver(OvGL.restyle).observe(document.documentElement,
+  { attributes: true, attributeFilter: ['data-ov-theme'], subtree: true });
+
+OvGL.glyphAtlas = glyphAtlas;
+OvGL.makeDataTexture = makeDataTexture;
+OvGL.uploadData = uploadData;
+
+window.Overscan.GL = OvGL;
+
+export { OvGL };
+export default OvGL;

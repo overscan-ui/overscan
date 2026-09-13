@@ -1,0 +1,98 @@
+/* ---- CASCADE LAYER ------------------------------------------------------
+ *
+ * Everything the kit ships sits in ONE layer named `overscan`, so a consumer's
+ * own CSS beats it without a specificity fight and without !important. That is
+ * close to mandatory for a distributed kit: an app should be able to restyle a
+ * panel by writing a plain rule.
+ *
+ * ⚠️ ONE layer, deliberately, NOT a sub-layer per file. Sub-layers look tidier
+ * and would silently reorder the kit against itself: layer order beats
+ * specificity, so a high-specificity rule in an early file that currently wins
+ * would start losing to a low-specificity rule in a later one. A single layer
+ * preserves source order exactly, so nothing inside the kit changes.
+ *
+ * Unlayered author CSS wins over all of it. That is the point.
+ */
+
+@layer overscan {
+/* A technique grid that says what was tested, not what has a rule. */
+
+ov-coverage {
+  display: grid;
+  gap: 8px;
+  font-family: var(--ov-font-mono);
+  font-size: var(--ov-size-1);
+  letter-spacing: 1px;
+  color: var(--ov-dim);
+  inline-size: 100%;
+  max-inline-size: var(--ov-coverage-size, 420px);
+  --ov-coverage-cell: 12px;
+}
+
+.ov-coverage__grid {
+  display: grid;
+  gap: 5px;
+  padding: 8px 10px;
+  background: var(--ov-field);
+  border: var(--ov-bezel) solid var(--ov-line-strong);
+}
+.ov-coverage__row {
+  display: grid;
+  grid-template-columns: 11ch 1fr 4.5ch;
+  gap: 8px;
+  align-items: start;
+}
+.ov-coverage__tactic {
+  font-size: 8px; line-height: var(--ov-coverage-cell); text-transform: uppercase;
+  color: var(--ov-faint); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.ov-coverage__n { font-size: 8px; line-height: var(--ov-coverage-cell); color: var(--ov-faint); text-align: end; }
+.ov-coverage__cells { display: flex; flex-wrap: wrap; gap: 2px; }
+
+/* One cell per technique. The state has a SHAPE as well as a colour, so it
+   survives a monochrome theme: solid, half, cross, hatch, empty. */
+.ov-coverage__cell {
+  display: inline-block;
+  inline-size: var(--ov-coverage-cell);
+  block-size: var(--ov-coverage-cell);
+  box-sizing: border-box;
+  border: 1px solid var(--ov-line-strong);
+  position: relative;
+}
+/* Validated: filled from the bottom by how much of `max-age` is left. A test
+   that is nearly too old is nearly empty. */
+.ov-coverage__cell.is-validated {
+  border-color: var(--ov-accent);
+  background: linear-gradient(to top, var(--ov-accent) calc(var(--ov-coverage-fresh, 1) * 100%), transparent 0);
+}
+.ov-coverage__cell.is-partial {
+  border-color: var(--ov-accent);
+  background: linear-gradient(to top right, color-mix(in srgb, var(--ov-accent) 70%, transparent) 50%, transparent 50%);
+}
+/* Failed: a cross in the alarm colour. */
+.ov-coverage__cell.is-failed {
+  border-color: var(--ov-alarm);
+  background:
+    linear-gradient(45deg, transparent 43%, var(--ov-alarm) 43% 57%, transparent 57%),
+    linear-gradient(-45deg, transparent 43%, var(--ov-alarm) 43% 57%, transparent 57%);
+}
+/* 🔴 Unknown is hatched and never green: a rule nobody tested, a pass gone
+   stale, an undated test. */
+.ov-coverage__cell.is-unknown {
+  border-style: dashed;
+  border-color: var(--ov-dim);
+  background: repeating-linear-gradient(135deg, color-mix(in srgb, var(--ov-dim) 55%, transparent) 0 1.2px, transparent 1.2px 3px);
+}
+.ov-coverage__cell.is-none { border-color: var(--ov-line); }
+
+.ov-coverage__legend { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 8px; color: var(--ov-faint); }
+.ov-coverage__key { display: inline-flex; align-items: center; gap: 5px; }
+
+.ov-coverage__void {
+  display: grid; place-items: center; min-block-size: 140px;
+  color: var(--ov-alarm); text-transform: uppercase;
+  border: 1px dashed var(--ov-line-strong);
+}
+.ov-coverage__readout { display: flex; flex-wrap: wrap; gap: 4px 16px; }
+.ov-coverage__readout .is-flag { color: var(--ov-accent-2); }
+}

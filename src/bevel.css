@@ -1,0 +1,312 @@
+/* ---- CASCADE LAYER ------------------------------------------------------
+ *
+ * Everything the kit ships sits in ONE layer named `overscan`, so a consumer's
+ * own CSS beats it without a specificity fight and without !important. That is
+ * close to mandatory for a distributed kit: an app should be able to restyle a
+ * panel by writing a plain rule.
+ *
+ * ⚠️ ONE layer, deliberately, NOT a sub-layer per file. Sub-layers look tidier
+ * and would silently reorder the kit against itself: layer order beats
+ * specificity, so a high-specificity rule in an early file that currently wins
+ * would start losing to a low-specificity rule in a later one. A single layer
+ * preserves source order exactly, so nothing inside the kit changes.
+ *
+ * Unlayered author CSS wins over all of it. That is the point.
+ */
+
+@layer overscan {
+/* Raised and bevelled controls: the fourth geometry family.
+ *
+ * ⚠️ NOT a reconstruction of shipped operating systems; those stay out of
+ * scope. This is one geometry option
+ * inside the kit's own themes, derived from each theme's own light and its own
+ * surfaces, and it is a fourth family beside flat, cut-corner and sheared.
+ *
+ * 🔴 A BEVEL ENCODES A LIGHT DIRECTION, SO IT CANNOT BE INVERTED, ONLY RE-LIT.
+ * Nothing here inverts anything. Each theme declares where its
+ * light comes from as `--ov-light`, tools/palette.py derives the rings from
+ * that declaration and gates them, and every value below arrives as a finished
+ * token. SUNKEN IS THE SAME TWO COLOURS ON THE OPPOSITE SIDES, which is what a
+ * well looks like under a fixed light: the wall facing the light is lit
+ * whether it faces out of the surface or into it. Swapping the colours without
+ * swapping the sides is what `filter: invert(1)` does, and it makes every
+ * button look pressed.
+ *
+ * ⭐ AND A BEVEL STATES AN AFFORDANCE. Raised means pressable. Sunken means a
+ * well that takes input. A bevel on something that is neither is lying, in
+ * exactly the way an ornament that encodes nothing is, so demo/audit.html
+ * checks it: every `.ov-bevel` must be operable and every `.ov-bevel--well`
+ * must be, or must contain, a control. The rule is enforced rather than
+ * stated, which is the only kind of rule this kit keeps.
+ */
+
+.ov-bevel {
+  /* 🔴 A bevel needs room on BOTH sides of the face it is drawn on, and four
+     themes put their controls on `--ov-field`, the deepest ground, which has
+     nothing beneath it. So the bevelled variant lifts its own surface. This is
+     a constraint of the treatment, not a preference, and tools/palette.py
+     measures the rings against this surface for that reason. */
+  background: var(--ov-raised);
+  box-shadow: var(--ov-bevel-raise);
+  /* The rings are drawn inside the border box and take no layout space, so
+     the content has to be moved off them by hand or it sits on the light. */
+  padding: 9px 16px;
+  border: 0;
+  border-radius: var(--ov-ctl-corner);
+  color: var(--ov-ink);
+  font: inherit;
+  letter-spacing: inherit;
+  text-transform: var(--ov-case);
+  cursor: pointer;
+  transition: box-shadow var(--ov-dur-fast) var(--ov-ease);
+}
+
+.ov-bevel--deep { box-shadow: var(--ov-bevel-raise-deep); padding: 11px 18px; }
+
+/* ⭐ The affordance paying off: a raised control that is pressable becomes a
+   pressed one when you press it, using the SAME light. This is the one moment
+   the whole treatment is for, and it is why the pair had to be derived rather
+   than flipped. */
+.ov-bevel:active,
+.ov-bevel[aria-pressed="true"] { box-shadow: var(--ov-bevel-sink); }
+.ov-bevel--deep:active,
+.ov-bevel--deep[aria-pressed="true"] { box-shadow: var(--ov-bevel-sink-deep); }
+
+/* A well. Sunken means "this takes input", so it is the input's shape, not a
+   decoration available to anything. */
+.ov-bevel--well {
+  box-shadow: var(--ov-bevel-sink);
+  background: var(--ov-panel);
+  cursor: auto;
+}
+.ov-bevel--well.ov-bevel--deep { box-shadow: var(--ov-bevel-sink-deep); }
+.ov-bevel--well:active { box-shadow: var(--ov-bevel-sink); }
+
+/* An outline paints outside the border box and the rings are strictly inside
+   it, so a focus ring at offset 0 sits on top of the highlight and reads as
+   part of the bevel. It comes in past both rings. */
+.ov-bevel:focus-visible {
+  outline: 2px solid var(--ov-accent);
+  outline-offset: -4px;
+}
+
+/* aria-disabled, never the native attribute, and the bevel goes with it: a
+   control that is refusing is not pressable, so it must not claim to be. */
+.ov-bevel[aria-disabled="true"] {
+  box-shadow: none;
+  background: var(--ov-panel);
+  color: var(--ov-faint);
+  cursor: not-allowed;
+}
+
+/* ---- themes that decline the treatment ---------------------------------- *
+ *
+ * Both of these come out of tools/palette.py's measurement rather than out of
+ * taste, and both keep the affordance by other means. `--ov-bevel-raise` is
+ * `none` for antiseptic, so the rules above simply produce a flat block, which
+ * is already that theme's control form.
+ *
+ * 🔴 antiseptic is 2001: primary on true black, declared register zero depth.
+ * Its surfaces sit close enough to black that a shadow ring measures 1.03:1
+ * against the face, which is not a ring, it is a rounding error.
+ *
+ * 🔴 holo is additive, because a projection cannot be darker than the room, so
+ * a shadow is not available to it at all. It declares `lit`: two highlight
+ * rings and no shadow, and reads its depth from brightness falloff. That is a
+ * MECHANISM difference rather than a hue difference, which is the test every
+ * theme here has to pass.
+ */
+
+[data-ov-theme="antiseptic"] .ov-bevel {
+  /* The affordance still has to be stated, so it is stated the way this theme
+     states everything: a flat block with a boundary and no depth at all. */
+  border: var(--ov-rule) solid var(--ov-line-strong);
+}
+[data-ov-theme="antiseptic"] .ov-bevel[aria-pressed="true"],
+[data-ov-theme="antiseptic"] .ov-bevel:active {
+  background: var(--ov-lit-bg);
+  color: var(--ov-lit-fg);
+}
+[data-ov-theme="antiseptic"] .ov-bevel--well {
+  background: var(--ov-panel);
+  border-color: var(--ov-line);
+}
+
+/* ⚠️ Its faceplate needs a boundary or it is not there. With no bevel and no
+   bolts, `--ov-panel` on true black leaves the plate at 1.1:1 against the
+   field: a rack you cannot find the edge of. It gets the same answer the
+   theme gives everything else, which is a flat block with a stated edge. */
+[data-ov-theme="antiseptic"] .ov-rack {
+  border: var(--ov-rule) solid var(--ov-line-strong);
+}
+
+/* ---- what the control says about itself --------------------------------- */
+
+/* Opt-in, for the demo. A control does not normally caption its own light. */
+.ov-bevel-show .ov-bevel::after {
+  content: "";
+  position: absolute;
+  inline-size: 6px;
+  block-size: 6px;
+  border-radius: 50%;
+  background: var(--ov-accent);
+  /* Sits at the declared light direction, so the caption IS the token. */
+  inset-block-start: 50%;
+  inset-inline-start: 50%;
+  /* Sits TOWARD the light, at the direction the theme declared. */
+  translate:
+    calc(var(--ov-light-x) * 22px - 3px)
+    calc(var(--ov-light-y) * 22px - 3px);
+  opacity: 0.6;
+}
+.ov-bevel-show .ov-bevel { position: relative; }
+
+/* ---- the rack ----------------------------------------------------------- *
+ *
+ * An audio rack is the model and webaudio-controls is the reference:
+ * a faceplate with things mounted on it. That is the register raised controls
+ * actually come from, and it is a stronger case for the treatment than a
+ * bevelled button on its own, because a rack is where a bevel is doing work
+ * rather than decorating.
+ *
+ * ⭐ THE RULE THAT MAKES A RACK A RACK: everything on a faceplate is either
+ * raised OUT of it or sunk INTO it, and which one says what the thing does.
+ * A knob and a button are raised, because you operate them. A readout is sunk,
+ * because you do not. There is no third option and nothing sits flush, which
+ * is the affordance rule from further up this file applied to a whole surface
+ * rather than to one control.
+ *
+ * 🔴 Two ring sets, and it is not a detail. The faceplate is raised out of the
+ * field and the controls are raised out of the FACEPLATE, so they cannot be
+ * lit from the same face or a knob would read exactly like the panel it is
+ * screwed to. Both are derived from the same declared light, so the whole rack
+ * still reads as one object under one lamp.
+ *
+ * ⚠️ And the controls are drawn, not sprited. Swept over
+ * 101 steps, webaudio-controls' generated 101-frame filmstrip averaged 1.42
+ * degrees of error against a single continuously rotated frame at 0.00, while
+ * being thirteen times larger. A filmstrip only earns its cost when the frames
+ * are NOT rotations of one another. <ov-dial> rotates one pointer, so it has
+ * nothing to gain and an error to avoid.
+ */
+
+.ov-rack {
+  --ov-bolt-size: 14px;
+  --ov-bolt-inset: 9px;
+  background-color: var(--ov-panel);
+  /* Brighter nearer the light, along the same `--ov-light` the chamfer and the
+     bolt heads are derived from. A sheen that encodes nothing is the oldest
+     skeuomorphic reflex there is; this one turns when the theme's light does,
+     which is the whole difference. */
+  background-image: var(--ov-bevel-face-wash);
+  /* Two rings on the faceplate, one on the controls. A rack panel is a thick
+     plate and a knob cap is not, and the profile is most of what says so. */
+  box-shadow: var(--ov-bevel-face-raise-deep);
+  border-radius: var(--ov-corner);
+  /* Room for the fixings, which are inside the plate, not on its edge. */
+  padding: calc(var(--ov-pad) + 8px) calc(var(--ov-pad) + 14px);
+  display: flex;
+  align-items: flex-end;
+  gap: calc(var(--ov-gap) + 8px);
+  flex-wrap: wrap;
+}
+
+/* ⭐ A BOLT SAYS THIS FACE IS FIXED, and that is the whole justification for
+   drawing one. Decoration in this kit has to encode something or it is the
+   arbitrary per-element variation that reads as noise; a fixing that appears
+   on a panel you can drag would be exactly that. So a rack is bolted and a
+   window is not, which is the same shape of rule as the corner treatment
+   saying WHERE a panel sits rather than which panel it is.
+
+   The bolt is lit from the theme's own `--ov-light`, derived in the same place
+   as every ring, so a face whose fixings catch the light on one side and whose
+   knobs catch it on the other cannot happen.
+
+   🔴 antiseptic's `--ov-bevel-bolt` is `none`, its third declined mechanism
+   after the field shader and the bevel itself: a 2001 panel has no visible
+   fixings, and drawing them would be the era strand arriving through the back
+   door. */
+.ov-rack--bolted {
+  /* ⚠️ The wash is listed LAST because background layers paint front to back,
+     so the bolts have to be declared before the sheen they sit on or the
+     gradient covers all four of them. */
+  background-image: var(--ov-bevel-bolt), var(--ov-bevel-bolt),
+                    var(--ov-bevel-bolt), var(--ov-bevel-bolt),
+                    var(--ov-bevel-face-wash);
+  background-repeat: no-repeat;
+  background-size: var(--ov-bolt-size) var(--ov-bolt-size),
+                   var(--ov-bolt-size) var(--ov-bolt-size),
+                   var(--ov-bolt-size) var(--ov-bolt-size),
+                   var(--ov-bolt-size) var(--ov-bolt-size),
+                   auto;
+  background-position:
+    var(--ov-bolt-inset) var(--ov-bolt-inset),
+    calc(100% - var(--ov-bolt-inset)) var(--ov-bolt-inset),
+    var(--ov-bolt-inset) calc(100% - var(--ov-bolt-inset)),
+    calc(100% - var(--ov-bolt-inset)) calc(100% - var(--ov-bolt-inset)),
+    0 0;
+}
+
+/* Screened legend, the way a panel is actually labelled: it is printed ON the
+   face, so it takes the face's own quiet ink rather than the lit accent. */
+.ov-rack__legend {
+  font-size: var(--ov-size-1);
+  letter-spacing: 1.4px;
+  text-transform: uppercase;
+  color: var(--ov-faint);
+}
+
+.ov-rack__slot {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  min-inline-size: 0;
+}
+
+/* A readout is SUNK, because you do not operate it. This is the one place in
+   the kit where a sunken bevel appears on something that is not an input, and
+   it is not an exception to the affordance rule: a well says "something goes
+   in here", and on a rack what goes in is the reading. */
+.ov-rack__lcd {
+  box-shadow: var(--ov-bevel-sink);
+  background: var(--ov-field);
+  border-radius: var(--ov-ctl-corner);
+  padding: 6px 10px;
+  min-inline-size: 8ch;
+  text-align: end;
+  color: var(--ov-accent);
+  font-variant-numeric: tabular-nums;
+}
+
+/* A knob is mounted, so it sits proud of the face it is mounted on.
+   ⚠️ The first version put the ring on a collar BEHIND the dial, and it did
+   not read at all: the dial fills its own box with a body in `--ov-raised`
+   and the collar was the same colour, so the two merged into one flat disc.
+   The ring belongs on the cap, which is the thing that is actually raised. */
+.ov-rack__mount {
+  border-radius: 50%;
+  display: inline-flex;
+  padding: 0;
+}
+
+.ov-rack__mount ov-dial {
+  border-radius: 50%;
+  box-shadow: var(--ov-bevel-raise);
+  background: var(--ov-raised);
+}
+
+/* Turning it presses it, the same way a button pressed shows its other side.
+   A knob under the hand is a knob being held. */
+.ov-rack__mount ov-dial:active { box-shadow: var(--ov-bevel-sink); }
+
+/* A fader runs in a slot cut into the face, which is the one control whose
+   real-world shape is unambiguously sunken. */
+.ov-rack__slot--fader {
+  box-shadow: var(--ov-bevel-sink);
+  background: var(--ov-field);
+  border-radius: var(--ov-ctl-corner);
+  padding: 10px 12px;
+  inline-size: 150px;
+}
+}

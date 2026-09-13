@@ -1,0 +1,105 @@
+/* ---- CASCADE LAYER ------------------------------------------------------
+ *
+ * Everything the kit ships sits in ONE layer named `overscan`, so a consumer's
+ * own CSS beats it without a specificity fight and without !important. That is
+ * close to mandatory for a distributed kit: an app should be able to restyle a
+ * panel by writing a plain rule.
+ *
+ * ⚠️ ONE layer, deliberately, NOT a sub-layer per file. Sub-layers look tidier
+ * and would silently reorder the kit against itself: layer order beats
+ * specificity, so a high-specificity rule in an early file that currently wins
+ * would start losing to a low-specificity rule in a later one. A single layer
+ * preserves source order exactly, so nothing inside the kit changes.
+ *
+ * Unlayered author CSS wins over all of it. That is the point.
+ */
+
+@layer overscan {
+/* Output feed. */
+
+ov-log {
+  position: relative;
+  display: block;
+  padding-block-end: 14px;
+}
+
+/* Scrolls rather than truncates, because of what an ellipsis removes:
+ * it takes the END, and languages disagree about what lives there. JA and KO
+ * carry negation as a suffix, so the marker that makes a string a prohibition
+ * is the first thing a truncation eats, and you are left with an intact
+ * instruction that says the opposite. A log line is exactly where that
+ * matters, so nothing here is cut. */
+.ov-log__lines {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+
+/* `inline-size: max-content` for the reason written up in cli.css: a line is a
+ * flex item, so it stretched to the full width of `.ov-log__lines`, and the
+ * cursor `.ov-out::after` rides `var(--ov-reveal)` as a percentage OF THE LINE.
+ * Stretched, every line parked a cursor past its own right edge and the log
+ * grew a horizontal scrollbar exactly one cursor wide. At max-content the line
+ * is as wide as its text and the cursor sits after the last character. */
+.ov-log__line {
+  display: flex;
+  gap: 10px;
+  color: var(--ov-ink);
+  font-size: var(--ov-size-2);
+  white-space: nowrap;
+  inline-size: max-content;
+}
+
+.ov-log__t {
+  color: var(--ov-faint);
+  flex: 0 0 auto;
+  font-variant-numeric: tabular-nums;
+}
+
+/* What the window is NOT showing, on the window. */
+ov-log[data-ov-dropped]::after {
+  content: attr(data-ov-dropped);
+  white-space: nowrap;
+  position: absolute;
+  inset-block-end: 0;
+  inset-inline-start: 0;
+  font-size: var(--ov-size-1);
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  color: var(--ov-dim);
+}
+
+/* first-out: the sequence-of-events recorder. */
+.ov-log__first { font-size: var(--ov-size-1); letter-spacing: 1px; text-transform: uppercase; padding-block-end: 4px; }
+.ov-log__first.is-first { color: var(--ov-ink); }
+.ov-log__first.is-tie { color: var(--ov-accent-2); }
+.ov-log__first.is-none { color: var(--ov-alarm); }
+.ov-log__first.is-qualified { color: var(--ov-accent-2); }
+.ov-log__src { color: var(--ov-dim); flex: 0 0 auto; min-inline-size: 8ch; }
+.ov-log__event.is-first > span:last-child { color: var(--ov-ink); }
+/* A tie is one rank: bracketed together, never drawn as an order. */
+.ov-log__tie, .ov-log__unordered {
+  display: flex; flex-direction: column; gap: 2px;
+  border-inline-start: 2px solid var(--ov-accent-2); padding-inline-start: 8px;
+}
+.ov-log__unordered { border-inline-start-color: var(--ov-alarm); }
+.ov-log__tiemark { font-size: var(--ov-size-1); letter-spacing: 1px; color: var(--ov-accent-2); }
+.ov-log__unordered .ov-log__tiemark { color: var(--ov-alarm); }
+.ov-log__event.is-unordered { color: var(--ov-dim); }
+.ov-log__strip { display: block; inline-size: 100%; max-inline-size: 520px; margin-block-end: 8px; }
+.ov-log__stripaxis { stroke: var(--ov-line); stroke-width: 0.5; }
+.ov-log__striptext { font: 8px var(--ov-font-mono); fill: var(--ov-faint); letter-spacing: 0.4px; }
+.ov-log__striplabel { font: 8px var(--ov-font-mono); fill: var(--ov-dim); letter-spacing: 0.6px; }
+.ov-log__striplabel.is-first { fill: var(--ov-ink); }
+.ov-log__striplabel.is-tie { fill: var(--ov-accent-2); }
+.ov-log__striplabel.is-unordered { fill: var(--ov-alarm); }
+.ov-log__tieband { fill: color-mix(in srgb, var(--ov-accent-2) 12%, transparent); stroke: var(--ov-accent-2); stroke-width: 0.5; stroke-dasharray: 2 2; }
+.ov-log__striptext.is-unordered { fill: var(--ov-alarm); }
+.ov-log__win { fill: color-mix(in srgb, var(--ov-accent) 30%, transparent); stroke: var(--ov-accent); stroke-width: 0.6; }
+.ov-log__win.is-first { fill: color-mix(in srgb, var(--ov-ink) 35%, transparent); stroke: var(--ov-ink); }
+.ov-log__win.is-tie { fill: color-mix(in srgb, var(--ov-accent-2) 35%, transparent); stroke: var(--ov-accent-2); }
+.ov-log__win.is-unordered { fill: none; stroke: var(--ov-alarm); stroke-dasharray: 2 2; }
+.ov-log__at { stroke: var(--ov-ink); stroke-width: 1; }
+}

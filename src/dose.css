@@ -1,0 +1,84 @@
+/* ---- CASCADE LAYER ------------------------------------------------------
+ *
+ * Everything the kit ships sits in ONE layer named `overscan`, so a consumer's
+ * own CSS beats it without a specificity fight and without !important. That is
+ * close to mandatory for a distributed kit: an app should be able to restyle a
+ * panel by writing a plain rule.
+ *
+ * ⚠️ ONE layer, deliberately, NOT a sub-layer per file. Sub-layers look tidier
+ * and would silently reorder the kit against itself: layer order beats
+ * specificity, so a high-specificity rule in an early file that currently wins
+ * would start losing to a low-specificity rule in a later one. A single layer
+ * preserves source order exactly, so nothing inside the kit changes.
+ *
+ * Unlayered author CSS wins over all of it. That is the point.
+ */
+
+@layer overscan {
+/* A programmed dose against the library's limits, and whether it was checked.
+ * Soft is accent-2 and hard is the alarm colour, and every state also says
+ * itself in words, so none of it rests on colour. An unchecked dose has a
+ * DASHED frame and no scale: nothing is drawn that could read as in range. */
+
+ov-dose {
+  display: grid;
+  gap: 6px;
+  max-inline-size: 460px;
+  padding: 10px 12px;
+  font-family: var(--ov-font-mono);
+  font-size: var(--ov-size-1);
+  letter-spacing: 0.8px;
+  color: var(--ov-dim);
+  background: var(--ov-field);
+  border: var(--ov-bezel) solid var(--ov-line-strong);
+}
+ov-dose[data-ov-refusal] { border-style: dashed; }
+.ov-dose__head { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 4px 14px; align-items: baseline; }
+.ov-dose__drug { color: var(--ov-ink); text-transform: uppercase; letter-spacing: 1.2px; }
+.ov-dose__conc { color: var(--ov-faint); }
+.ov-dose__value { color: var(--ov-ink); }
+.ov-dose__value b { font-weight: 400; font-size: var(--ov-size-4, 18px); color: var(--ov-accent); letter-spacing: 1px; }
+.ov-dose__rate { color: var(--ov-dim); }
+/* No text-transform: the words are upper case already, and a unit keeps its
+   own case, because mg and Mg, mU and MU are different doses. */
+.ov-dose__verdict { letter-spacing: 1px; color: var(--ov-accent); }
+ov-dose[data-ov-refusal] .ov-dose__value b { color: var(--ov-dim); }
+ov-dose[data-ov-dose='hold'] .ov-dose__value b,
+ov-dose[data-ov-dose='overridden'] .ov-dose__value b { color: var(--ov-accent-2); }
+ov-dose[data-ov-refusal] .ov-dose__verdict,
+ov-dose[data-ov-dose='hold'] .ov-dose__verdict,
+ov-dose[data-ov-dose='overridden'] .ov-dose__verdict { color: var(--ov-accent-2); }
+ov-dose[data-ov-dose='blocked'] .ov-dose__verdict { color: var(--ov-alarm); }
+ov-dose[data-ov-dose='blocked'] .ov-dose__value b { color: var(--ov-alarm); text-decoration: line-through; }
+
+/* The scale: zones from zero, limit ticks, the dose mark. Fixed height, HTML,
+   so it is the same size in a wide tile as in a narrow one. */
+.ov-dose__scale { position: relative; block-size: 14px; margin-block: 4px 0; border-block-end: var(--ov-rule) solid var(--ov-line-strong); }
+.ov-dose__zone { position: absolute; inset-block: 3px 0; }
+.ov-dose__zone.is-ok { background: color-mix(in srgb, var(--ov-accent) 22%, transparent); }
+.ov-dose__zone.is-soft {
+  background: repeating-linear-gradient(135deg, color-mix(in srgb, var(--ov-accent-2) 45%, transparent) 0 2px, transparent 2px 5px);
+}
+.ov-dose__zone.is-hard { background: color-mix(in srgb, var(--ov-alarm) 30%, transparent); }
+.ov-dose__tick { position: absolute; inset-block: 0; inline-size: 1px; background: var(--ov-accent-2); }
+.ov-dose__tick.is-hard { background: var(--ov-alarm); inline-size: 2px; }
+.ov-dose__mark {
+  position: absolute; inset-block: -3px -3px; inline-size: 3px; margin-inline-start: -1px;
+  background: var(--ov-ink); box-shadow: 0 0 0 1px var(--ov-field);
+}
+.ov-dose__limits { color: var(--ov-faint); }
+
+/* An override is marked for as long as the dose runs. */
+.ov-dose__override {
+  padding: 3px 6px; color: var(--ov-accent-2); text-transform: uppercase; letter-spacing: 0.9px;
+  border: var(--ov-rule) solid var(--ov-accent-2);
+}
+.ov-dose__override.is-refused { color: var(--ov-alarm); border-color: var(--ov-alarm); }
+.ov-dose__src { color: var(--ov-faint); }
+.ov-dose__old { font-weight: 400; color: var(--ov-accent-2); }
+.ov-dose__note { color: var(--ov-faint); font-style: italic; }
+.ov-dose__void {
+  display: grid; place-items: center; min-block-size: 70px;
+  color: var(--ov-alarm); text-transform: uppercase; border: 1px dashed var(--ov-line-strong);
+}
+}

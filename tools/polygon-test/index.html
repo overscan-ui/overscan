@@ -1,0 +1,52 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>ov-polygon tests</title>
+<!-- Over tools/serve.py: /tools/polygon-test/ . The last case is a CONTROL that must fail. -->
+<link rel="stylesheet" href="../../src/tokens.css">
+<link rel="stylesheet" href="../../src/finish.css">
+<link rel="stylesheet" href="../../src/polygon.css">
+<style>
+  body { margin: 0; background: #08080a; color: #ccc; font: 12px ui-monospace, monospace; }
+  .row { display: flex; flex-wrap: wrap; gap: 18px; padding: 16px 24px; align-items: start; }
+  .row > div { inline-size: 300px; }
+  .cap { color: #888; margin-block-end: 6px; }
+  #tests { white-space: pre; color: #9f9; padding: 16px 24px; }
+  #tests.fail { color: #f77; }
+</style>
+<section class="ov ov-finish row" data-ov-theme="antiseptic" id="a"></section>
+<section class="ov ov-finish row" data-ov-theme="holo" id="b"></section>
+<div id="tests">running…</div>
+<script type="module">
+  import '../../src/ov-polygon.js';
+  await customElements.whenDefined('ov-polygon');
+  // Eight safety parameters, each with its own range and normal band.
+  const spokes = [
+    ['CORE TEMP', 318, 250, 400, [300, 340]], ['PRESSURE', 15.2, 10, 20, [14, 16]], ['FLOW', 72, 0, 100, [60, 80]],
+    ['LEVEL', 5.1, 0, 10, [4, 6]], ['NEUTRON', 0.91, 0, 1.5, [0.8, 1.0]], ['CONTAIN', 101, 95, 110, [99, 103]],
+    ['COOLANT', 41, 20, 60, [36, 46]], ['RAD', 0.12, 0, 1, [0, 0.2]],
+  ];
+  const axes = (tweak = {}) => spokes.map(([label, value, min, max, normal]) => ({ label, value, min, max, normal, quality: 'valid', age: 1, ...(tweak[label] || {}) }));
+  const mk = (host, cap, a) => { const d = document.createElement('div'); d.innerHTML = `<div class="cap">${cap}</div>`; const el = document.createElement('ov-polygon'); el.setAttribute('max-age', '10'); d.append(el); document.getElementById(host).append(d); el.axes = a; return el; };
+  const ok = mk('a', 'all valid, all normal', axes());
+  const gap = mk('a', 'one spoke no data', axes({ FLOW: { value: null } }));
+  const inv = mk('a', 'one spoke invalid', axes({ LEVEL: { quality: 'invalid' } }));
+  const un = mk('b', 'one unvalidated, one stale', axes({ PRESSURE: { quality: 'unvalidated' }, RAD: { age: 40 } }));
+  const out = mk('b', 'two outside normal', axes({ 'CORE TEMP': { value: 362 }, CONTAIN: { value: 107 } }));
+  const cfg = mk('b', 'configured beside observed', axes({ FLOW: { configured: 90 }, NEUTRON: { configured: 1.2 } }));
+  const none = mk('b', 'two spokes only', axes().slice(0, 2));
+  const edges = (el) => el.querySelectorAll('.ov-polygon__edge').length;
+  const cases = [
+    ['all valid: 8 edges, closed', () => edges(ok) === 8 && ok.getAttribute('data-ov-shape') === 'closed'],
+    ['no data on one spoke: its two edges are missing, shape OPEN', () => edges(gap) === 6 && gap.getAttribute('data-ov-shape') === 'open' && gap.textContent.includes('OPEN')],
+    ['an invalid spoke is marked INV and opens the shape', () => edges(inv) === 6 && inv.querySelector('.ov-polygon__gap')?.textContent === 'INV'],
+    ['unvalidated and stale spokes draw dashed edges, not solid', () => un.querySelectorAll('.ov-polygon__edge.is-doubt').length === 4 && edges(un) === 8],
+    ['outside normal is marked and counted', () => out.querySelectorAll('.ov-polygon__point.is-out').length === 2 && out.textContent.includes('2 outside normal')],
+    ['configured values get their own marks, off the polygon', () => cfg.querySelectorAll('.ov-polygon__configured').length === 2],
+    ['fewer than 3 spokes is a refusal', () => none.getAttribute('data-ov-refusal') === 'unknown'],
+    ['CONTROL: a false claim is caught', () => edges(gap) === 8],
+  ];
+  let bad = 0;
+  const res = cases.map(([name, fn]) => { let r = false; try { r = !!fn(); } catch (e) { r = false; } const c = name.startsWith('CONTROL'); const pass = c ? !r : r; if (!pass) bad += 1; return `${pass ? 'ok  ' : 'FAIL'} ${name}${c ? ' (must fail)' : ''}`; });
+  const el = document.getElementById('tests'); el.textContent = `${cases.length - bad} of ${cases.length} pass\n` + res.join('\n'); el.classList.toggle('fail', bad > 0);
+  window.polyResults = { total: cases.length, bad, out: res };
+</script>

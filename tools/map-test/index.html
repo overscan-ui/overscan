@@ -1,0 +1,95 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>ov-map harness</title>
+<!-- The gate for ov-map: `symbols`, and what the map cannot place (off the
+     view, no position, a source never heard from). Serve the repo root and
+     open tools/map-test/. The last line must read GATE: PASS, and every
+     CONTROL must fail. -->
+<link rel="stylesheet" href="../../src/tokens.css">
+<link rel="stylesheet" href="../../src/surface.css">
+<link rel="stylesheet" href="../../src/track.css">
+<style>
+  body { background: #06060a; color: #cfe; font: 13px ui-monospace, monospace; padding: 20px; }
+  pre { white-space: pre-wrap; }
+  #stage { inline-size: 480px; }
+</style>
+<div id="stage" data-ov-theme="aegis"></div>
+<pre id="out">running...</pre>
+<script type="module">
+import '../../src/ov-source.js';
+import '../../src/ov-map.js';
+
+const stage = document.getElementById('stage');
+const results = [];
+const ok = (name, cond, got) => results.push({ name, pass: !!cond, got });
+const controls = [];
+const control = (name, cond, got) => controls.push({ name, pass: !!cond, got });
+const until = async (cond, ms = 3000) => { const t0 = performance.now(); while (!cond() && performance.now() - t0 < ms) await new Promise((r) => setTimeout(r, 25)); };
+
+Overscan.source('ms', () => [
+  { id: 'a', label: 'ALPHA', lat: 35.5, lon: 139.5, identity: 'hostile', dimension: 'air', course: 230, speed: 480 },
+  { id: 'b', label: 'BRAVO', lat: 33.2, lon: 141.6, identity: 'assumed-friend', dimension: 'surface' },
+  { id: 'c', label: 'CHARLIE', lat: 36.6, lon: 137.2 },
+  { id: 'far', label: 'FAR', lat: 10, lon: 170, identity: 'friend' },
+  { id: 'lost', label: 'LOST', lat: null, lon: 139 },
+  { id: 'junk', label: 'JUNK', lat: 'north', lon: 'east' },
+], { hz: 20 });
+
+const fresh = (attrs) => {
+  const el = document.createElement('ov-map');
+  for (const [k, v] of Object.entries({ lat: '35', lon: '139', span: '16', range: '400', ...attrs })) el.setAttribute(k, v);
+  stage.replaceChildren(el);
+  return el;
+};
+const key = (el) => el.querySelector('.ov-map__key').textContent;
+let el;
+
+// 1. Default map: plain marks, unchanged, but what it cannot place is counted.
+el = fresh({ source: 'ms' });
+await until(() => el.querySelectorAll('.ov-map__mark').length > 0);
+ok('default draws plain marks for the placeable three', el.querySelectorAll('.ov-map__mark').length === 3, el.querySelectorAll('.ov-map__mark').length);
+ok('no track symbols unless asked', el.querySelectorAll('.ov-track__sym').length === 0, '');
+ok('a mark off the view is counted, not dropped', /1 off this view/.test(key(el)), key(el));
+ok('marks with no position are counted', /2 without a position/.test(key(el)), key(el));
+ok('...and nothing is drawn at NaN', !el.innerHTML.includes('NaN'), el.innerHTML.match(/NaN.{0,20}/));
+control('CONTROL: an unplaceable mark vanished without a word (must fail)', !/off this view/.test(key(el)), key(el));
+
+const dot = el.querySelector('.ov-map__mark').getBoundingClientRect();
+ok('a plain mark is a dot, not a flat ellipse', Math.abs(dot.width - dot.height) / dot.width < 0.2, [dot.width, dot.height]);
+
+// 2. symbols: the track symbol, counter-scaled against the 16:10 stretch.
+el = fresh({ source: 'ms', symbols: '' });
+await until(() => el.querySelectorAll('.ov-track__sym').length > 0);
+const syms = [...el.querySelectorAll('.ov-track__sym')];
+ok('symbols draws a track symbol per placeable mark', syms.length === 3, syms.length);
+ok('...each counter-scaled by the aspect (scale 1 1.6)', syms.every((g) => /scale\(1 1\.6\)/.test(g.parentElement.getAttribute('transform'))), syms[0].parentElement.getAttribute('transform'));
+ok('a mark with no identity is PENDING, never a side', syms.some((g) => g.getAttribute('data-ov-identity') === 'pending'), syms.map((g) => g.getAttribute('data-ov-identity')));
+ok('an assumed friend stays hedged', syms.some((g) => g.getAttribute('data-ov-identity') === 'assumed-friend' && g.hasAttribute('data-ov-hedged')), '');
+ok('labels are still placed', el.querySelectorAll('.ov-map__label').length === 3, el.querySelectorAll('.ov-map__label').length);
+ok('the accessible name counts identities', /hostile/.test(el.getAttribute('aria-label')) && /pending/.test(el.getAttribute('aria-label')), el.getAttribute('aria-label'));
+
+// Drawn size: a symbol on a stretched map is as tall as it is wide.
+const box = syms[0].querySelector('.ov-track__frame').getBoundingClientRect();
+ok('a symbol is not squashed by the stretch', Math.abs(box.width - box.height) / box.width < 0.2, [box.width, box.height]);
+
+// 3. A source that never answers is NO FEED, not an empty sea.
+el = fresh({ source: 'nobody' });
+await new Promise((r) => setTimeout(r, 300));
+ok('a named source that never emits says NO FEED', /NO FEED/.test(key(el)), key(el));
+control('CONTROL: a silent source read as an empty map (must fail)', !/NO FEED/.test(key(el)), key(el));
+el = fresh({});
+ok('a map with no source at all makes no NO FEED claim', !/NO FEED/.test(key(el)), key(el));
+
+const passed = results.filter((x) => x.pass).length;
+const failed = results.length - passed;
+const controlsFailed = controls.filter((x) => !x.pass).length;
+const gate = failed === 0 && controlsFailed === controls.length && controls.length > 0;
+const out = document.getElementById('out');
+out.textContent = [
+  ...results.map((x) => `${x.pass ? 'PASS' : 'FAIL'}  ${x.name}${x.pass ? '' : '  got ' + JSON.stringify(x.got)}`),
+  ...controls.map((x) => `${x.pass ? 'CONTROL PASSED (BAD)' : 'CONTROL FAILED (good)'}  ${x.name}`),
+  '', `${passed} passed, ${failed} failed, ${controlsFailed}/${controls.length} controls failed as required`,
+  `GATE: ${gate ? 'PASS' : 'FAIL'}`,
+].join('\n');
+out.setAttribute('data-gate', gate ? 'pass' : 'fail');
+</script>

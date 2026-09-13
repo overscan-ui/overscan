@@ -1,0 +1,176 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>ov-chart and ov-spark staleness harness</title>
+<!-- Rule 5: a trace that has stopped arriving says so. Serve the repo root
+     (tools/serve.py) and open /tools/series-stale-test/. The last line must
+     read GATE: PASS, and every CONTROL must fail.
+
+     ?src=mut/a-no-stale-state.js runs this same gate against ov-chart as it
+     was BEFORE the fix, which must turn it red. -->
+<link rel="stylesheet" href="../../src/tokens.css">
+<link rel="stylesheet" href="../../src/chart.css">
+<link rel="stylesheet" href="../../src/ascii.css">
+<style>
+  body { background: #06060a; color: #cfe; font: 13px ui-monospace, monospace; padding: 20px; }
+  pre { white-space: pre-wrap; }
+  #stage { max-inline-size: 520px; }
+  ov-chart { --ov-chart-height: 70px; }
+  ov-spark { display: block; }
+</style>
+<div id="stage" data-ov-theme="industrial"></div>
+<pre id="out">running...</pre>
+<script>
+  // 🔴 A THROW IS A RED GATE, NOT A HANG.
+  const fatal = (what) => {
+    const out = document.getElementById('out');
+    if (out) out.textContent = `THREW: ${what}\n\nGATE: FAIL`;
+  };
+  addEventListener('error', (e) => fatal(e.error?.stack || e.message || e));
+  addEventListener('unhandledrejection', (e) => fatal(e.reason?.stack || e.reason));
+</script>
+<script type="module">
+const SRC = new URLSearchParams(location.search).get('src') || '../../src/ov-chart.js';
+await import(new URL(SRC, location.href).href);
+/* ov-spark lives in ov-ascii.js, which is never the file under ?src=: the
+ * mutant is a chart. It is imported here so the SHARED protocol can be
+ * tested on both elements in one place, which is the point of moving the
+ * judgement into ov-refusal.js rather than copying it into each. */
+await import('../../src/ov-ascii.js');
+
+const stage = document.getElementById('stage');
+const results = [];
+const controls = [];
+const ok = (name, cond, got) => results.push({ name, pass: !!cond, got });
+const control = (name, cond, got) => controls.push({ name, pass: !!cond, got });
+const settle = () => new Promise((r) => setTimeout(r, 0));
+
+const OvChart = customElements.get('ov-chart');
+let NOW = 1_800_000_000_000;
+// The pre-fix element has no clock of its own; setting one is harmless there
+// and is what lets the same gate run against both.
+OvChart.now = () => NOW;
+const step = (s) => { NOW += s * 1000; };
+
+const SERIES = '4,7,6,9,8,11,10,13';          // the ATTRIBUTE's spelling
+const SERIES_PROP = [4, 7, 6, 9, 8, 11, 10, 13];  // the PROPERTY takes readings
+const make = (attrs = {}) => {
+  const el = document.createElement('ov-chart');
+  for (const [k, v] of Object.entries(attrs)) el.setAttribute(k, v);
+  stage.replaceChildren(el);
+  return el;
+};
+const qual = (c) => c.getAttribute('data-ov-qualified');
+const says = (c) => c.getAttribute('aria-label') || '';
+const shows = (el) => !!el && el.isConnected && getComputedStyle(el).display !== 'none';
+
+// ---- 1. A feed that has stopped is marked ------------------------------
+let c = make({ 'max-age': '30', values: SERIES });
+await settle();
+ok('a chart that just received values is not stale', qual(c) === null, qual(c));
+ok('...and its name is about the data, not a qualifier', /8 samples, 4 to 13/.test(says(c)), says(c));
+control('CONTROL: a fresh chart is marked stale (must fail)', qual(c) === 'stale', qual(c));
+
+step(31);
+c.render();
+await settle();
+ok('⭐ a feed silent past max-age marks the chart STALE', qual(c) === 'stale', qual(c));
+ok('...saying how long it has been, not merely that it is old', /stale, nothing new for 31 seconds/.test(c.getAttribute('data-ov-qualifier-text') || ''), c.getAttribute('data-ov-qualifier-text'));
+ok('...in the accessible name too', /stale, nothing new for 31 seconds/.test(says(c)), says(c));
+ok('⭐ ...and the trace is STILL DRAWN: the shape is what a reader came for', c.querySelector('.ov-chart__line, .ov-chart__band') !== null, c.innerHTML.slice(0, 40));
+ok('⭐ ...and it LOOKS stale, not merely says so in an attribute', getComputedStyle(c.querySelector('.ov-chart__line, .ov-chart__band')).opacity === '0.4', getComputedStyle(c.querySelector('.ov-chart__line, .ov-chart__band') || document.body).opacity);
+ok('...the element carries the words where CSS can reach them', /nothing new for/.test(getComputedStyle(c, '::after').content || ''), getComputedStyle(c, '::after').content);
+control('CONTROL: a silent feed is left unmarked (must fail)', qual(c) === null, qual(c));
+control('CONTROL: the stale trace is drawn at full strength (must fail)', getComputedStyle(c.querySelector('.ov-chart__line, .ov-chart__band')).opacity === '1', 'opacity');
+
+// New values clear it: a state you can enter and not leave is not a state.
+c.setAttribute('values', SERIES + ',12');
+await settle();
+ok('new values clear the qualifier', qual(c) === null && !/stale/.test(says(c)), [qual(c), says(c)]);
+
+// ---- 2. The rule is declared, never defaulted --------------------------
+c = make({ values: SERIES });
+await settle();
+step(6000);
+c.render();
+await settle();
+ok('⭐ with no max-age the chart makes NO claim about currency', qual(c) === null, qual(c));
+ok('...and starts no timer for a rule it does not have', !c._ageTimer, c._ageTimer);
+control('CONTROL: an undeclared rule is defaulted to something (must fail)', qual(c) === 'stale', qual(c));
+
+// ---- 3. An author-supplied age wins over arrival -----------------------
+c = make({ 'max-age': '30', age: '90', values: SERIES });
+await settle();
+ok('an explicit age is believed over the element’s own arrival clock', qual(c) === 'stale' && /nothing new for 90 seconds/.test(says(c)), says(c));
+ok('...and no arrival timer runs when the author supplies the age', !c._ageTimer, c._ageTimer);
+c.setAttribute('age', '5');
+await settle();
+ok('...a fresh explicit age clears it', qual(c) === null, qual(c));
+
+// ---- 4. Both doors stamp arrival ---------------------------------------
+c = make({ 'max-age': '30' });
+c.values = SERIES_PROP;                  // the property, as a live feed uses
+await settle();
+ok('values set as a PROPERTY counts as arrival', qual(c) === null && /8 samples/.test(says(c)), says(c));
+step(31); c.render(); await settle();
+ok('...and goes stale on the same clock', qual(c) === 'stale', qual(c));
+c.values = [...SERIES_PROP, 15];
+await settle();
+ok('...and a new property assignment clears it again', qual(c) === null, qual(c));
+
+// ---- 5. The tick must not keep its own subject alive -------------------
+c = make({ 'max-age': '5', values: SERIES });
+await settle();
+step(6);
+c.render(); c.render(); c.render();      // a redraw is not an arrival
+await settle();
+ok('⭐ redrawing does not reset the arrival clock', qual(c) === 'stale', qual(c));
+control('CONTROL: a redraw counts as fresh data (must fail)', qual(c) === null, qual(c));
+
+// ---- 6. What it must not do -------------------------------------------
+c = make({ 'max-age': '30', values: SERIES });
+await settle();
+c.remove();
+ok('a removed chart stops its age timer', !c._ageTimer, c._ageTimer);
+const text = await (await fetch(new URL(SRC, location.href).href)).text();
+ok('the element never asks for an animation frame', !/requestAnimationFrame/.test(text), /requestAnimationFrame/.test(text));
+control('CONTROL: the element draws on a frame (must fail)', /requestAnimationFrame/.test(text), 'source');
+
+// ---- 7. ov-spark: the same protocol, the other series element ----------
+const OvSpark = customElements.get('ov-spark');
+OvSpark.now = () => NOW;
+const spark = (attrs = {}) => {
+  const el = document.createElement('ov-spark');
+  for (const [k, v] of Object.entries(attrs)) el.setAttribute(k, v);
+  stage.replaceChildren(el);
+  return el;
+};
+let k = spark({ 'max-age': '30', values: SERIES, cells: '8' });
+await settle();
+ok('a fresh strip is not stale', qual(k) === null, qual(k));
+step(31); k.render(); await settle();
+ok('⭐ a strip whose feed stopped is STALE, by the same rule as the chart', qual(k) === 'stale', qual(k));
+ok('...and in the same words, because the protocol owns them', /stale, nothing new for 31 seconds/.test(k.getAttribute('data-ov-qualifier-text') || ''), k.getAttribute('data-ov-qualifier-text'));
+ok('...said in its accessible name too', /stale, nothing new for 31 seconds/.test(k.getAttribute('aria-label') || ''), k.getAttribute('aria-label'));
+ok('⭐ ...and it LOOKS stale rather than only saying so', /nothing new for/.test(getComputedStyle(k, '::after').content || ''), getComputedStyle(k, '::after').content);
+ok('...the cells are still drawn: the shape is what a reader came for', (k.textContent || '').trim().length > 0, (k.textContent || '').slice(0, 12));
+control('CONTROL: the strip is left unmarked (must fail)', qual(k) === null, qual(k));
+k.setAttribute('values', SERIES + ',12');
+await settle();
+ok('new values clear it', qual(k) === null, qual(k));
+k = spark({ values: SERIES, cells: '8' });
+await settle();
+step(9999); k.render(); await settle();
+ok('with no max-age a strip makes no claim about currency either', qual(k) === null && !k._ageTimer, [qual(k), k._ageTimer]);
+
+// ---- report ----
+const bad = results.filter((r) => !r.pass);
+const live = controls.filter((x) => x.pass);
+const lines = [];
+for (const r of results) lines.push(`${r.pass ? 'ok  ' : 'FAIL'} ${r.name}${r.pass ? '' : `\n       got: ${JSON.stringify(r.got)}`}`);
+lines.push('');
+for (const x of controls) lines.push(`${x.pass ? 'CONTROL DID NOT FAIL' : 'control failed as required'}  ${x.name}${x.pass ? `\n       got: ${JSON.stringify(x.got)}` : ''}`);
+lines.push('');
+lines.push(`${results.length - bad.length}/${results.length} checks, ${controls.length - live.length}/${controls.length} controls failed as required`);
+lines.push(bad.length === 0 && live.length === 0 ? 'GATE: PASS' : 'GATE: FAIL');
+document.getElementById('out').textContent = lines.join('\n');
+</script>

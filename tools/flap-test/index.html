@@ -1,0 +1,130 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>ov-flap harness</title>
+<link rel="stylesheet" href="../../src/tokens.css">
+<link rel="stylesheet" href="../../src/flap.css">
+<style>
+  body { background: #06060a; color: #cfe; font: 13px ui-monospace, monospace; padding: 20px; }
+  pre { white-space: pre-wrap; }
+</style>
+<!-- 🔴 The home page writes value BEFORE digits, and that order is the bug:
+     the value callback builds the board and starts its flips, then the digits
+     callback rebuilt it and orphaned every interval. So these two boards are
+     in the markup, upgraded the way a page upgrades them, not made in script. -->
+<ov-flap id="vd" value="SECTOR 4" digits="8" step="8"></ov-flap>
+<ov-flap id="dv" digits="8" value="ARRIVING" step="8"></ov-flap>
+<div id="stage"></div>
+<pre id="out">running...</pre>
+<script>
+  /* Count live intervals. Patched before the module loads so every interval
+   * ov-flap starts is seen. A test case compares against the set that was live
+   * when it began, so one case's leak cannot hide or blame another's. */
+  const live = new Set();
+  const si = window.setInterval.bind(window), ci = window.clearInterval.bind(window);
+  window.setInterval = (fn, ms, ...a) => { const id = si(fn, ms, ...a); live.add(id); return id; };
+  window.clearInterval = (id) => { live.delete(id); ci(id); };
+  window.__live = live;
+</script>
+<script type="module">
+const impl = new URLSearchParams(location.search).get('impl') || '../../src/ov-flap.js';
+await import(impl);
+
+const results = [];
+const ok = (name, cond, got) => results.push({ name, pass: !!cond, got });
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+const live = window.__live;
+const since = (before) => [...live].filter((id) => !before.has(id)).length;
+const reads = (el) => [...el.querySelectorAll('.ov-flap__char')].map((c) => c.textContent).join('');
+const pad = (s) => s.padEnd(8, ' ');
+// Longest trip on the drum is 40 steps; at step=8 that is 320 ms. Wait past it,
+// and keep the whole page inside the 5 s headless budget gates.sh gives a test.
+const SETTLE = 450;
+
+// 1. Markup, value before digits: the order the home page uses.
+const vd = document.getElementById('vd');
+const dv = document.getElementById('dv');
+await sleep(SETTLE);
+ok('value-before-digits board reads its value', reads(vd) === pad('SECTOR 4'), reads(vd));
+ok('digits-before-value board reads its value', reads(dv) === pad('ARRIVING'), reads(dv));
+ok('no interval alive once both markup boards land', live.size === 0, live.size);
+ok('stepsTo its own value is zero on every cell',
+   vd.stepsTo('SECTOR 4').every((n) => n === 0), vd.stepsTo('SECTOR 4'));
+
+// Every later case measures only the intervals it started.
+let before;
+const stage = document.getElementById('stage');
+const make = (value) => {
+  const el = document.createElement('ov-flap');
+  el.setAttribute('digits', '8');
+  el.setAttribute('step', '8');
+  el.setAttribute('value', value);
+  stage.append(el);
+  return el;
+};
+
+// 2. Made in script: lands, and stops.
+before = new Set(live);
+let el = make('GATE 12');
+await sleep(SETTLE);
+ok('a scripted board reads its value', reads(el) === pad('GATE 12'), reads(el));
+ok('and leaves no interval behind', since(before) === 0, since(before));
+el.remove();
+
+// 3. Taken off the page mid-flip: nothing keeps turning a drum nobody can see.
+before = new Set(live);
+el = make('ZZZZZZZZ');
+await sleep(40);
+const mid = since(before);
+el.remove();
+// Checked at once, not after SETTLE: a detached flip does finish on its own, so
+// waiting would pass a board that kept writing into cells nobody can see.
+await sleep(16);
+ok('the board was mid-flip when removed (the case is real)', mid > 0, mid);
+ok('removing a board mid-flip stops its flips at once', since(before) === 0, since(before));
+await sleep(SETTLE);
+ok('and none start later', since(before) === 0, since(before));
+
+// 4. ...and put back, it finishes the trip rather than freezing half-way.
+stage.append(el);
+await sleep(SETTLE);
+ok('reattached, it lands on its value', reads(el) === pad('ZZZZZZZZ'), reads(el));
+ok('and stops', since(before) === 0, since(before));
+el.remove();
+
+// 5. digits changed mid-flip: the rebuild must stop the flips it replaces.
+before = new Set(live);
+el = make('ZZZZZZZZ');
+await sleep(40);
+// Wider, not narrower: an 8-character value on a 6-digit board is refused
+// (dashes), which would test the refusal instead of the rebuild.
+el.setAttribute('digits', '10');
+await sleep(SETTLE);
+ok('a rebuild mid-flip leaves no orphaned interval', since(before) === 0, since(before));
+ok('and the rebuilt board reads its value', reads(el) === 'ZZZZZZZZ  ', reads(el));
+el.remove();
+
+// 6. value changed mid-flip: it goes on to the new value and stops there.
+before = new Set(live);
+el = make('ZZZZZZZZ');
+await sleep(40);
+el.setAttribute('value', 'HOLD');
+await sleep(SETTLE);
+ok('a new value mid-flip lands on the new value', reads(el) === pad('HOLD'), reads(el));
+ok('and stops', since(before) === 0, since(before));
+el.remove();
+
+// 7. 🔴 The gate has to be able to fail. Prove the pass/fail logic is live by
+//    asserting something that is deliberately false.
+const control = { name: 'CONTROL (must fail)', pass: reads(vd) === 'NOT THIS', got: 'deliberate' };
+
+const passed = results.filter((x) => x.pass).length;
+const report = {
+  impl,
+  total: results.length,
+  passed,
+  failed: results.filter((x) => !x.pass),
+  controlDidFail: control.pass === false,
+};
+document.getElementById('out').textContent = JSON.stringify(report, null, 1);
+window.__flap = report;
+</script>

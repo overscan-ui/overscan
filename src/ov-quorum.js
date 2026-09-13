@@ -1,0 +1,626 @@
+/* <ov-quorum> - a vote is not a reading.
+ *
+ * For industrial,
+ * aegis, terminal, machina and antiseptic. N redundant sources of one quantity
+ * (air data computers, AoA vanes, flight computers), each with its value and
+ * its MEMBERSHIP, the rule the vote runs by, and the output labelled with that
+ * rule and the channels it came from.
+ *
+ *   <ov-quorum label="AOA" unit="°" channels="ADR 1, ADR 2, ADR 3"
+ *              tolerance="1.5" persist="2" fail-after="3"
+ *              deadband="0.05" frozen-after="8" max-age="2"></ov-quorum>
+ *   q.readings = [{ id: 'ADR 1', value: 4.2 }, { id: 'ADR 2', value: 4.1 }, ...];
+ *   q.remove('ADR 2', 'CREW');     // only a named person takes a channel out
+ *
+ * ── THE REFUSAL ───────────────────────────────────────────────────────────
+ *
+ * 🔴 A VOTED VALUE IS NEVER SHOWN AS A READING. It carries the `voted`
+ * qualifier, the rule and the channels: VOTED · MEDIAN
+ * OF 3 · ADR 1, ADR 2, ADR 3. XL888T, BEA §1.6.11: "A voting mechanism allows
+ * rejection of the source of information that presents a difference from the
+ * two others. This vote is not apparent for the pilots".
+ *
+ * And five that follow from it:
+ *
+ * 1. A REJECTION IS ANNOUNCED, NEVER ABSORBED. An out-voted channel stays on
+ *    screen, marked, with its distance from the vote, and each episode is
+ *    counted: MISCOMPARE n OF fail-after.
+ * 2. OUT-VOTED IS NOT REMOVED. After `fail-after` miscompares (default 3, the
+ *    Shuttle's) a channel is DECLARED FAILED and still stays in the set, until
+ *    remove(id, by) names who took it out. Tomayko, Computers in Spaceflight
+ *    ch. 4: a failed computer "continues to send commands to an actuator until
+ *    the crew takes it out of the redundant set". A removal with no `by` is
+ *    refused.
+ * 3. STUCK SOURCES ARE NEVER COUNTED AS AGREEING. FROZEN channels stay on
+ *    screen, named (AGREE, BOTH FROZEN), and the vote is taken among the
+ *    moving ones only: one mover left reads from it ONLY, NOT COMPARED; none
+ *    left is NO MAJORITY. XL888T: "When two angle of attack values are blocked
+ *    at the same value more or less simultaneously, this blocked value is
+ *    used: ... the ADR that is supplying the non-blocked angle of attack value
+ *    is rejected." (INFERRED display rule; frozen = the kit's `deadband` +
+ *    `frozen-after`.)
+ * 4. TWO LEFT THAT DISAGREE HAVE NO VOTE. NO MAJORITY, both values shown,
+ *    never their average. AF447, BEA §1.6.9.3: "if the difference between
+ *    these two remaining values becomes too great the PRIM's reject them".
+ * 5. NOTHING COMPARED IS NOT AGREEMENT. One channel left reads its value
+ *    from that channel ONLY, NOT COMPARED; with no `tolerance` declared the
+ *    element refuses to judge agreement at all. Lion Air 610, KNKT §1.6.5:
+ *    "the AOA DISAGREE did not appear on PK-LQP aircraft, even though the
+ *    necessary conditions were met." A tolerance is never defaulted.
+ *
+ * A spike is not a disagreement: a deviation counts as a miscompare only once
+ * it has lasted `persist` seconds (KNKT: AOA DISAGREE at 10° "for 10
+ * continuous seconds"). The declared tolerance, persistence and fail count are
+ * PRINTED, never hidden.
+ *
+ * No `role="img"`: its children would be presentational, so the channel rows
+ * would never reach a screen reader. The host is a
+ * labelled group; rows are real text; announcements are joined per task.
+ *
+ * Drawn on each update and at most once a second while on screen, for ages
+ * and frozen timers. Nothing runs every frame.
+ *
+ * `no-majority` is not yet in ov-refusal.js's REASONS.
+ */
+
+import { define, watchSeen, isSeen, whenArrived } from './ov-core.js';
+import './ov-source.js';
+
+const HIST_S = 60;
+const FAIL_AFTER = 3;
+const W = 600;
+const H = 100;
+
+const WORD = {
+  in: 'IN SET',
+  out: 'OUT-VOTED',
+  failed: 'DECLARED FAILED',
+  frozen: 'FROZEN',
+  stale: 'STALE',
+  none: 'NO DATA',
+  removed: 'REMOVED',
+  unvoted: 'NO VOTE',
+};
+const OUTWORD = { nomajority: 'NO MAJORITY', none: 'NO DATA', uncompared: 'NOT COMPARED' };
+
+const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const setText = (el, t) => { if (el && el.textContent !== t) el.textContent = t; };
+const setAttr = (el, k, v) => {
+  if (!el) return;
+  if (v === null) { if (el.hasAttribute(k)) el.removeAttribute(k); } else if (el.getAttribute(k) !== v) el.setAttribute(k, v);
+};
+const clock = (ms) => new Date(ms).toTimeString().slice(0, 8);
+const median = (xs) => { const s = [...xs].sort((a, b) => a - b); const m = s.length >> 1; return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2; };
+const mean = (xs) => xs.reduce((a, b) => a + b, 0) / xs.length;
+// null when absent or blank, NaN when present and not a number.
+const num = (raw) => (raw === null || raw.trim() === '' ? null : Number(raw));
+const finite = (v) => v !== null && Number.isFinite(v);
+
+let serial = 0;
+
+class OvQuorum extends HTMLElement {
+  static observedAttributes = ['src', 'label', 'unit', 'channels', 'rule', 'tolerance', 'persist', 'fail-after',
+    'deadband', 'frozen-after', 'max-age', 'places', 'source'];
+
+  /* Our clock, in epoch ms. Replaceable so a test can drive time. */
+  static now = () => Date.now();
+
+  constructor() {
+    super();
+    this._ch = new Map();   // id -> channel state
+    this._vh = [];          // the output's history: { t, v | null, tol }
+    this._undeclared = new Set();
+    this._malformed = 0;
+    this._refusedRemovals = [];
+    this._queue = [];
+    this._out = null;
+    this._rows = [];
+    this._list = undefined;
+    this._uid = `ov-quorum-${++serial}`;
+  }
+
+  connectedCallback() {
+    if (!this._built) this.build();
+    this.syncChannels();
+    this.fetchSrc();
+    this.bindSource();
+    this.evaluate();
+    // Ages and frozen timers move without new readings: once a second, and
+    // only while on screen.
+    // 🔴 A LIVE LOOP WAITS FOR THE PAGE. ov-core holds every feed, frame and
+    // timer until the first screenful has landed, so the tick is started
+    // through whenArrived rather than here; it fires at once on an element
+    // upgraded after arrival, which is what lazy loading makes of this one.
+    if (!this._unarrive) this._unarrive = whenArrived(() => this.startTicking());
+    if (!this._unwatch) this._unwatch = watchSeen(this, () => this.tick());
+  }
+
+  startTicking() {
+    if (this._timer || !this.isConnected) return;
+    this._timer = setInterval(() => { if (isSeen(this)) this.tick(); }, 1000);
+  }
+
+  disconnectedCallback() {
+    clearInterval(this._timer);
+    this._timer = 0;
+    if (this._unarrive) this._unarrive();
+    this._unarrive = null;
+    if (this._unwatch) this._unwatch();
+    this._unwatch = null;
+    if (this.unsub) this.unsub();
+    this.unsub = null;
+  }
+
+  attributeChangedCallback(name) {
+    if (!this._built) return;
+    if (name === 'channels') this.syncChannels();
+    if (name === 'src') { this.fetchSrc(); return; }
+    if (name === 'source') this.bindSource();
+    this.evaluate();
+  }
+
+  /* A scene from a file, so the element renders as plain markup on a page that
+   * carries no script: `<ov-quorum src="models/quorum-x.json">`. The same
+   * route the kit's other data-driven elements take (ov-consistency,
+   * ov-coverage), and the reason a reference page can show one at all.
+   *
+   * 🔴 A FETCH THAT FAILS LEAVES NO SCENE, NOT A STALE ONE. The element then
+   * says what it says with no data, which is its own refusal rather than the
+   * last thing that happened to load. The src check after the await is for a
+   * src changed while the request was in flight: the loser must not win.
+   */
+  async fetchSrc() {
+    const src = this.getAttribute('src');
+    if (!src) return;
+    let data = null;
+    try {
+      const r = await fetch(src);
+      if (!r.ok) throw new Error(String(r.status));
+      data = await r.json();
+    } catch {
+      data = null;
+    }
+    if (this.getAttribute('src') !== src) return;
+    this.readings = data;
+  }
+
+  bindSource() {
+    if (this.unsub) this.unsub();
+    this.unsub = null;
+    const name = this.getAttribute('source');
+    if (!name || !window.Overscan?.subscribe) return;
+    this.unsub = window.Overscan.subscribe(name, (x) => this.update(Array.isArray(x) ? x : [x]));
+  }
+
+  syncChannels() {
+    const ids = [...new Set((this.getAttribute('channels') || '').split(',').map((s) => s.trim()).filter(Boolean))];
+    const next = new Map();
+    for (const id of ids) {
+      next.set(id, this._ch.get(id) || {
+        value: undefined, at: null, age: 0, ref: null, since: null,
+        mis: 0, devSince: null, counted: false, failedAt: null, removed: null, hist: [],
+      });
+    }
+    this._ch = next;
+  }
+
+  /* One set of readings: [{ id, value, age? }]. value null = a dropout. */
+  update(list) {
+    const now = OvQuorum.now();
+    const band = num(this.getAttribute('deadband'));
+    for (const r of list || []) {
+      if (!r || typeof r !== 'object' || r.id === undefined) { this._malformed++; continue; }
+      const c = this._ch.get(String(r.id));
+      if (!c) { this._undeclared.add(String(r.id)); continue; }
+      const v = r.value === null || r.value === undefined ? null : Number(r.value);
+      c.value = Number.isFinite(v) ? v : null;
+      c.at = now;
+      c.age = Number.isFinite(Number(r.age)) ? Number(r.age) : 0;
+      if (c.value === null) { c.ref = null; c.since = null; }
+      else if (finite(band) && band >= 0 && (c.ref === null || Math.abs(c.value - c.ref) > band)) {
+        c.ref = c.value;
+        c.since = now;
+      }
+      c.hist.push({ t: now, v: c.value });
+    }
+    this._list = list;
+    this.evaluate();
+  }
+
+  set readings(list) { this.update(Array.isArray(list) ? list : [list]); }
+  get readings() { return this._list; }
+
+  /* Only a named person takes a channel out of the set, or puts it back. */
+  remove(id, by) { return this.member(id, by, true); }
+  restore(id, by) { return this.member(id, by, false); }
+
+  member(id, by, out) {
+    const c = this._ch.get(String(id));
+    const verb = out ? 'removal' : 'restore';
+    if (!c) { this._refusedRemovals.push(`${verb} of ${id} refused: no such channel`); this.evaluate(); return false; }
+    if (!by || !String(by).trim()) {
+      this._refusedRemovals.push(`${verb} of ${id} refused: it must say who`);
+      this.say(`${id} ${verb} refused, it must say who`);
+      this.evaluate();
+      return false;
+    }
+    const now = OvQuorum.now();
+    if (out) {
+      c.removed = { by: String(by).trim(), at: now };
+      this.say(`${id} removed from the set by ${c.removed.by}`);
+    } else {
+      c.removed = null;
+      c.mis = 0; c.failedAt = null; c.devSince = null; c.counted = false;
+      this.say(`${id} restored to the set by ${String(by).trim()}`);
+    }
+    this.evaluate();
+    return true;
+  }
+
+  tick() { this.evaluate(); }
+
+  /* ---- the vote ------------------------------------------------------- */
+
+  evaluate() {
+    if (!this._built) return;
+    const now = OvQuorum.now();
+    const tol = num(this.getAttribute('tolerance'));
+    const maxAge = num(this.getAttribute('max-age'));
+    const band = num(this.getAttribute('deadband'));
+    const after = num(this.getAttribute('frozen-after'));
+    const persistRaw = num(this.getAttribute('persist'));
+    const persist = finite(persistRaw) && persistRaw > 0 ? persistRaw : 0;
+    const failRaw = num(this.getAttribute('fail-after'));
+    const failAfter = finite(failRaw) && failRaw >= 1 ? Math.floor(failRaw) : FAIL_AFTER;
+    const rule = this.getAttribute('rule') === 'mean' ? 'mean' : 'median';
+    const freezes = finite(band) && band >= 0 && finite(after) && after > 0;
+
+    const rows = [];
+    for (const [id, c] of this._ch) {
+      let base = 'ok';
+      if (c.removed) base = 'removed';
+      else if (c.value === undefined || c.value === null) base = 'none';
+      else {
+        c.ageNow = c.age + (now - c.at) / 1000;
+        if (finite(maxAge) && c.ageNow > maxAge) base = 'stale';
+      }
+      const frozen = base === 'ok' && freezes && c.since !== null && (now - c.since) / 1000 >= after;
+      rows.push({ id, c, base, frozen, dev: false });
+    }
+    const comp = rows.filter((r) => r.base === 'ok');
+
+    let out;
+    if (!this._ch.size) out = { state: 'none', why: 'no channels declared' };
+    else if (!comp.length) out = { state: 'none', why: 'no channel has a current reading' };
+    else if (!finite(tol) || tol < 0) out = { state: 'uncompared', why: 'no tolerance declared, so agreement cannot be judged' };
+    else if (comp.length === 1) out = { state: 'single', value: comp[0].c.value, members: [comp[0].id] };
+    else {
+      // 🔴 FROZEN CHANNELS ARE NEVER COUNTED AS AGREEING, with each other or
+      // with anyone. The first cut only refused when the moving channel
+      // DISAGREED with a frozen pair, and the demo caught the pair winning a
+      // median of three the moment the mover drifted within tolerance of
+      // them: the XL888T vote exactly. Frozen channels stay on screen,
+      // marked; the vote is taken among the moving ones only.
+      const fr = comp.filter((r) => r.frozen);
+      const mv = comp.filter((r) => !r.frozen);
+      const fv = fr.map((r) => r.c.value);
+      const frozenWhy = !fr.length ? null
+        : `${fr.map((r) => r.id).join(' AND ')} ${fr.length > 1 && Math.max(...fv) - Math.min(...fv) <= tol
+          ? `AGREE, ${fr.length === 2 ? 'BOTH' : 'ALL'} FROZEN` : 'FROZEN'}: stuck sources are not counted as agreeing`;
+      if (!mv.length) out = { state: 'nomajority', why: frozenWhy };
+      else if (mv.length === 1) out = { state: 'single', value: mv[0].c.value, members: [mv[0].id], why: frozenWhy };
+      else if (mv.length === 2) {
+        const [a, b] = mv;
+        const d = Math.abs(a.c.value - b.c.value);
+        out = d <= tol
+          ? { state: 'voted', value: mean([a.c.value, b.c.value]), ruleText: 'MEAN OF 2', members: [a.id, b.id], outvoted: [], ref: mean([a.c.value, b.c.value]), why: frozenWhy }
+          : { state: 'nomajority', why: `TWO LEFT, ${this.fmt(d)} APART: no vote is possible between two` + (frozenWhy ? `; ${frozenWhy}` : '') };
+      } else {
+        const m = median(mv.map((r) => r.c.value));
+        const agree = mv.filter((r) => Math.abs(r.c.value - m) <= tol);
+        if (agree.length >= 2 && agree.length * 2 > mv.length) {
+          out = {
+            state: 'voted',
+            value: rule === 'mean' ? mean(agree.map((r) => r.c.value)) : m,
+            ruleText: rule === 'mean' ? `MEAN OF ${agree.length}` : `MEDIAN OF ${mv.length}`,
+            members: (rule === 'mean' ? agree : mv).map((r) => r.id),
+            outvoted: mv.filter((r) => !agree.includes(r)).map((r) => r.id),
+            ref: m,
+            why: frozenWhy,
+          };
+        } else {
+          out = { state: 'nomajority', why: `NO ${Math.floor(mv.length / 2) + 1} OF ${mv.length} AGREE WITHIN ±${tol}` + (frozenWhy ? `; ${frozenWhy}` : '') };
+        }
+      }
+    }
+
+    // Miscompares: counted only while there IS a vote to disagree with. With
+    // no majority nobody knows who is wrong, so nobody is charged.
+    for (const r of rows) {
+      const c = r.c;
+      r.dev = out.state === 'voted' && out.outvoted.includes(r.id);
+      if (!r.dev) { c.devSince = null; c.counted = false; continue; }
+      if (c.devSince === null) c.devSince = now;
+      if (!c.counted && (now - c.devSince) / 1000 >= persist) {
+        c.counted = true;
+        c.mis += 1;
+        this.say(`${r.id} out-voted, miscompare ${c.mis} of ${failAfter}`);
+        if (c.mis >= failAfter && c.failedAt === null) {
+          c.failedAt = now;
+          this.say(`${r.id} declared failed after ${c.mis} miscompares, still in the set until someone removes it`);
+        }
+      }
+    }
+
+    // TRANSITIONS only (WCAG 4.1.3 covers a change, not a state held since
+    // load): no "no data" before any data came, no "voted again" before a
+    // vote was ever lost.
+    const was = this._out;
+    if (was && was.state !== out.state) {
+      const who = this.getAttribute('label') || 'vote';
+      if (out.state === 'nomajority') { this.say(`${who}: no majority, ${out.why}`); this._lost = true; }
+      else if (out.state === 'none' && this._hadData) { this.say(`${who}: no data`); this._lost = true; }
+      else if (out.state === 'voted' && this._lost) { this.say(`${who}: voted again, ${out.ruleText.toLowerCase()}`); this._lost = false; }
+    }
+    if (out.state !== 'none') this._hadData = true;
+    this._out = out;
+    this._rows = rows;
+    this._vh.push({ t: now, v: out.state === 'voted' || out.state === 'single' ? out.value : null, tol: finite(tol) ? tol : 0 });
+    this.trim(now);
+    this.paint({ now, tol, persist, failAfter, band, after, maxAge, rule });
+    if (!was || was.state !== out.state || was.value !== out.value) {
+      this.dispatchEvent(new CustomEvent('ov:quorum', { bubbles: true, detail: this.report }));
+    }
+  }
+
+  trim(now) {
+    const cut = now - HIST_S * 1000;
+    const keep = (h) => { let i = 0; while (i < h.length - 1 && h[i + 1].t < cut) i++; return i ? h.slice(i) : h; };
+    this._vh = keep(this._vh);
+    for (const c of this._ch.values()) c.hist = keep(c.hist);
+  }
+
+  get report() {
+    const o = this._out || {};
+    return {
+      state: o.state ?? null,
+      value: o.state === 'voted' || o.state === 'single' ? o.value : null,
+      rule: o.ruleText ?? null,
+      members: o.members ?? [],
+      outvoted: o.outvoted ?? [],
+      why: o.why ?? null,
+      channels: this._rows.map((r) => ({
+        id: r.id, state: r.st, value: r.c.value ?? null, miscompares: r.c.mis,
+        failed: r.c.failedAt !== null, removedBy: r.c.removed?.by ?? null,
+      })),
+    };
+  }
+
+  /* Announcements from one update are JOINED into one: several writes to a
+   * live region in one task are heard as the last only (d7c18ae). */
+  say(text) {
+    this._queue.push(text);
+    if (this._flushing) return;
+    this._flushing = true;
+    queueMicrotask(() => {
+      this._flushing = false;
+      const t = this._queue.join('; ');
+      this._queue = [];
+      const region = this.querySelector('.ov-quorum__say');
+      if (region) { region.textContent = ''; region.textContent = t; }
+    });
+  }
+
+  /* ---- drawing -------------------------------------------------------- */
+
+  places() {
+    const p = num(this.getAttribute('places'));
+    if (finite(p) && p >= 0 && p <= 6) return Math.floor(p);
+    const tol = num(this.getAttribute('tolerance'));
+    return finite(tol) && tol > 0 && tol < 1 ? 2 : 1;
+  }
+
+  fmt(v) { return v === null || v === undefined ? '—' : v.toFixed(this.places()); }
+
+  build() {
+    this._built = true;
+    this.innerHTML = `
+      <div class="ov-head">
+        <span class="ov-aside ov-head__name ov-quorum__label"></span>
+        <span class="ov-aside ov-head__note ov-quorum__rulebox"></span>
+      </div>
+      <div class="ov-state ov-state--panel ov-quorum__out ov-state--reading">
+        <span class="ov-quorum__value"></span><span class="ov-quorum__unit"></span>
+        <span class="ov-aside ov-quorum__tag"></span>
+        <span class="ov-aside ov-quorum__why"></span>
+      </div>
+      <div class="ov-quorum__scale" aria-hidden="true"></div>
+      <ol class="ov-quorum__chans"></ol>
+      <div class="ov-quorum__foot"></div>
+      <div class="ov-quorum__say" aria-live="polite"></div>`;
+    this.setAttribute('role', 'group');
+  }
+
+  paint(p) {
+    const out = this._out;
+    const q = (s) => this.querySelector(s);
+    const label = this.getAttribute('label') || 'VOTE';
+    const unit = this.getAttribute('unit') || '';
+    setText(q('.ov-quorum__label'), label);
+    setText(q('.ov-quorum__rulebox'),
+      `${p.rule.toUpperCase()} · ±${finite(p.tol) ? p.tol : '—'} · ${p.persist}s · ${p.failAfter} STRIKES`);
+
+    setAttr(this, 'data-ov-state', out.state);
+    // ok: a vote. note: one channel left, uncompared. bad: no vote at all.
+    setAttr(q('.ov-quorum__out'), 'data-ov-tone',
+      out.state === 'voted' ? 'ok' : out.state === 'single' ? 'note' : 'bad');
+    const shown = out.state === 'voted' || out.state === 'single';
+    setAttr(this, 'data-ov-refusal', shown ? null : out.state === 'none' ? 'unknown' : out.state === 'nomajority' ? 'no-majority' : 'uncompared');
+    setAttr(this, 'data-ov-qualified', out.state === 'voted' ? 'voted' : out.state === 'single' ? 'uncompared' : null);
+    setText(q('.ov-quorum__value'), shown ? this.fmt(out.value) : OUTWORD[out.state]);
+    setText(q('.ov-quorum__unit'), shown && unit ? unit : '');
+    const tag = out.state === 'voted'
+      ? `VOTED · ${out.ruleText} · ${out.members.join(', ')}`
+      : out.state === 'single' ? `${out.members[0]} ONLY · NOT COMPARED` : '';
+    setText(q('.ov-quorum__tag'), tag);
+    setText(q('.ov-quorum__why'), out.why || '');
+    setAttr(this, 'data-ov-qualifier-text', tag ? tag.toLowerCase() : null);
+    // The name states the value only when the value is shown, and never alone.
+    setAttr(this, 'aria-label', shown
+      ? `${label}: ${this.fmt(out.value)}${unit ? ' ' + unit : ''}, ${out.state === 'voted'
+        ? `voted, ${out.ruleText.toLowerCase()} of ${out.members.join(', ')}`
+        : `from ${out.members[0]} only, not compared`}`
+      : `${label}: ${OUTWORD[out.state].toLowerCase()}, ${out.why || ''}`.replace(/, $/, ''));
+
+    const dom = this.domain(p);
+    this.paintScale(p, dom);
+    this.paintRows(p, dom);
+
+    const foot = [];
+    if (this._undeclared.size) foot.push(`${this._undeclared.size} undeclared channel${this._undeclared.size > 1 ? 's' : ''} ignored: ${[...this._undeclared].join(', ')}`);
+    if (this._malformed) foot.push(`${this._malformed} malformed reading${this._malformed > 1 ? 's' : ''} ignored`);
+    if (this._refusedRemovals.length) foot.push(this._refusedRemovals[this._refusedRemovals.length - 1]);
+    setText(q('.ov-quorum__foot'), foot.join(' · '));
+  }
+
+  paintRows(p, dom) {
+    const list = this.querySelector('.ov-quorum__chans');
+    const out = this._out;
+    const ids = this._rows.map((r) => r.id).join('');
+    if (this._rowKey !== ids) {
+      this._rowKey = ids;
+      list.innerHTML = this._rows.map((r, i) => `
+        <li class="ov-quorum__chan" data-ov-channel="${esc(r.id)}" data-i="${i % 4}">
+          <svg class="ov-quorum__key" viewBox="0 0 24 6" aria-hidden="true"><line x1="0" y1="3" x2="24" y2="3"/></svg>
+          <span class="ov-quorum__name">${esc(r.id)}</span>
+          <span class="ov-quorum__cval"></span>
+          <span class="ov-quorum__word"></span>
+          <span class="ov-quorum__pips" aria-hidden="true"></span>
+          <svg class="ov-quorum__spark" viewBox="0 0 60 14" preserveAspectRatio="none" aria-hidden="true"><line class="ov-quorum__sparkref"/><path/></svg>
+          <span class="ov-quorum__cwhy"></span>
+        </li>`).join('');
+    }
+    this._rows.forEach((r, i) => {
+      const c = r.c;
+      const st = r.base === 'removed' ? 'removed' : r.base === 'none' ? 'none' : r.base === 'stale' ? 'stale'
+        : c.failedAt !== null ? 'failed' : r.frozen ? 'frozen' : r.dev ? 'out'
+          : out.state === 'voted' || out.state === 'single' ? 'in' : 'unvoted';
+      r.st = st;
+      const li = list.children[i];
+      setAttr(li, 'data-ov-member', st);
+      setText(li.querySelector('.ov-quorum__cval'), r.base === 'none' ? '—' : this.fmt(c.value));
+      setText(li.querySelector('.ov-quorum__word'), WORD[st]);
+      setText(li.querySelector('.ov-quorum__pips'), c.mis ? '●'.repeat(Math.min(c.mis, p.failAfter)) + '○'.repeat(Math.max(0, p.failAfter - c.mis)) : '');
+      const ref = out.ref ?? out.value;
+      let why = '';
+      if (st === 'removed') why = `removed by ${c.removed.by} at ${clock(c.removed.at)}`;
+      else if (st === 'none') why = c.value === undefined ? 'never reported' : 'dropout, no reading';
+      else if (st === 'stale') why = `last reading ${Math.floor(c.ageNow)}s old, limit ${p.maxAge}s`;
+      else if (st === 'failed') why = `${c.mis} miscompares, declared failed at ${clock(c.failedAt)}; in the set until someone removes it`;
+      else if (st === 'frozen') why = `unchanged within ±${p.band} for ${Math.floor((p.now - c.since) / 1000)}s`;
+      else if (st === 'out') {
+        const held = Math.floor((p.now - c.devSince) / 1000);
+        why = `${this.fmt(Math.abs(c.value - ref))} from the vote, beyond ±${p.tol}`
+          + (c.counted ? `, miscompare ${c.mis} of ${p.failAfter}` : `, ${held}s of ${p.persist}s before it counts`);
+      } else if (st === 'in' && out.state === 'voted') why = `within ±${p.tol} of ${this.fmt(ref)}`;
+      else if (st === 'in') why = 'the only current channel';
+      else why = 'not counted: there is no vote';
+      setText(li.querySelector('.ov-quorum__cwhy'), why);
+      // The channel's own last minute, on its own row, drawn against the
+      // SAME scale as the markers above, and clamped into it.
+      const path = li.querySelector('.ov-quorum__spark path');
+      if (dom) {
+        const t0 = p.now - HIST_S * 1000;
+        let d = '', pen = false;
+        for (const h of c.hist) {
+          if (h.t < t0) continue;
+          if (h.v === null) { pen = false; continue; }
+          const x = (((h.t - t0) / (HIST_S * 1000)) * 60).toFixed(1);
+          const y = (14 - Math.max(0, Math.min(1, (h.v - dom.lo) / (dom.hi - dom.lo))) * 14).toFixed(1);
+          d += `${pen ? 'L' : 'M'}${x} ${y} `;
+          pen = true;
+        }
+        setAttr(path, 'd', d.trim() || null);
+        // A reference line at the vote, so the trace reads as this channel
+        // AGAINST the vote rather than as a lone squiggle.
+        const refLine = li.querySelector('.ov-quorum__sparkref');
+        const ref = out.state === 'voted' || out.state === 'single' ? out.value : null;
+        if (ref !== null) {
+          const ry = (14 - Math.max(0, Math.min(1, (ref - dom.lo) / (dom.hi - dom.lo))) * 14).toFixed(1);
+          setAttr(refLine, 'x1', '0'); setAttr(refLine, 'x2', '60');
+          setAttr(refLine, 'y1', ry); setAttr(refLine, 'y2', ry);
+        } else setAttr(refLine, 'x2', '0');
+      } else setAttr(path, 'd', null);
+      li.setAttribute('aria-label', `${r.id}: ${r.base === 'none' ? 'no reading' : this.fmt(c.value)}, ${WORD[st].toLowerCase()}, ${why}`);
+    });
+  }
+
+  /* The value range the scale covers: every current reading, and the
+   * tolerance band around the vote, with a little air. */
+  domain(p) {
+    const out = this._out;
+    const tol = finite(p.tol) && p.tol > 0 ? p.tol : 0;
+    const vals = this._rows.map((r) => r.c.value).filter((v) => v !== null && v !== undefined);
+    if (out && (out.state === 'voted' || out.state === 'single')) vals.push(out.value - tol, out.value + tol);
+    if (!vals.length) return null;
+    let lo = Math.min(...vals), hi = Math.max(...vals);
+    if (hi - lo < Math.max(tol * 2, 1e-9)) { const mid = (hi + lo) / 2; lo = mid - Math.max(tol * 1.5, 0.5); hi = mid + Math.max(tol * 1.5, 0.5); }
+    const pad = (hi - lo) * 0.12;
+    return { lo: lo - pad, hi: hi + pad };
+  }
+
+  /* WHO AGREES WITH WHOM, AND BY HOW MUCH: one line across the value range,
+   * the tolerance band shaded around the vote, and every channel a labelled
+   * marker at its own value, so a disagreement is a DISTANCE you can see.
+   * (This replaced a time plot: it could not be read, and the question the
+   * element answers is not "what happened", it is "who agrees".)
+   * HTML placed by percentage, never stretched SVG text. */
+  paintScale(p, dom) {
+    const wrap = this.querySelector('.ov-quorum__scale');
+    const out = this._out;
+    if (!dom) { if (wrap.innerHTML) wrap.innerHTML = ''; wrap.hidden = true; return; }
+    wrap.hidden = false;
+    const at = (v) => Math.max(0, Math.min(100, ((v - dom.lo) / (dom.hi - dom.lo)) * 100));
+    const tol = finite(p.tol) && p.tol > 0 ? p.tol : 0;
+    const ref = out.state === 'voted' || out.state === 'single' ? out.value : null;
+    // Markers that would sit on top of each other step down a row instead.
+    // The gap is measured in PIXELS of this element, not in a fixed
+    // percentage: at 400px a percentage let two labels overlap.
+    const gap = Math.min(40, (70 / Math.max(160, this.offsetWidth || 600)) * 100);
+    const pts = this._rows
+      .filter((r) => r.c.value !== null && r.c.value !== undefined && r.base !== 'removed')
+      .map((r) => ({ r, x: at(r.c.value) }))
+      .sort((a, b) => a.x - b.x);
+    const used = [];
+    for (const pt of pts) {
+      let row = 0;
+      while (used[row] !== undefined && pt.x - used[row] < gap) row += 1;
+      used[row] = pt.x;
+      pt.row = Math.min(row, 3);
+    }
+    const html = [
+      // 🔴 The band belongs to a VOTE. Drawing it around a single channel's
+      // reading would say a comparison happened when none did.
+      out.state === 'voted' && tol ? `<div class="ov-quorum__zone" style="inset-inline: ${at(ref - tol)}% ${100 - at(ref + tol)}%"></div>` : '',
+      '<div class="ov-quorum__axis"></div>',
+      ref !== null ? `<div class="ov-quorum__tick" style="inset-inline-start: ${at(ref)}%"></div>` : '',
+      ref !== null ? `<span class="ov-quorum__votelabel" style="inset-inline-start: ${at(ref)}%">${out.state === 'voted' ? 'VOTED' : 'VALUE'}</span>` : '',
+      // The tolerance label sits at the band's edge, where it describes the
+      // band, not on the tick, where it read as part of the value.
+      out.state === 'voted' && tol ? `<span class="ov-quorum__tolabel" style="inset-inline-start: ${at(ref + tol)}%">±${p.tol}</span>` : '',
+      ...pts.map(({ r, x, row }) => `<span class="ov-quorum__mark" data-ov-member="${r.st}" data-row="${row}" style="inset-inline-start: ${x}%"><b>${esc(r.id)}</b> ${this.fmt(r.c.value)}</span>`),
+      `<span class="ov-quorum__end ov-quorum__end--lo">${this.fmt(dom.lo)}</span>`,
+      `<span class="ov-quorum__end ov-quorum__end--hi">${this.fmt(dom.hi)}</span>`,
+    ].join('');
+    if (wrap.innerHTML !== html) wrap.innerHTML = html;
+    // Only as tall as the rows in use: three channels should not reserve the
+    // space four would need.
+    const rows = pts.length ? Math.max(...pts.map((pt) => pt.row)) + 1 : 1;
+    const h = `${32 + rows * 15}px`;
+    if (wrap.style.blockSize !== h) wrap.style.blockSize = h;
+  }
+}
+
+define('ov-quorum', OvQuorum);
+
+export { OvQuorum };

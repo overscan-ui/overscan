@@ -1,0 +1,7 @@
+{
+  "name": "overscan-consumer-vite",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "description": "Fixture for tools/consumer-test.sh: a bundled app. Installs the PACKED tarball; vite, react and react-dom resolve from the repo root devDependencies."
+}

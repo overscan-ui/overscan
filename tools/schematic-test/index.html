@@ -1,0 +1,58 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>ov-schematic flow tests</title>
+<!-- Over tools/serve.py: /tools/schematic-test/ . The last case is a CONTROL that must fail. -->
+<link rel="stylesheet" href="../../src/tokens.css">
+<link rel="stylesheet" href="../../src/finish.css">
+<link rel="stylesheet" href="../../src/schematic.css">
+<style>
+  body { margin: 0; background: #08080a; color: #ccc; font: 12px ui-monospace, monospace; }
+  section { padding: 16px 24px; }
+  ov-schematic { max-inline-size: 760px; }
+  #tests { white-space: pre; color: #9f9; padding: 16px 24px; }
+  #tests.fail { color: #f77; }
+</style>
+<section class="ov ov-finish" data-ov-theme="industrial"><ov-schematic src="../../demo/models/schematic.json" max-age="10"></ov-schematic></section>
+<section class="ov ov-finish" data-ov-theme="antiseptic"><ov-schematic src="../../demo/models/schematic.json" max-age="10"></ov-schematic></section>
+<section class="ov ov-finish" data-ov-theme="aegis"><ov-schematic src="../../demo/models/schematic.json" max-age="10"></ov-schematic></section>
+<div id="tests">running…</div>
+<script type="module">
+  import '../../src/ov-schematic.js';
+  await customElements.whenDefined('ov-schematic');
+  /* A straight line: S -> A -> B -> C, plus a branch S -> D. */
+  const plan = (extra = {}) => ({ width: 200, height: 100, rooms: [{ id: 'r', x: 0, y: 0, w: 50, h: 50 }],
+    parts: [{ id: 's', kind: 'tank', x: 10, y: 80, source: true }, { id: 'a', kind: 'valve', x: 50, y: 80 },
+            { id: 'b', kind: 'pump', x: 100, y: 80 }, { id: 'c', kind: 'node', x: 150, y: 80 }, { id: 'd', kind: 'node', x: 50, y: 40 }],
+    pipes: [{ from: 's', to: 'a' }, { from: 'a', to: 'b' }, { from: 'b', to: 'c' }, { from: 's', to: 'd' }], ...extra });
+  const fresh = (id, state) => ({ id, state, age: 1 });
+  const base = [fresh('s', 'ok'), fresh('a', 'open'), fresh('b', 'running'), fresh('c', 'ok'), fresh('d', 'ok'), fresh('r', 'ok')];
+  const pipesOf = (el) => [...el.querySelectorAll('.ov-schematic__pipe')].map((p) => p.classList[1].replace('is-', ''));
+  const mk = (states, p = plan()) => { const el = document.createElement('ov-schematic'); el.setAttribute('max-age', '10'); el.style.display = 'none'; document.body.append(el); el.plan = p; el.states = states; return el; };
+  const swap = (id, r) => base.map((s) => (s.id === id ? r : s)).filter(Boolean);
+  const cases = [
+    ['all fresh and open: every pipe flows', () => pipesOf(mk(base)).every((c) => c === 'flowing')],
+    ['a known closed valve makes downstream DRY', () => pipesOf(mk(swap('a', fresh('a', 'closed')))).join() === 'flowing,dry,dry,flowing'],
+    ['an unreported valve makes downstream UNDETERMINED, not dry', () => pipesOf(mk(swap('a', null))).join() === 'flowing,undetermined,undetermined,flowing'],
+    ['flow is not drawn through a STALE open valve', () => pipesOf(mk(swap('a', { id: 'a', state: 'open', age: 30 }))).join() === 'flowing,undetermined,undetermined,flowing'],
+    ['an unreported part is replaced by XX', () => mk(swap('a', null)).querySelector('.ov-schematic__xx')?.textContent === 'XX'],
+    ['an unreported room is hatched, never filled', () => { const el = mk(swap('r', null)); const r = el.querySelector('.ov-schematic__room'); return r.classList.contains('is-none') && getComputedStyle(r.querySelector('rect')).fill.startsWith('url('); }],
+    ['a stale room says STALE and its age', () => mk(swap('r', { id: 'r', state: 'ok', age: 45 })).querySelector('.ov-schematic__note')?.textContent.includes('STALE 45s')],
+    ['a parallel known path still carries flow past an unknown branch', () => {
+      const p = plan({ parts: [...plan().parts, { id: 'j', kind: 'node', x: 180, y: 60 }], pipes: [...plan().pipes, { from: 'c', to: 'j' }, { from: 'd', to: 'j' }] });
+      const el = mk([...swap('d', null), fresh('j', 'ok')], p); const got = pipesOf(el); return got[4] === 'flowing' && got[5] === 'undetermined'; }],
+    ['no plan is a refusal, not an empty frame', () => { const el = mk([], null); el.plan = null; return el.getAttribute('data-ov-refusal') === 'unknown'; }],
+    ['the readout counts what did not report', () => mk(swap('a', null)).querySelector('.ov-schematic__readout').textContent.includes('1 no report')],
+    ['CONTROL: a false claim is caught', () => pipesOf(mk(base)).includes('dry')],
+  ];
+  let bad = 0;
+  const out = cases.map(([name, fn]) => {
+    let ok = false; try { ok = !!fn(); } catch (e) { ok = false; }
+    const control = name.startsWith('CONTROL'); const pass = control ? !ok : ok;
+    if (!pass) bad += 1;
+    return `${pass ? 'ok  ' : 'FAIL'} ${name}${control ? ' (must fail)' : ''}`;
+  });
+  const el = document.getElementById('tests');
+  el.textContent = `${cases.length - bad} of ${cases.length} pass\n` + out.join('\n');
+  el.classList.toggle('fail', bad > 0);
+  window.schResults = { total: cases.length, bad, out };
+</script>

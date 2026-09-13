@@ -1,0 +1,94 @@
+@layer overscan {
+/* The name-and-rules row is `.ov-head` in chrome.css: one source, not six
+   copies. This element keeps it because its declared rule - the vote, the
+   thresholds - really is the first thing to say about it. */
+
+/* An aggregate score that says when it is incomplete. See ov-score.js.
+ *
+ * 🔴 THE ABSENT SCORE IS A DASH AND NEVER A ZERO, and the two absences differ
+ * in FORM as well as word: no equipment is dotted and quiet, not obtainable is
+ * doubled and alarm, because the guidance makes the second an emergency. A
+ * single red parameter is boxed on its own row so it is visible without
+ * reading the total, which is the whole of recommendation 12.
+ */
+
+ov-score {
+  --ov-sc-glow: calc(var(--ov-bloom, .2) * 10px);
+  display: grid; gap: 8px; min-inline-size: 0;
+  font-family: var(--ov-font-mono); font-size: var(--ov-size-1, 10px); color: var(--ov-ink);
+}
+
+
+.ov-score__total {
+  font-size: calc(var(--ov-size-2, 12px) * 2.4); letter-spacing: .06em;
+  font-variant-numeric: tabular-nums; text-shadow: 0 0 var(--ov-sc-glow) currentColor;
+}
+.ov-score__of { color: var(--ov-faint); letter-spacing: .12em; }
+.ov-score__why { grid-column: 1 / -1; letter-spacing: .08em; line-height: 1.45; overflow-wrap: anywhere; }
+.ov-score__why:empty, .ov-score__foot:empty { display: none; }
+
+/* Incomplete is a QUALIFIER: the total is real and is still shown. Dashed, so
+   it differs in form from a complete one at a glance. */
+ov-score[data-ov-state="incomplete"] .ov-score__why { color: var(--ov-ink); }
+/* A refusal about the paperwork leaves the total intact, so it does not take
+   the alarm border - but it must not read as "all well" either. Dashed, and
+   the sentence in the qualifier colour rather than the accent. */
+ov-score[data-ov-paperwork] .ov-score__why { color: var(--ov-alarm); }
+
+/* A single red, or a parameter that could not be obtained, outranks the band. */
+ov-score:is([data-ov-red], [data-ov-urgent]) .ov-score__why { color: var(--ov-alarm); }
+ov-score[data-ov-state="empty"] .ov-score__total { font-size: calc(var(--ov-size-2, 12px) * 1.4); letter-spacing: .14em; }
+
+/* ---- one row per parameter -------------------------------------------- */
+
+.ov-score__params { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }
+.ov-score__params[hidden] { display: none; }
+.ov-score__param {
+  display: grid; grid-template-columns: 1fr auto 3ch minmax(0, 22ch);
+  align-items: baseline; gap: 1ch; padding: 2px 5px;
+  border-inline-start: 3px solid var(--ov-line);
+  font-variant-numeric: tabular-nums;
+}
+.ov-score__pname { letter-spacing: .08em; text-transform: uppercase; }
+.ov-score__pvalue { color: var(--ov-faint); }
+.ov-score__pscore { text-align: end; font-size: var(--ov-size-2, 12px); }
+.ov-score__pnote { letter-spacing: .1em; text-align: end; color: var(--ov-faint); }
+
+.ov-score__param[data-ov-score="0"] { border-inline-start-color: var(--ov-accent); }
+.ov-score__param:is([data-ov-score="1"], [data-ov-score="2"]) { border-inline-start-color: var(--ov-accent-2, var(--ov-accent)); }
+/* 🔴 A single red is BOXED, so it is visible without reading the total. */
+.ov-score__param[data-ov-red] {
+  border: var(--ov-rule, 1px) solid var(--ov-alarm);
+  border-inline-start-width: 3px; color: var(--ov-alarm);
+}
+.ov-score__param[data-ov-red] .ov-score__pnote { color: var(--ov-alarm); }
+
+/* No equipment: quiet, dotted, and NOT SCORED said in words. */
+.ov-score__param[data-ov-absent="no-equipment"] {
+  border-inline-start-style: dotted; border-inline-start-color: var(--ov-dim); color: var(--ov-dim);
+}
+/* Not obtainable despite equipment: an emergency, and drawn as one. */
+.ov-score__param[data-ov-absent="not-obtainable"] {
+  border-inline-start: 3px double var(--ov-alarm); color: var(--ov-alarm);
+}
+.ov-score__param[data-ov-absent] .ov-score__pscore { color: var(--ov-alarm); }
+
+/* ---- the two scales, and the oxygen paperwork ------------------------- */
+
+.ov-score__scales { display: flex; flex-wrap: wrap; gap: 4px 14px; color: var(--ov-faint); letter-spacing: .1em; }
+.ov-score__scale { opacity: .55; }
+/* Rec. 28: the scale not in use is crossed out rather than omitted. */
+.ov-score__scale:not([data-ov-on]) { text-decoration: line-through; }
+.ov-score__scale[data-ov-on] { opacity: 1; color: var(--ov-accent); }
+.ov-score__scale[data-ov-unsigned] { color: var(--ov-alarm); border-block-end: var(--ov-rule, 1px) dashed var(--ov-alarm); }
+
+.ov-score__oxygen { color: var(--ov-faint); letter-spacing: .1em; }
+.ov-score__oxygen[data-ov-undocumented] { color: var(--ov-alarm); }
+.ov-score__foot { color: var(--ov-alarm); letter-spacing: .08em; }
+
+@container (max-width: 380px) {
+  .ov-score__param { grid-template-columns: 1fr auto 3ch; }
+  .ov-score__pnote { grid-column: 1 / -1; text-align: start; }
+  .ov-score__total { font-size: calc(var(--ov-size-2, 12px) * 1.8); }
+}
+}

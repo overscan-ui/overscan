@@ -1,0 +1,63 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>ov-continuity tests</title>
+<!-- Over tools/serve.py: /tools/continuity-test/ . The last case is a CONTROL that must fail. -->
+<link rel="stylesheet" href="../../src/tokens.css">
+<link rel="stylesheet" href="../../src/finish.css">
+<link rel="stylesheet" href="../../src/continuity.css">
+<style>
+  body { margin: 0; background: #08080a; color: #ccc; font: 12px ui-monospace, monospace; }
+  .row { display: grid; grid-template-columns: minmax(0, 720px); gap: 22px; padding: 16px 24px; }
+  #tests { white-space: pre; color: #9f9; padding: 16px 24px; }
+  #tests.fail { color: #f77; }
+</style>
+<section class="ov ov-finish row" data-ov-theme="terminal" id="a"></section>
+<div id="tests">running…</div>
+<script type="module">
+  import { contAnalyse } from '../../src/ov-continuity.js';
+  await customElements.whenDefined('ov-continuity');
+  const run = (a, b, skip = []) => { const out = []; for (let i = a; i <= b; i++) if (!skip.includes(i)) out.push({ seq: i }); return out; };
+  const wrap = [16378, 16379, 16380, 16381, 16382, 16383, ...Array.from({ length: 20 }, (_, i) => i)].map((seq) => ({ seq }));
+  const lossy = run(0, 99, [10, 11, 12, 50]);
+  const shuffled = [...run(0, 14), ...run(16, 20), { seq: 15 }, ...run(21, 30), { seq: 7 }];
+  const reset = [...run(0, 40), { seq: 0, reset: true }, ...run(1, 10)];
+  const jump = [...run(100, 120), ...run(9000, 9010)];
+  const early = [10, 8, 9, 11].map((seq) => ({ seq }));
+  // A long silence in TIME with no gap in the numbers is not loss.
+  const quiet = run(0, 9).map((p, i) => ({ ...p, t: i < 5 ? i : 600 + i }));
+  const el = document.createElement('ov-continuity');
+  document.getElementById('a').append(el);
+  el.streams = [
+    { source: 'APID 0x0A1', packets: wrap },
+    { source: 'APID 0x0A2', packets: lossy },
+    { source: 'APID 0x0A3', packets: shuffled },
+    { source: 'APID 0x0A4', packets: reset },
+    { source: 'APID 0x0A5', packets: jump },
+    { source: 'APID 0x0A6', packets: quiet },
+  ];
+  const none = document.createElement('ov-continuity');
+  document.getElementById('a').append(none);
+  none.streams = null;
+  const row = (src) => el.querySelector(`.ov-continuity__row[data-source="${src}"]`);
+  const verdict = (src) => row(src).querySelector('.ov-continuity__verdict').textContent;
+  const words = (src) => row(src).querySelector('.ov-continuity__words').textContent;
+  const sum = (segs, k) => segs.reduce((a, s) => a + s[k], 0);
+  const cases = [
+    ['a wrap from 16383 to 0 is continuous, and counted', () => verdict('APID 0x0A1') === 'COMPLETE' && words('APID 0x0A1').includes('1 wrap')],
+    ['missing numbers are counted, in runs', () => verdict('APID 0x0A2') === 'INCOMPLETE' && words('APID 0x0A2').includes('4 missing in 2 runs')],
+    ['out of order fills its gap; a repeat is a duplicate, not a packet', () => verdict('APID 0x0A3') === 'COMPLETE' && words('APID 0x0A3').includes('1 out of order') && words('APID 0x0A3').includes('1 duplicate') && words('APID 0x0A3').includes('31 received')],
+    ['across a declared reset, completeness cannot be determined', () => verdict('APID 0x0A4') === 'UNDETERMINED' && words('APID 0x0A4').includes('completeness across 1 reset cannot be determined')],
+    ['a jump past the window is not guessed as a wrap or a loss', () => { const s = contAnalyse(jump, 4096); return verdict('APID 0x0A5') === 'UNDETERMINED' && s.length === 2 && sum(s, 'missing') === 0 && words('APID 0x0A5').includes('reset or loss, not determined'); }],
+    ['a late packet below the first one seen is out of order, not a new stream', () => { const s = contAnalyse(early, 4096); return s.length === 1 && s[0].ooo === 2 && s[0].missing === 0; }],
+    ['loss is counted by sequence, not by clock: a silence is not a gap', () => verdict('APID 0x0A6') === 'COMPLETE'],
+    ['a missing run is drawn where it is', () => row('APID 0x0A2').querySelectorAll('.ov-continuity__miss').length === 2],
+    ['a break is drawn between segments', () => row('APID 0x0A4').querySelectorAll('.ov-continuity__break').length === 1 && row('APID 0x0A2').querySelectorAll('.ov-continuity__break').length === 0],
+    ['a count outside 0..16383 is counted, not used', () => { const s = contAnalyse([{ seq: 1 }, { seq: 20000 }, { seq: 2 }], 4096); return sum(s, 'bad') === 1 && sum(s, 'received') === 2; }],
+    ['no packets is a refusal', () => none.getAttribute('data-ov-refusal') === 'unknown'],
+    ['CONTROL: a false claim is caught', () => verdict('APID 0x0A4') === 'COMPLETE'],
+  ];
+  let bad = 0;
+  const res = cases.map(([name, fn]) => { let r = false; try { r = !!fn(); } catch (e) { r = false; } const c = name.startsWith('CONTROL'); const pass = c ? !r : r; if (!pass) bad += 1; return `${pass ? 'ok  ' : 'FAIL'} ${name}${c ? ' (must fail)' : ''}`; });
+  const t = document.getElementById('tests'); t.textContent = `${cases.length - bad} of ${cases.length} pass\n` + res.join('\n'); t.classList.toggle('fail', bad > 0);
+  window.contResults = { total: cases.length, bad, out: res };
+</script>

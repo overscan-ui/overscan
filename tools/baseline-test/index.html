@@ -1,0 +1,177 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>ov-baseline tests</title>
+<!-- Over tools/serve.py: /tools/baseline-test/ . Cases named CONTROL must fail. -->
+<link rel="stylesheet" href="../../src/tokens.css">
+<link rel="stylesheet" href="../../src/baseline.css">
+<style>
+  body { background: #06060a; color: #cfe; font: 13px ui-monospace, monospace; padding: 20px; }
+  pre { white-space: pre-wrap; }
+</style>
+<div id="stage" data-ov-theme="antiseptic"></div>
+<pre id="out">running...</pre>
+<script type="module">
+import '../../src/ov-baseline.js';
+
+const stage = document.getElementById('stage');
+const results = [];
+const ok = (name, cond, got) => results.push({ name, pass: !!cond, got });
+const controls = [];
+const control = (name, cond, got) => controls.push({ name, pass: !!cond, got });
+const OWNED = { 'baseline-by': 'RN KOWALSKI', 'baseline-at': '2026-09-11 14:02', 'baseline-method': 'entered' };
+const fresh = (attrs, width) => {
+  const el = document.createElement('ov-baseline');
+  for (const [k, v] of Object.entries(attrs)) el.setAttribute(k, v);
+  stage.style.width = width || 'auto';
+  stage.replaceChildren(el);
+  return el;
+};
+// Readings rising `per` units a minute, one every 30 s, over `mins` minutes, ending at `end`.
+const ramp = (end, per, mins) => Array.from({ length: mins * 2 + 1 }, (_, i) => ({ age: (mins * 2 - i) * 30, value: end - per * (mins - i / 2) }));
+const angle = (el) => (el.querySelector('.ov-baseline__arrow').hasAttribute('data-ov-angle')
+  ? Number(el.querySelector('.ov-baseline__arrow').getAttribute('data-ov-angle')) : null);
+// Drawn or not, by what the browser renders: an SVG has no `.hidden`
+// property, so reading one back proves nothing (it once passed here while
+// the arrow was plainly on screen).
+const shown = (el) => getComputedStyle(el.querySelector('.ov-baseline__arrow')).display !== 'none';
+const txt = (el, part) => el.querySelector(`.ov-baseline__${part}`).textContent;
+const near = (a, b) => a !== null && Math.abs(a - b) < 0.05;
+
+let el, r;
+
+// 1. THE REFUSAL: the angle is set by the rate, never by the scale.
+el = fresh({ value: '84', unit: 'bpm', label: 'HR', baseline: '72', ...OWNED, scale: '20', 'trend-window': '300', 'trend-rate': '2' });
+el.samples = ramp(84, 1, 5);
+const a20 = angle(el);
+ok('a rise of 1 bpm/min against full tilt at 2 bpm/min tips the arrow 30 degrees, drawn', near(a20, 30) && shown(el), a20);
+const f20 = Number(el.querySelector('.ov-baseline__bar').getAttribute('data-ov-fraction'));
+el.setAttribute('scale', '5');
+const a5 = angle(el);
+const f5 = Number(el.querySelector('.ov-baseline__bar').getAttribute('data-ov-fraction'));
+el.setAttribute('scale', '100');
+const a100 = angle(el);
+ok('re-scaling the bar (20, 5, 100) leaves the angle alone', near(a5, a20) && near(a100, a20), [a20, a5, a100]);
+control('CONTROL: changing the scale changes the arrow angle (the IFU flaw; must fail)', !near(a5, a20) || !near(a100, a20), [a20, a5, a100]);
+ok('...while the bar itself does re-scale, and prints its ends', f20 !== f5 && txt(el, 'end--hi') === '+100', [f20, f5, txt(el, 'end--hi')]);
+ok('the rate is printed with its window and its full-tilt rate', /\+1 BPM\/MIN OVER 5 MIN · FULL TILT AT ±2 bpm\/min/.test(txt(el, 'trend')), txt(el, 'trend'));
+
+// Falling, and past full tilt.
+el.samples = ramp(84, -1, 5);
+ok('a fall tips it down', near(angle(el), -30), angle(el));
+el.samples = ramp(84, 6, 5);
+ok('past full tilt it stops at 60 degrees and says it ran out of angle', near(angle(el), 60) && el.querySelector('.ov-baseline__arrow').hasAttribute('data-ov-full'), angle(el));
+
+// 2. No rate declared, no arrow.
+el.removeAttribute('trend-rate');
+ok('without trend-rate: no arrow', angle(el) === null && !shown(el) && el.getAttribute('data-ov-trend') === 'norate', angle(el));
+ok('...the rate is still given as a number, and it says why', /\+6 BPM\/MIN/.test(txt(el, 'trend')) && /no trend-rate declared/.test(txt(el, 'note')), txt(el, 'trend'));
+
+// 3. No trend from too little.
+el = fresh({ value: '84', baseline: '72', ...OWNED, 'trend-window': '300', 'trend-rate': '2' });
+el.samples = ramp(84, 1, 2);
+ok('two minutes of readings for a five-minute window: no arrow', angle(el) === null && !shown(el) && el.getAttribute('data-ov-trend') === 'short', angle(el));
+ok('...and it says how much it has', /NOT ENOUGH READINGS \(2 min OF 5 min, 5 READINGS\)/.test(txt(el, 'trend')), txt(el, 'trend'));
+el = fresh({ value: '84', baseline: '72', ...OWNED, 'trend-rate': '2' });
+ok('a single reading is not a trend, and no arrow is drawn', !shown(el) && el.getAttribute('data-ov-trend') === 'short' && /1 READING\)/.test(txt(el, 'trend')), txt(el, 'trend'));
+
+// 4. A baseline with no author, time or method is refused.
+el = fresh({ value: '84', unit: 'bpm', baseline: '72', 'baseline-at': '2026-09-11 14:02', scale: '20' });
+ok('no author and no method: the baseline is refused and the missing fields named',
+  el.getAttribute('data-ov-baseline') === 'refused' && /REFUSED: NO AUTHOR, NO METHOD/.test(txt(el, 'base')), txt(el, 'base'));
+ok('...no deviation is given and no bar drawn', txt(el, 'dev') === 'NO DEVIATION' && el.querySelector('.ov-baseline__bar').hidden, txt(el, 'dev'));
+ok('...the reading itself is still shown', txt(el, 'num') === '84', txt(el, 'num'));
+el.setAttribute('baseline-by', 'RN KOWALSKI');
+el.setAttribute('baseline-method', 'guessed');
+ok('a method that is not entered or captured counts as missing', /REFUSED: NO METHOD/.test(txt(el, 'base')), txt(el, 'base'));
+el.setAttribute('baseline-method', 'entered');
+ok('with all three: +12 vs baseline, and the provenance line', txt(el, 'dev') === '+12 bpm VS BASELINE'
+  && txt(el, 'base') === 'BASELINE 72 bpm · ENTERED BY RN KOWALSKI · 2026-09-11 14:02', [txt(el, 'dev'), txt(el, 'base')]);
+
+// 5. A range baseline: deviation from the nearer edge.
+el = fresh({ value: '74', baseline: '68..76', ...OWNED, scale: '10' });
+ok('inside the range: IN BASELINE RANGE', txt(el, 'dev') === 'IN BASELINE RANGE', txt(el, 'dev'));
+el.setAttribute('value', '80');
+ok('above it: +4 from the top edge', txt(el, 'dev') === '+4 VS BASELINE', txt(el, 'dev'));
+el.setAttribute('baseline', '76..68');
+ok('a range written backwards is unreadable, not flipped', el.getAttribute('data-ov-baseline') === 'bad', txt(el, 'base'));
+
+// 6. Past the scale: pinned, and marked.
+el = fresh({ value: '102', baseline: '72', ...OWNED, scale: '20' });
+ok('30 past the baseline on a ±20 bar: pinned at the end and marked over', el.querySelector('.ov-baseline__bar').hasAttribute('data-ov-over')
+  && Number(el.querySelector('.ov-baseline__bar').getAttribute('data-ov-fraction')) === 1 && /past the bar/.test(txt(el, 'note')), txt(el, 'note'));
+
+// 7. No scale: a number only.
+el = fresh({ value: '80', baseline: '72', ...OWNED });
+ok('no scale: no bar, the deviation as a number, and said', el.querySelector('.ov-baseline__bar').hidden && txt(el, 'dev') === '+8 VS BASELINE'
+  && /no scale declared/.test(txt(el, 'note')), txt(el, 'note'));
+
+// 8. capture().
+el = fresh({ value: '80', unit: 'bpm' });
+const refused = [];
+el.addEventListener('ov:refuse', (e) => refused.push(e.detail.reason));
+r = el.capture('');
+ok('capture with no author is refused, and fires ov:refuse', !r.ok && refused.length === 1 && /needs an author/.test(r.reason), r);
+el.setAttribute('substituted', 'entered by hand');
+r = el.capture('DR OSEI');
+ok('capture from a substituted value is refused', !r.ok && /substituted value/.test(r.reason), r);
+el.removeAttribute('substituted');
+let got = null;
+el.addEventListener('ov:baseline', (e) => { got = e.detail; });
+r = el.capture('DR OSEI');
+ok('capture from a reading sets value, author, time and CAPTURED', r.ok && el.getAttribute('baseline') === '80' && el.getAttribute('baseline-method') === 'captured'
+  && /^\d{4}-\d\d-\d\d \d\d:\d\d$/.test(el.getAttribute('baseline-at')) && el.getAttribute('data-ov-baseline') === 'ok', txt(el, 'base'));
+ok('...and fires ov:baseline', got && got.by === 'DR OSEI' && got.value === 80 && got.method === 'captured', got);
+
+// 9. A repeated reading is a reading.
+el = fresh({ value: '72' });
+el.push(72); el.push(72);
+ok('pushing the same value twice adds two readings', el.samples.length === 3, el.samples.length);
+
+// 10. The property.
+el.samples = { a: 1 };
+ok('a map for samples is refused, and said', /not an array/.test(txt(el, 'note')), txt(el, 'note'));
+
+// 11. Stale readings are marked.
+el = fresh({ value: '84', age: '40', 'max-age': '10', baseline: '72', ...OWNED });
+ok('a stale reading is marked STALE', txt(el, 'qual') === 'STALE 40s' && el.getAttribute('data-ov-qualifier') === 'stale', txt(el, 'qual'));
+
+// 12. Expiry, opt-in: still used, and marked.
+const p2 = (x) => String(x).padStart(2, '0');
+const localAt = (msAgo) => { const d = new Date(Date.now() - msAgo); return `${d.getFullYear()}-${p2(d.getMonth() + 1)}-${p2(d.getDate())} ${p2(d.getHours())}:${p2(d.getMinutes())}`; };
+el = fresh({ value: '84', unit: 'bpm', baseline: '72', ...OWNED, 'baseline-at': '2019-01-01 00:00', scale: '20' });
+ok('without max-baseline-age a baseline never expires, however old', el.getAttribute('data-ov-baseline') === 'ok', el.getAttribute('data-ov-baseline'));
+el = fresh({ value: '84', unit: 'bpm', baseline: '72', ...OWNED, 'baseline-at': localAt(13 * 3600e3), 'max-baseline-age': '43200', scale: '20' });
+ok('13 h old against a 12 h limit: EXPIRED, with its age and the limit', el.getAttribute('data-ov-baseline') === 'expired'
+  && /EXPIRED, SET 13 h AGO \(MAX 12 h\)/.test(txt(el, 'base')), txt(el, 'base'));
+ok('...the deviation is still given, against the EXPIRED baseline', txt(el, 'dev') === '+12 bpm VS EXPIRED BASELINE' && !el.querySelector('.ov-baseline__bar').hidden, txt(el, 'dev'));
+el.setAttribute('baseline-at', localAt(2 * 3600e3));
+ok('2 h old against 12 h: not expired', el.getAttribute('data-ov-baseline') === 'ok' && txt(el, 'dev') === '+12 bpm VS BASELINE', txt(el, 'base'));
+el.setAttribute('baseline-at', 'morning round');
+ok('a baseline-at that is not a time: age unknown, said, not guessed', el.hasAttribute('data-ov-baseline-age-unknown')
+  && /AGE UNKNOWN/.test(txt(el, 'base')) && /not a time/.test(txt(el, 'note')), txt(el, 'note'));
+el.setAttribute('baseline-at', localAt(-3 * 3600e3));
+ok('a baseline-at in the future: age unknown', /in the future/.test(txt(el, 'note')), txt(el, 'note'));
+el.setAttribute('baseline-at', localAt(13 * 3600e3));
+el.capture('DR OSEI');
+ok('capture renews an expired baseline', el.getAttribute('data-ov-baseline') === 'ok', txt(el, 'base'));
+
+// 13. Fits a 226px wall cell.
+el = fresh({ value: '84', unit: 'bpm', label: 'HR', baseline: '72', ...OWNED, scale: '20', 'trend-rate': '2' }, '226px');
+el.samples = ramp(84, 1, 5);
+ok('in a 226px cell nothing runs off the edge', el.scrollWidth <= el.clientWidth + 1 && el.getBoundingClientRect().width <= 226.5,
+  [el.scrollWidth, el.clientWidth, el.getBoundingClientRect().width]);
+
+const passed = results.filter((x) => x.pass).length;
+const failed = results.length - passed;
+const controlsFailed = controls.filter((x) => !x.pass).length;
+const gate = failed === 0 && controlsFailed === controls.length && controls.length > 0;
+const out = document.getElementById('out');
+out.textContent = [
+  ...results.map((x) => `${x.pass ? 'PASS' : 'FAIL'}  ${x.name}${x.pass ? '' : '  got ' + JSON.stringify(x.got)}`),
+  ...controls.map((x) => `${x.pass ? 'CONTROL PASSED (BAD)' : 'CONTROL FAILED (good)'}  ${x.name}`),
+  '',
+  `${passed} passed, ${failed} failed, ${controlsFailed}/${controls.length} controls failed as required`,
+  `GATE: ${gate ? 'PASS' : 'FAIL'}`,
+].join('\n');
+out.setAttribute('data-gate', gate ? 'pass' : 'fail');
+</script>

@@ -1,0 +1,191 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>ov-downlink harness</title>
+<!-- The refusal gate for src/ov-downlink.js. Serve the repo root
+     (python3 tools/serve.py) and open tools/downlink-test/. The last line must
+     read GATE: PASS, and every CONTROL (an assertion false on purpose) must
+     fail. -->
+<link rel="stylesheet" href="../../src/tokens.css">
+<link rel="stylesheet" href="../../src/downlink.css">
+<style>
+  body { background: #06060a; color: #cfe; font: 13px ui-monospace, monospace; padding: 20px; }
+  pre { white-space: pre-wrap; }
+  #stage { max-inline-size: 460px; }
+</style>
+<div id="stage" data-ov-theme="industrial"></div>
+<pre id="out">running...</pre>
+<script type="module">
+import { OvDownlink, span } from '../../src/ov-downlink.js';
+
+const stage = document.getElementById('stage');
+const results = [];
+const ok = (name, cond, got) => results.push({ name, pass: !!cond, got });
+const controls = [];
+const control = (name, cond, got) => controls.push({ name, pass: !!cond, got });
+
+// Our clock, driven by hand. Epoch-ish ms so `sent` stamps compare.
+let NOW = 1_800_000_000_000;
+OvDownlink.now = () => NOW;
+const advance = (s, el) => { NOW += s * 1000; if (el) el.render(); };
+
+const fresh = (attrs = {}) => {
+  const el = document.createElement('ov-downlink');
+  el.setAttribute('label', 'ROCINANTE');
+  for (const [k, v] of Object.entries(attrs)) el.setAttribute(k, v);
+  stage.replaceChildren(el);
+  return el;
+};
+const link = (el) => el.getAttribute('data-ov-link');
+const stateWord = (el) => el.querySelector('.ov-downlink__state').textContent;
+const ages = (el) => [...el.querySelectorAll('.ov-downlink__age')].map((a) => a.textContent);
+const texts = (el) => [...el.querySelectorAll('.ov-downlink__text')].map((a) => a.textContent);
+const foot = (el) => el.querySelector('.ov-downlink__foot').textContent;
+const delay = (el) => el.querySelector('.ov-downlink__delay').textContent;
+// Poll for a condition instead of sleeping a fixed time: sources tick on
+// animation frames, which run late on a busy machine, and a fixed wait raced
+// them (different wrong values run to run).
+const until = async (cond, ms = 3000) => { const t0 = performance.now(); while (!cond() && performance.now() - t0 < ms) await new Promise((r) => setTimeout(r, 25)); };
+let el;
+
+// 1. Nothing yet: NO SIGNAL, and it says nothing was ever received.
+el = fresh();
+ok('before anything arrives the link is never', link(el) === 'never' && stateWord(el) === 'NO SIGNAL', link(el));
+ok('...and says NOTHING RECEIVED', /NOTHING RECEIVED/.test(foot(el)), foot(el));
+
+// 2. THE REFUSAL: a message is as old as its SEND time, not its arrival.
+el = fresh();
+el.receive({ text: 'burn complete', sent: NOW - 14 * 60 * 1000 });   // 14 min in flight
+ok('a message arrives 14 minutes old', ages(el)[0] === '−14m 00s', ages(el));
+ok('...and the panel says how long it was in flight', delay(el) === 'DELAYED BY 14m 00s', delay(el));
+ok('the link is up', link(el) === 'live' && stateWord(el) === 'LINK', link(el));
+control('CONTROL: a 14-minute-old message shown as just now (must fail)', ages(el)[0] === '−0s', ages(el));
+
+// 3. Ages keep growing on screen.
+advance(5, el);
+ok('five seconds later it is five seconds older', ages(el)[0] === '−14m 05s', ages(el));
+ok('...while its flight time stays what it was', delay(el) === 'DELAYED BY 14m 00s', delay(el));
+
+// 4. No send time: receipt age, marked DELAY UNKNOWN, never a claimed age.
+el = fresh();
+el.receive({ text: 'contact bearing 040' });
+advance(12, el);
+ok('an unstamped message shows its RECEIPT age, labelled', ages(el)[0] === 'RCVD −12s', ages(el));
+ok('...and the panel says DELAY UNKNOWN', delay(el) === 'DELAY UNKNOWN', delay(el));
+ok('...and the report says unknown', el.report.items[0].kind === 'unknown', el.report.items[0]);
+control('CONTROL: an unstamped message given a plain age (must fail)', ages(el)[0] === '−12s', ages(el));
+
+// 4b. The kit's reading shape: `age` is seconds in flight at arrival.
+el = fresh();
+el.receive({ text: 'relay up', age: 200 });
+ok('age: 200 arrives 3m 20s old', ages(el)[0] === '−3m 20s' && delay(el) === 'DELAYED BY 3m 20s', [ages(el), delay(el)]);
+el.receive({ text: 'bad age', age: 'soon' });
+ok('a non-numeric age is DELAY UNKNOWN, not zero', ages(el)[1] === 'RCVD −0s', ages(el));
+
+// 5. A send time ahead of our clock is skew, never a negative or zero age.
+el = fresh();
+el.receive({ text: 'from the future', sent: NOW + 3000 });
+ok('a future send time is AHEAD, not negative', ages(el)[0] === 'AHEAD 3s', ages(el));
+ok('...and the panel names CLOCK SKEW', delay(el) === 'CLOCK SKEW 3s', delay(el));
+advance(20, el);
+ok('it is STILL skew after our clock passes the stamp', ages(el)[0] === 'AHEAD 3s' && delay(el) === 'CLOCK SKEW 3s', [ages(el), delay(el)]);
+control('CONTROL: once passed, a skewed stamp reads as a plain age (must fail)', ages(el)[0] === '−17s', ages(el));
+
+// 6. Silence past the timeout: NO SIGNAL, with the time since the last frame.
+el = fresh({ timeout: '10' });
+el.receive({ text: 'holding position', sent: NOW - 2000 });
+advance(9, el);
+ok('inside the timeout the link is up', link(el) === 'live', link(el));
+advance(2, el);
+ok('past it the link is silent', link(el) === 'silent' && stateWord(el) === 'NO SIGNAL', link(el));
+ok('...and says how long since the last frame', /LAST FRAME −11s/.test(foot(el)), foot(el));
+ok('the history stays, still ageing', texts(el)[0] === 'holding position' && ages(el)[0] === '−13s', [texts(el), ages(el)]);
+control('CONTROL: a silent link still reads LINK (must fail)', stateWord(el) === 'LINK', stateWord(el));
+
+// 7. Heartbeats keep the link up without adding lines.
+el = fresh({ timeout: '10' });
+el.receive({ text: 'on station', sent: NOW });
+for (let i = 0; i < 5; i++) { advance(8); el.receive({ sent: NOW }); }
+ok('heartbeats hold the link up', link(el) === 'live', link(el));
+ok('...and add no lines', texts(el).length === 1, texts(el));
+
+// 8. Terminated is not silent.
+el = fresh({ timeout: '60' });
+el.receive({ text: 'closing channel', sent: NOW });
+advance(2);
+el.terminate();
+ok('terminate() is TERMINATED at once, timeout or not', link(el) === 'terminated' && stateWord(el) === 'TERMINATED', link(el));
+ok('...with the time since the last frame', /LAST FRAME −2s/.test(foot(el)), foot(el));
+el.receive({ text: 'reopened', sent: NOW });
+ok('a new frame reopens it', link(el) === 'live', link(el));
+
+// 9. The window is capped and says what it did not keep; nothing merges.
+el = fresh({ lines: '3' });
+for (const t of ['a', 'b', 'b', 'c', 'd']) el.receive({ text: t, sent: NOW });
+ok('only the last three are kept, in order', texts(el).join('') === 'bcd', texts(el));
+ok('...and it says two were not kept', /2 NOT KEPT/.test(foot(el)), foot(el));
+el = fresh({ lines: '5' });
+el.receive({ text: 'ping', sent: NOW }); el.receive({ text: 'ping', sent: NOW });
+ok('two identical messages are two messages', texts(el).length === 2, texts(el));
+
+// 10. A source: repeats are heartbeats, null is termination.
+OvDownlink.now = () => Date.now();
+Overscan.source('doc-link', (t, i) => (i < 6 ? { id: i < 3 ? 'm1' : 'm2', text: i < 3 ? 'first' : 'second', sent: Date.now() - 5000 } : null), { hz: 20 });
+el = fresh({ source: 'doc-link' });
+await until(() => link(el) === 'terminated');
+ok('a re-emitted message is one line, not several', texts(el).join(',') === 'first,second', texts(el));
+ok('a source emitting null terminates the link', link(el) === 'terminated', link(el));
+OvDownlink.now = () => NOW;
+
+// 11. Events and names.
+el = fresh({ timeout: '5' });
+const seen = [];
+el.addEventListener('ov:signal', (e) => seen.push(`${e.detail.previous}>${e.detail.state}`));
+el.receive({ text: 'x', sent: NOW });
+advance(6, el);
+el.terminate();
+ok('ov:signal reports each transition once', seen.join(',') === 'never>live,live>silent,silent>terminated', seen);
+ok('the accessible name says the state and the gap', /rocinante, transmission terminated, last frame 6 seconds ago/i.test(el.getAttribute('aria-label')), el.getAttribute('aria-label'));
+
+// 11b. The log speaks arrivals, never the window again. role=log announces
+// what changes in it; filling rows by slot rewrote every line's text when the
+// window slid, and ages rewrite every tick.
+el = fresh({ lines: '3' });
+for (const t of ['a', 'b', 'c']) el.receive({ text: t, sent: NOW });
+const lis = () => [...el.querySelectorAll('.ov-downlink__line')];
+const before = lis();
+el.receive({ text: 'd', sent: NOW });
+const after = lis();
+ok('a kept message keeps its node when the window slides', after[0] === before[1] && after[1] === before[2] && texts(el).join('') === 'bcd', texts(el));
+control('CONTROL: the first row is still the node that showed a (must fail)', after[0] === before[0], texts(el));
+const logEl = el.querySelector('.ov-downlink__lines');
+const mo = new MutationObserver(() => {});
+mo.observe(logEl, { childList: true, subtree: true, characterData: true });
+el.receive({ text: 'e', sent: NOW });
+advance(3, el);
+const recs = mo.takeRecords();
+mo.disconnect();
+const rewrites = recs.filter((r) => r.target.closest?.('.ov-downlink__text') || r.target.parentElement?.closest('.ov-downlink__text'));
+const added = recs.filter((r) => r.target === logEl).flatMap((r) => [...r.addedNodes]);
+ok('an arrival adds exactly one line', added.length === 1 && added[0].textContent.endsWith('e'), added.map((n) => n.textContent));
+ok('...and no kept message has its text rewritten', rewrites.length === 0, rewrites.length);
+ok('the log is relevant for additions only, so ticking ages are not read', logEl.getAttribute('aria-relevant') === 'additions', logEl.getAttribute('aria-relevant'));
+
+// 12. span() coarsens with age.
+ok('span: 12s, 14m 02s, 3h 05m, 2d 04h', [span(12), span(842), span(11100), span(187200)].join('|') === '12s|14m 02s|3h 05m|2d 04h',
+  [span(12), span(842), span(11100), span(187200)]);
+
+const passed = results.filter((x) => x.pass).length;
+const failed = results.length - passed;
+const controlsFailed = controls.filter((x) => !x.pass).length;
+const gate = failed === 0 && controlsFailed === controls.length && controls.length > 0;
+const lines = [
+  ...results.map((x) => `${x.pass ? 'PASS' : 'FAIL'}  ${x.name}${x.pass ? '' : '  got ' + JSON.stringify(x.got)}`),
+  ...controls.map((x) => `${x.pass ? 'CONTROL PASSED (BAD)' : 'CONTROL FAILED (good)'}  ${x.name}`),
+  '',
+  `${passed} passed, ${failed} failed, ${controlsFailed}/${controls.length} controls failed as required`,
+  `GATE: ${gate ? 'PASS' : 'FAIL'}`,
+];
+const out = document.getElementById('out');
+out.textContent = lines.join('\n');
+out.setAttribute('data-gate', gate ? 'pass' : 'fail');
+</script>

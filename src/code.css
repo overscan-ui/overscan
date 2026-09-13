@@ -1,0 +1,191 @@
+/* ---- CASCADE LAYER ------------------------------------------------------
+ *
+ * Everything the kit ships sits in ONE layer named `overscan`, so a consumer's
+ * own CSS beats it without a specificity fight. See src/overscan.css.
+ */
+
+@layer overscan {
+
+/* Code blocks, and the five-class highlighting vocabulary.
+ *
+ * ⚠️ THE KIT SHOWED NO SOURCE AT ALL UNTIL NOW. There was not one <pre> in the
+ * thirty demo pages or the five document pages: it teaches by showing working
+ * instruments. So this is a new surface, and it is styled from the token
+ * contract like every other one rather than being given its own palette.
+ *
+ * 🔴 EVERY COLOUR HERE IS A TOKEN GATED AT 4.5:1 AS TEXT.
+ *
+ * The reference's first version coloured keywords and punctuation with
+ * `--ov-line-strong`. That token is gated at 3.0 because it is a BOUNDARY
+ * colour, the line between two surfaces, and it was never meant to be read.
+ * Measured against `--ov-raised`, the worst surface a code block lands on, it
+ * delivers 3.00 at worst and FAILS 4.5:1 IN NINE OF THE TEN THEMES; only
+ * `vector` passes, at 5.09. Code is text and has to be read like text.
+ *
+ * Measured worst case across all ten themes, on --ov-raised:
+ *     ink 9.00 · dim 6.41 · faint 4.50 · accent 4.50 · accent_2 4.65
+ * All five pass. `line-strong` is not used here and must not be reintroduced;
+ * tools/highlight.py's selftest fails the build if it appears in this file.
+ */
+
+/* ---- the container -------------------------------------------------------
+ *
+ * ⚠️ THE BLOCKS WERE GETTING LOST. On a page of themed instrument rows a code
+ * block with a hairline border and a near-black ground reads as more page, not
+ * as a separate object. It needs to sit apart and it needs to be closable, or
+ * a page with four of them is mostly documentation about itself.
+ *
+ * 🔴 `--ov-line-strong` IS CORRECT HERE and is banned three rules below. That
+ * is not a contradiction: it is gated at 3.0 as a BOUNDARY colour, which is
+ * exactly what a border is. It fails only when it is asked to be TEXT.
+ */
+
+/* ⚠️ THE INSET IS WHAT MAKES IT AN OBJECT. Full-bleed, the block's border sits
+ * flush against the themed rows above and below it and reads as one more band
+ * in the stack, which is what "the code blocks get lost" meant: it was not the
+ * border being too quiet, it was the block having no margin to be separate in.
+ * The inset matches the page's own text column, so the block lines up with the
+ * prose that introduces the page rather than with the instrument grid. */
+.ov-example {
+  padding-inline: 26px;
+  padding-block: 10px;
+}
+
+.ov-code {
+  margin-block: 18px;
+  border: 1px solid var(--ov-line-strong);
+  /* The block is a raised surface sitting on the page's own ground, so it
+   * reads as an object placed on the page rather than a hole cut into it. */
+  background: var(--ov-raised);
+}
+
+/* ---- the summary is the toggle ----------------------------------------- */
+
+.ov-code__cap {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 10px;
+  color: var(--ov-dim);
+  font: var(--ov-size-1)/1.4 var(--ov-font-mono);
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  cursor: pointer;
+  /* list-style is how a <summary> marker is removed; ::-webkit-details-marker
+   * is the old Safari spelling and still needed. */
+  list-style: none;
+}
+
+.ov-code__cap::-webkit-details-marker { display: none; }
+
+/* ⭐ ov-tree's twisty, not a new one. The kit already has a vocabulary for
+ * open and closed, and a second one would be decoration without a rule. */
+.ov-code__cap::before {
+  content: '\25B8';
+  color: var(--ov-accent);
+  inline-size: 1em;
+  flex: 0 0 auto;
+}
+
+.ov-code[open] > .ov-code__cap::before { content: '\25BE'; }
+
+.ov-code[open] > .ov-code__cap { border-block-end: 1px solid var(--ov-line); }
+
+.ov-code__cap:hover { color: var(--ov-ink); }
+
+/* The kit's rule for anything clipped or bounded: inset the ring so it is not
+ * eaten by the border. */
+.ov-code__cap:focus-visible {
+  outline: 2px solid var(--ov-accent);
+  outline-offset: -2px;
+}
+
+.ov-code__pre {
+  margin: 0;
+  padding: 10px;
+  /* Wide samples scroll inside the block. The page must never scroll. */
+  overflow-x: auto;
+  color: var(--ov-ink);
+  font: var(--ov-size-2)/1.55 var(--ov-font-mono);
+  tab-size: 2;
+}
+
+/* ---- the four spellings, as tabs ----------------------------------------
+ *
+ * ⭐ THE TAB CHROME IS THE KIT'S OWN `.ov-tabs`, enhanced in place by
+ * src/ov-tabs.js, so the kit documents itself with its own component rather
+ * than a tab widget invented for the docs. Only the panel needs styling here.
+ *
+ * ⚠️ The first panel is visible in the markup, so a reader whose JavaScript
+ * never arrives sees the Native spelling: the one that needs no framework, no
+ * wrapper and no build step.
+ */
+
+.ov-code .ov-tabs { border-block-end: 1px solid var(--ov-line); }
+
+.ov-code__panel[hidden] { display: none; }
+
+/* ---- the five classes. Roles are defined in tools/highlight.py ----------
+ *
+ * ⭐ TWO SELECTORS EACH, BECAUSE THE COLOURS AND THE SURFACE ARE SEPARATE
+ * THINGS. `.ov-code` is a block of chrome: border, ground, caption, tabs.
+ * `[data-ov-code]` is only a promise that highlighted spans are inside, for
+ * code that is already sitting in something with its own shape. The home
+ * page's hero caption is the case that needed it: it is a `<figcaption>` in
+ * its own layout, and the alternative was either to wear `.ov-code` and then
+ * spend three declarations unwearing the border, ground and margin, or to
+ * copy the four colour rules into gen_home.py, where they would be a second
+ * definition of the palette free to drift from this one.
+ *
+ * ⚠️ Both spellings are (0,2,0), so neither wins by accident.
+ *
+ * ⭐ EACH ROLE READS ITS OWN TOKEN, falling back to the theme's text palette.
+ * A code block is its own surface and does not inherit the page's text
+ * colours: mapping the roles straight onto --ov-accent / --ov-ink collapsed
+ * two of them to ΔE 1.8 in `terminal`, which is monochrome by design and is
+ * the theme every block on the site renders in. tokens.css states the four
+ * per theme; the rule that generates them is written down there.
+ *
+ * ⚠️ Read at the USE SITE with a fallback, not stored as a derived property.
+ * A custom property holding a `var()` is substituted where it is DECLARED, so
+ * a single `:root` definition would freeze the terminal value for all ten. */
+
+/* an identifier from the API: tag, component, attribute, prop, handler */
+.ov-code .t-name, [data-ov-code] .t-name  { color: var(--ov-code-name, var(--ov-accent)); }
+
+/* a literal string, including an import specifier and an attribute value */
+.ov-code .t-str, [data-ov-code] .t-str   { color: var(--ov-code-str, var(--ov-dim)); }
+
+/* a language keyword.
+ *
+ * 🔴 IT CARRIES WEIGHT, NOT ONLY A COLOUR, for the reason the placeholder
+ * below already gives: `terminal` is a monochrome phosphor theme and the
+ * default one, so `--ov-accent` and `--ov-ink` are #ffffff and #fafafb there,
+ * five parts in 255. Measured ΔE between this role and `t-name` was 1.8 in
+ * terminal and 6.4 in holo, which is not a distinction, it is a rounding
+ * error: every code block on the site read as one flat colour.
+ *
+ * ⚠️ The palette cannot solve it. In a monochrome theme the four roles have
+ * only three usable brightness steps between `--ov-accent` and `--ov-faint`,
+ * and the one token that would add a fourth, `--ov-line-strong`, is gated at
+ * 3.0 as a boundary and fails 4.5 as text. So the fourth channel has to be
+ * something other than colour, and weight costs no contrast at all. */
+.ov-code .t-kw, [data-ov-code] .t-kw    { color: var(--ov-code-kw, var(--ov-ink)); font-weight: 600; }
+
+/* brackets, slashes, equals */
+.ov-code .t-punct, [data-ov-code] .t-punct { color: var(--ov-code-punct, var(--ov-faint)); }
+
+/* A placeholder the reader replaces.
+ *
+ * ⚠️ IT CARRIES A DOTTED UNDERLINE, NOT ONLY A COLOUR. `terminal` is the
+ * default theme and it is a monochrome phosphor theme: it collapses
+ * `--ov-accent-2` onto `--ov-accent` because it has no second hue. A
+ * hue-only distinction therefore disappears in the theme most people see
+ * first. The decoration survives every theme. */
+.ov-code .t-you, [data-ov-code] .t-you {
+  color: var(--ov-dim);
+  text-decoration: underline dotted;
+  text-underline-offset: 3px;
+}
+
+}

@@ -1,0 +1,227 @@
+@layer overscan {
+/* A position labelled by how it was worked out. See ov-position.js for the
+ * refusal. PROTOTYPE.
+ *
+ * 🔴 THE MODE IS THE LOUDEST THING ON THE ELEMENT, and it is a word. The
+ * Royal Majesty's console changed from a fix to dead reckoning "without
+ * changing its display in any perceivable way", so here a derived mode also
+ * changes the FORM of the whole block: its border goes dashed, the
+ * coordinates go dotted-underlined, and the mode badge carries the time of
+ * the last valid fix. The three rings differ in form as well as colour -
+ * accuracy solid, containment dashed, the requirement dotted - and an
+ * unbounded containment is BROKEN, running off the plot, because a closed
+ * ring is a claim it has not earned.
+ */
+
+ov-position {
+  --ov-p-glow: calc(var(--ov-bloom, .2) * 10px);
+  display: grid;
+  gap: 8px;
+  min-inline-size: 0;
+  font-family: var(--ov-font-mono);
+  font-size: var(--ov-size-1, 10px);
+  color: var(--ov-ink);
+}
+
+
+/* ---- the mode badge --------------------------------------------------- */
+
+
+/* ⚠️ NO HEAD BAR HERE. Six elements opened with the same name-and-rules row and
+   the set read as a template rather than as instruments; `.ov-head` in
+   chrome.css is that row for the elements it genuinely suits. This one has a
+   loud readout of its own, so the NAME sits inside it and the declared rules
+   go underneath, where they are a footnote to the reading rather than a
+   heading above it. */
+/* The stamp holds the MODE and nothing else: a badge that swallows a whole
+   sentence stops being a stamp, and inverting it made the label white on
+   white. The name sits above it and the explanation below, in the ink. */
+.ov-position__modeline { display: grid; gap: 4px; justify-items: start; }
+.ov-position__modeline .ov-position__why { color: var(--ov-ink); letter-spacing: .06em; line-height: 1.45; }
+ov-position[data-ov-derived] .ov-position__modeline .ov-position__why { color: var(--ov-alarm); }
+
+.ov-position__label {
+  grid-column: 1 / -1;
+  font-size: var(--ov-size-1, 10px);
+  letter-spacing: .18em;
+  text-transform: uppercase;
+  opacity: .75;
+}
+.ov-position__rulebox {
+  color: var(--ov-faint);
+  letter-spacing: .08em;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+.ov-position__modeword {
+  font-size: calc(var(--ov-size-2, 12px) * 1.4);
+  letter-spacing: .12em;
+  text-shadow: 0 0 var(--ov-p-glow) currentColor;
+}
+.ov-position__why { color: var(--ov-ink); letter-spacing: .06em; line-height: 1.45; overflow-wrap: anywhere; }
+.ov-position__why:empty { display: none; }
+
+/* 🔴 A derived position does not look like a fix. */
+ov-position[data-ov-derived] .ov-position__why { color: var(--ov-alarm); }
+
+/* ---- the rings and the reading ---------------------------------------- */
+
+.ov-position__body {
+  display: grid;
+  grid-template-columns: minmax(140px, 40%) 1fr;
+  gap: 12px;
+  align-items: start;
+}
+
+/* Square, because these are circles and a stretched circle is a lie about
+   which direction the error points. */
+.ov-position__rings {
+  position: relative;
+  aspect-ratio: 1;
+  min-inline-size: 0;
+  border: var(--ov-rule, 1px) solid var(--ov-line-strong);
+  background: var(--ov-field);
+  overflow: hidden;
+}
+.ov-position__rings[hidden] { display: none; }
+.ov-position__svg { display: block; inline-size: 100%; block-size: 100%; }
+.ov-position__svg circle, .ov-position__svg path, .ov-position__svg line { fill: none; vector-effect: non-scaling-stroke; }
+.ov-position__svg [hidden] { display: none; }
+
+/* Accuracy: where it probably is. Solid. */
+.ov-position__acc { stroke: var(--ov-accent); stroke-width: 1.5; }
+/* Containment: how far out it could be unnoticed. Dashed, and wider, because
+   it is the bigger claim. */
+.ov-position__cont { stroke: var(--ov-alarm); stroke-width: 1.5; stroke-dasharray: 6 4; }
+/* 🔴 UNBOUNDED: broken into four arcs that do not close, at the plot edge.
+   A ring nobody has bounded must not draw as a ring. */
+.ov-position__cont[data-ov-unbounded] {
+  stroke-dasharray: 30 32;
+  stroke-width: 2.5;
+  opacity: .9;
+}
+/* The requirement: not a measurement at all, so dotted and quiet. */
+.ov-position__req { stroke: var(--ov-dim); stroke-width: 1; stroke-dasharray: 1 3; }
+ov-position[data-ov-state]:has(.ov-position__notfor:not(:empty)) .ov-position__req { stroke: var(--ov-alarm); }
+
+.ov-position__pt { stroke: var(--ov-accent); stroke-width: 2; }
+.ov-position__secpt { fill: var(--ov-ink); stroke: var(--ov-ink); stroke-width: 1; }
+.ov-position__link { stroke: var(--ov-ink); stroke-width: 1; stroke-dasharray: 2 2; opacity: .7; }
+
+/* Every radius is also a word. A KEYED STACK in the corner rather than a
+   label on each ring: in normal flow two rows cannot overprint, which is what
+   the on-ring version did whenever two radii came close - and two radii coming
+   close is exactly the case this element is for. Each key is drawn with its
+   own ring's stroke, so a row still says which circle it belongs to. */
+.ov-position__ringlabels {
+  position: absolute;
+  inset-block-start: 4px;
+  inset-inline-start: 5px;
+  display: grid;
+  gap: 1px;
+  justify-items: start;
+  pointer-events: none;
+  max-inline-size: calc(100% - 10px);
+}
+.ov-position__rl {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 0 3px;
+  font-size: 8px;
+  letter-spacing: .08em;
+  white-space: nowrap;
+  max-inline-size: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  background: color-mix(in srgb, var(--ov-case, #000) 84%, transparent);
+  font-variant-numeric: tabular-nums;
+}
+/* The key IS the ring's stroke, so the row and the circle are one claim. */
+.ov-position__rl i {
+  inline-size: 14px;
+  block-size: 0;
+  flex: none;
+  border-block-start: 2px solid currentColor;
+}
+.ov-position__rl[data-ring="acc"] { color: var(--ov-accent); }
+.ov-position__rl[data-ring="cont"] { color: var(--ov-alarm); }
+.ov-position__rl[data-ring="cont"] i { border-block-start-style: dashed; }
+.ov-position__rl[data-ring="req"] { color: var(--ov-dim); }
+.ov-position__rl[data-ring="req"] i { border-block-start-style: dotted; }
+
+.ov-position__read { display: grid; gap: 6px; min-inline-size: 0; }
+.ov-position__latlon {
+  font-size: calc(var(--ov-size-2, 12px) * 1.25);
+  letter-spacing: .04em;
+  font-variant-numeric: tabular-nums;
+  white-space: pre;
+  overflow-x: auto;
+}
+/* A derived coordinate is underlined dotted: the digits are real, what made
+   them is not a measurement. */
+ov-position[data-ov-derived] .ov-position__latlon {
+  text-decoration: underline dotted var(--ov-alarm);
+  text-underline-offset: 3px;
+}
+.ov-position__cap { color: var(--ov-faint); letter-spacing: .08em; }
+.ov-position__cap:empty { display: none; }
+
+.ov-position__facts { margin: 0; display: grid; gap: 5px; min-inline-size: 0; }
+.ov-position__facts > div {
+  display: grid;
+  gap: 1px;
+  padding-inline-start: 7px;
+  border-inline-start: 3px solid var(--ov-line);
+}
+.ov-position__facts > div[hidden] { display: none; }
+.ov-position__facts dt { color: var(--ov-faint); letter-spacing: .14em; }
+.ov-position__facts dd { margin: 0; letter-spacing: .04em; overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }
+.ov-position__facts > div:nth-child(1) { border-inline-start-color: var(--ov-accent); }
+.ov-position__facts > div:nth-child(2) { border-inline-start-color: var(--ov-alarm); border-inline-start-style: dashed; }
+.ov-position__contv[data-ov-unbounded] { color: var(--ov-alarm); }
+
+/* Integrity, graded, with its form as well as its word. */
+ov-position[data-ov-integrity="high"] .ov-position__facts > div:nth-child(3) { border-inline-start-color: var(--ov-accent); }
+ov-position[data-ov-integrity="medium"] .ov-position__facts > div:nth-child(3) { border-inline-start-color: var(--ov-accent); border-inline-start-style: dashed; }
+ov-position[data-ov-integrity="low"] .ov-position__facts > div:nth-child(3) { border-inline-start-color: var(--ov-alarm); border-inline-start-style: dashed; }
+ov-position:is([data-ov-integrity="none"], :not([data-ov-integrity])) .ov-position__facts > div:nth-child(3) {
+  border-inline-start-color: var(--ov-alarm);
+  border-inline-start-style: dotted;
+}
+.ov-position__secrow[data-ov-shares] { border-inline-start-color: var(--ov-alarm); border-inline-start-style: dotted; }
+
+/* ---- what it may not be used for -------------------------------------- */
+
+.ov-position__notfor {
+  padding: 5px 9px;
+  border: var(--ov-rule, 1px) dashed var(--ov-alarm);
+  color: var(--ov-alarm);
+  letter-spacing: .1em;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+.ov-position__notfor:empty { display: none; }
+
+.ov-position__foot { color: var(--ov-alarm); letter-spacing: .08em; overflow-wrap: anywhere; }
+.ov-position__foot:empty { display: none; }
+
+/* Live region: heard, never seen. */
+.ov-position__say {
+  position: absolute;
+  inline-size: 1px;
+  block-size: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+/* Narrow: the rings go full width above the reading rather than shrinking to
+   a coin, and the coordinates step down a size. */
+@container (max-width: 400px) {
+  .ov-position__body { grid-template-columns: 1fr; }
+  .ov-position__rings { max-inline-size: 220px; }
+  .ov-position__latlon { font-size: var(--ov-size-2, 12px); }
+  .ov-position__modeword { font-size: var(--ov-size-2, 12px); }
+}
+}

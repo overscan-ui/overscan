@@ -1,0 +1,198 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>ov-quorum harness</title>
+<!-- The refusal gate for the ov-quorum element. Serve the repo root
+     (tools/serve.py) and open /tools/quorum-test/. The last line must read
+     GATE: PASS, and every CONTROL (an assertion false on purpose) must fail. -->
+<link rel="stylesheet" href="../../src/tokens.css">
+<link rel="stylesheet" href="../../src/chrome.css">
+<link rel="stylesheet" href="../../src/quorum.css">
+<style>
+  body { background: #06060a; color: #cfe; font: 13px ui-monospace, monospace; padding: 20px; }
+  pre { white-space: pre-wrap; }
+  #stage { max-inline-size: 640px; container-type: inline-size; }
+</style>
+<div id="stage" data-ov-theme="aegis"></div>
+<pre id="out">running...</pre>
+<script>
+  // Count animation frames asked for: the element must ask for none.
+  window.__raf = 0;
+  const raf = window.requestAnimationFrame.bind(window);
+  window.requestAnimationFrame = (f) => { window.__raf++; return raf(f); };
+</script>
+<script>
+  // 🔴 A THROW IS A RED GATE, NOT A HANG. Without this an element that throws
+  // mid-run leaves "running..." in the block, which reads as neither pass nor
+  // fail - and a gate whose failure looks like a stall cannot be trusted.
+  const fatal = (what) => {
+    const out = document.getElementById('out');
+    if (out) out.textContent = `THREW: ${what}\n\nGATE: FAIL`;
+  };
+  addEventListener('error', (e) => fatal(e.error?.stack || e.message || e));
+  addEventListener('unhandledrejection', (e) => fatal(e.reason?.stack || e.reason));
+</script>
+<script type="module">
+// ?src=mut/<mutant>.js runs the same gate against a copy with one
+// refusal broken on purpose: every mutant must turn the gate red.
+const SRC = new URLSearchParams(location.search).get('src') || '../../src/ov-quorum.js';
+// ⚠️ `mut/x.js` is a BARE SPECIFIER to the module loader and will not
+// resolve; it has to be made a URL against this page first.
+const { OvQuorum } = await import(new URL(SRC, location.href).href);
+
+const stage = document.getElementById('stage');
+const results = [];
+const ok = (name, cond, got) => results.push({ name, pass: !!cond, got });
+const controls = [];
+const control = (name, cond, got) => controls.push({ name, pass: !!cond, got });
+const settle = () => new Promise((r) => setTimeout(r, 0));
+
+let NOW = 1_800_000_000_000;
+OvQuorum.now = () => NOW;
+const step = (s = 1) => { NOW += s * 1000; };
+
+const make = (attrs) => {
+  const el = document.createElement('ov-quorum');
+  for (const [k, v] of Object.entries(attrs)) el.setAttribute(k, v);
+  stage.replaceChildren(el);
+  return el;
+};
+const THREE = { label: 'AOA', unit: '°', channels: 'ADR 1, ADR 2, ADR 3', tolerance: '1.5', 'fail-after': '3' };
+const feed = (q, a, b, c) => { q.readings = [{ id: 'ADR 1', value: a }, { id: 'ADR 2', value: b }, { id: 'ADR 3', value: c }]; };
+const member = (q, id) => q.querySelector(`[data-ov-channel="${id}"]`)?.getAttribute('data-ov-member');
+const shown = (q) => q.querySelector('.ov-quorum__value').textContent;
+const said = (q) => q.querySelector('.ov-quorum__say').textContent;
+let q;
+
+// 1. Three agree: a vote, labelled as one.
+q = make(THREE);
+feed(q, 4.1, 4.2, 4.4);
+await settle();
+ok('a fresh element that starts in agreement announces nothing', said(q) === '', said(q));
+ok('three that agree are VOTED', q.getAttribute('data-ov-state') === 'voted', q.getAttribute('data-ov-state'));
+ok('⭐ the output is never a bare reading: it carries rule and channels', q.querySelector('.ov-quorum__tag').textContent === 'VOTED · MEDIAN OF 3 · ADR 1, ADR 2, ADR 3', q.querySelector('.ov-quorum__tag').textContent);
+ok('...and the voted qualifier, on the element', q.getAttribute('data-ov-qualified') === 'voted', q.getAttribute('data-ov-qualified'));
+ok('...and in its accessible name', /^AOA: 4\.2 °, voted, median of 3 of ADR 1, ADR 2, ADR 3$/.test(q.getAttribute('aria-label')), q.getAttribute('aria-label'));
+ok('the host is a group, not an img (its rows must stay readable)', q.getAttribute('role') === 'group', q.getAttribute('role'));
+ok('the declared rule, tolerance, persistence and fail count are printed', q.querySelector('.ov-quorum__rulebox').textContent === 'MEDIAN · ±1.5 · 0s · 3 STRIKES', q.querySelector('.ov-quorum__rulebox').textContent);
+ok('the scale shows the band, the vote and one marker per channel', q.querySelector('.ov-quorum__zone') !== null && q.querySelector('.ov-quorum__tick') !== null && q.querySelectorAll('.ov-quorum__mark').length === 3, q.querySelectorAll('.ov-quorum__mark').length);
+control('CONTROL: the voted value is shown with no qualifier (must fail)', q.getAttribute('data-ov-qualified') === null, q.getAttribute('data-ov-qualified'));
+
+// 2. One deviates: announced, counted, still in the set.
+step(); feed(q, 4.2, 9.0, 4.3);
+await settle();
+ok('a deviant channel is OUT-VOTED, not dropped', member(q, 'ADR 2') === 'out' && q.querySelector('[data-ov-channel="ADR 2"]'), member(q, 'ADR 2'));
+ok('...its distance from the vote is said', /from the vote, beyond ±1\.5, miscompare 1 of 3/.test(q.querySelector('[data-ov-channel="ADR 2"] .ov-quorum__cwhy').textContent), q.querySelector('[data-ov-channel="ADR 2"] .ov-quorum__cwhy').textContent);
+ok('⭐ the rejection is announced, not absorbed', /ADR 2 out-voted, miscompare 1 of 3/.test(said(q)), said(q));
+ok('...and the vote stands on the other two', q.getAttribute('data-ov-state') === 'voted' && q.report.outvoted.join() === 'ADR 2', q.report);
+control('CONTROL: an out-voted channel is silently IN SET (must fail)', member(q, 'ADR 2') === 'in', member(q, 'ADR 2'));
+
+// 3. Three episodes: DECLARED FAILED, and still in the set.
+for (let i = 0; i < 2; i++) { step(); feed(q, 4.2, 4.2, 4.3); step(); feed(q, 4.2, 9.0, 4.3); }
+await settle();
+ok('three miscompares: DECLARED FAILED', member(q, 'ADR 2') === 'failed', member(q, 'ADR 2'));
+ok('⭐ ...and still in the set until someone removes it', q.report.channels.find((c) => c.id === 'ADR 2').removedBy === null && /in the set until someone removes it/.test(q.textContent), q.report.channels);
+ok('...announced as such', /declared failed after 3 miscompares/.test(said(q)), said(q));
+
+// 4. Removal needs a name.
+ok('a removal that does not say who is refused', q.remove('ADR 2') === false && member(q, 'ADR 2') === 'failed' && /refused: it must say who/.test(q.textContent), member(q, 'ADR 2'));
+ok('a named removal takes it out, and says by whom', q.remove('ADR 2', 'CREW') === true && member(q, 'ADR 2') === 'removed' && /removed by CREW at/.test(q.textContent), member(q, 'ADR 2'));
+step(); feed(q, 4.2, 9.0, 4.3);
+ok('the two left agree: MEAN OF 2, naming them', q.querySelector('.ov-quorum__tag').textContent === 'VOTED · MEAN OF 2 · ADR 1, ADR 3', q.querySelector('.ov-quorum__tag').textContent);
+
+// 5. Two left that disagree: no vote, no number.
+step(); feed(q, 4.2, 9.0, 7.8);
+await settle();
+ok('⭐ two left that disagree: NO MAJORITY', q.getAttribute('data-ov-state') === 'nomajority' && shown(q) === 'NO MAJORITY', shown(q));
+ok('...the output shows no number at all', !/\d/.test(shown(q)) && !/\d\.\d/.test(q.getAttribute('aria-label').split(',')[0]), [shown(q), q.getAttribute('aria-label')]);
+ok('...both values stay visible in the rows', q.querySelector('[data-ov-channel="ADR 1"] .ov-quorum__cval').textContent === '4.2' && q.querySelector('[data-ov-channel="ADR 3"] .ov-quorum__cval').textContent === '7.8', null);
+ok('...and nobody is charged a miscompare for it', q.report.channels.find((c) => c.id === 'ADR 3').miscompares === 0, q.report.channels);
+control('CONTROL: two that disagree are averaged (must fail)', shown(q) === (6.0).toFixed(1), shown(q));
+
+// 6. XL888T: two frozen agree against one that moves.
+q = make({ ...THREE, deadband: '0.05', 'frozen-after': '5' });
+for (let i = 0; i < 8; i++) { feed(q, 4.0, 4.02, 4.0 + i * 1.2); step(); }
+feed(q, 4.0, 4.02, 13.6);
+ok('⭐ two stuck sources that agree do not win: the mover reads ONLY, NOT COMPARED', q.getAttribute('data-ov-state') === 'single' && q.querySelector('.ov-quorum__tag').textContent === 'ADR 3 ONLY · NOT COMPARED', q.querySelector('.ov-quorum__tag').textContent);
+ok('...saying which, and why', /ADR 1 AND ADR 2 AGREE, BOTH FROZEN: stuck sources are not counted as agreeing/.test(q.querySelector('.ov-quorum__why').textContent), q.querySelector('.ov-quorum__why').textContent);
+ok('...each stuck channel reads FROZEN', member(q, 'ADR 1') === 'frozen' && member(q, 'ADR 2') === 'frozen', [member(q, 'ADR 1'), member(q, 'ADR 2')]);
+control('CONTROL: the frozen pair wins the vote (must fail)', q.getAttribute('data-ov-state') === 'voted', q.getAttribute('data-ov-state'));
+// The case the demo caught: the mover drifts WITHIN tolerance of the pair.
+q = make({ ...THREE, deadband: '0.05', 'frozen-after': '5' });
+for (let i = 0; i < 8; i++) { feed(q, 4.0, 4.02, 4.0 + (i % 2) * 0.6); step(); }
+ok('⭐ ...not even when the moving one happens to agree with them', q.getAttribute('data-ov-state') === 'single' && q.querySelector('.ov-quorum__tag').textContent === 'ADR 3 ONLY · NOT COMPARED', [q.getAttribute('data-ov-state'), q.querySelector('.ov-quorum__tag').textContent]);
+control('CONTROL: a frozen pair plus an agreeing mover is a median of 3 (must fail)', q.querySelector('.ov-quorum__tag').textContent.includes('MEDIAN OF 3'), q.querySelector('.ov-quorum__tag').textContent);
+
+// 7. A spike is not a disagreement (persist).
+q = make({ ...THREE, persist: '3' });
+feed(q, 4.0, 4.1, 4.2);
+step(); feed(q, 4.0, 9.0, 4.2);
+ok('a deviation shorter than `persist` is out-voted but not yet counted', member(q, 'ADR 2') === 'out' && q.report.channels.find((c) => c.id === 'ADR 2').miscompares === 0 && /0s of 3s before it counts/.test(q.textContent), q.report.channels);
+step(); feed(q, 4.0, 4.1, 4.2);
+step(); feed(q, 4.0, 9.0, 4.2);
+step(3); feed(q, 4.0, 9.0, 4.2);
+ok('...and counted once it has lasted `persist`', q.report.channels.find((c) => c.id === 'ADR 2').miscompares === 1, q.report.channels);
+
+// 8. One channel: its value, from it only, NOT COMPARED.
+q = make(THREE);
+q.readings = [{ id: 'ADR 1', value: 4.1 }, { id: 'ADR 2', value: null }, { id: 'ADR 3', value: null }];
+ok('one current channel: shown, from that channel only, NOT COMPARED', q.getAttribute('data-ov-state') === 'single' && q.querySelector('.ov-quorum__tag').textContent === 'ADR 1 ONLY · NOT COMPARED', q.querySelector('.ov-quorum__tag').textContent);
+ok('⭐ ...and the scale draws NO tolerance band: nothing was compared', q.querySelector('.ov-quorum__zone') === null && q.querySelector('.ov-quorum__mark') !== null, q.querySelector('.ov-quorum__scale').innerHTML.slice(0, 120));
+control('CONTROL: a band is drawn around an uncompared reading (must fail)', q.querySelector('.ov-quorum__zone') !== null, null);
+ok('...the dropouts read NO DATA', member(q, 'ADR 2') === 'none', member(q, 'ADR 2'));
+
+// 9. No tolerance: agreement is not judged.
+q = make({ label: 'AOA', channels: 'ADR 1, ADR 2, ADR 3' });
+feed(q, 4.1, 4.2, 4.4);
+ok('⭐ with no tolerance declared, nothing is compared (never a default)', q.getAttribute('data-ov-state') === 'uncompared' && shown(q) === 'NOT COMPARED' && /no tolerance declared/.test(q.textContent), shown(q));
+
+// 10. Stale and all-null.
+q = make({ ...THREE, 'max-age': '2' });
+feed(q, 4.1, 4.2, 4.4);
+step(3); q.readings = [{ id: 'ADR 1', value: 4.1 }, { id: 'ADR 3', value: 4.3 }];
+ok('a channel past max-age is STALE, with its age, and out of the vote', member(q, 'ADR 2') === 'stale' && /last reading 3s old, limit 2s/.test(q.textContent) && q.querySelector('.ov-quorum__tag').textContent === 'VOTED · MEAN OF 2 · ADR 1, ADR 3', member(q, 'ADR 2'));
+feed(q, null, null, null);
+ok('no current channel: NO DATA, refused', q.getAttribute('data-ov-state') === 'none' && q.getAttribute('data-ov-refusal') === 'unknown' && shown(q) === 'NO DATA', shown(q));
+
+// 11. Several rejections in one update are heard as one joined message.
+q = make({ label: 'GPC', channels: 'GPC 1, GPC 2, GPC 3, GPC 4, GPC 5', tolerance: '1' });
+q.readings = ['GPC 1', 'GPC 2', 'GPC 3', 'GPC 4', 'GPC 5'].map((id) => ({ id, value: 10 }));
+await settle();
+step(); q.readings = [{ id: 'GPC 1', value: 10 }, { id: 'GPC 2', value: 20 }, { id: 'GPC 3', value: 10 }, { id: 'GPC 4', value: 30 }, { id: 'GPC 5', value: 10 }];
+await settle();
+ok('two rejections in one update: one joined announcement naming both', /GPC 2 out-voted.*; GPC 4 out-voted/.test(said(q)), said(q));
+
+// 12. Undeclared and malformed readings are counted, not used.
+q = make(THREE);
+q.readings = [{ id: 'ADR 1', value: 4 }, { id: 'ADR 9', value: 4 }, 'junk'];
+ok('an undeclared channel and a malformed reading are said, not voted', /1 undeclared channel ignored: ADR 9 · 1 malformed reading ignored/.test(q.textContent), q.querySelector('.ov-quorum__foot').textContent);
+
+// 13. Nothing per frame.
+/* 🔴 THE CLAIM IS ABOUT THIS ELEMENT'S CODE, SO IT IS CHECKED THERE. A
+ * page-wide rAF count stopped being a statement about this element the moment
+ * ov-source began driving feeds on a frame ticker: it was measuring whether
+ * the page had arrived yet, and passing by luck. Nor can a delta isolate it,
+ * because that ticker keeps counting in the background. So the assertion is
+ * static and exact - this module never asks for a frame at all. */
+{
+  const text = await (await fetch(new URL(SRC, location.href).href)).text();
+  const asks = /requestAnimationFrame/.test(text);
+  ok('the element never asks for an animation frame, anywhere in its source', !asks, asks);
+  control('CONTROL: the element draws on a frame (must fail)', asks, asks);
+}
+
+// 14. Narrow: a 360px column does not scroll sideways.
+q = make({ ...THREE, 'fail-after': '3' });
+feed(q, 4.1, 9.2, 4.3);
+stage.style.inlineSize = '360px';
+await settle();   // not a frame: headless virtual time runs no rAF; scrollWidth forces layout
+ok('at 360px nothing overflows sideways', q.scrollWidth <= 361, q.scrollWidth);
+
+const passed = results.filter((r) => r.pass).length;
+const failed = results.filter((r) => !r.pass);
+const cfailed = controls.filter((c) => !c.pass).length;
+const lines = results.map((r) => `${r.pass ? 'PASS' : 'FAIL'} ${r.name}${r.pass ? '' : '  got: ' + JSON.stringify(r.got)}`)
+  .concat(controls.map((c) => `${c.pass ? 'CONTROL PASSED (BAD)' : 'control failed (good)'} ${c.name}`));
+const gate = failed.length === 0 && cfailed === controls.length;
+lines.push('', `${passed} passed, ${failed.length} failed, ${cfailed}/${controls.length} controls failed as required`, `GATE: ${gate ? 'PASS' : 'FAIL'}`);
+document.getElementById('out').textContent = lines.join('\n');
+</script>

@@ -1,0 +1,91 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>ov-annunciator harness</title>
+<!-- The spoken-alert gate for src/ov-annunciator.js. Serve the repo root
+     (python3 tools/serve.py) and open tools/annunciator-test/. The last line
+     must read GATE: PASS, and every CONTROL (an assertion false on purpose)
+     must fail. Checks what reaches the live regions, not what a screen reader
+     then does with it. -->
+<link rel="stylesheet" href="../../src/tokens.css">
+<link rel="stylesheet" href="../../src/annunciator.css">
+<style>
+  body { background: #06060a; color: #cfe; font: 13px ui-monospace, monospace; padding: 20px; }
+  pre { white-space: pre-wrap; }
+  #stage { max-inline-size: 520px; }
+</style>
+<div id="stage" data-ov-theme="industrial"></div>
+<pre id="out">running...</pre>
+<script type="module">
+import '../../src/ov-annunciator.js';
+await customElements.whenDefined('ov-annunciator');
+
+const stage = document.getElementById('stage');
+const results = [];
+const ok = (name, cond, got) => results.push({ name, pass: !!cond, got });
+const controls = [];
+const control = (name, cond, got) => controls.push({ name, pass: !!cond, got });
+const settle = () => new Promise((r) => setTimeout(r, 0));
+const fresh = () => {
+  const el = document.createElement('ov-annunciator');
+  el.setAttribute('tiles', 'HYD PRESS, CABIN ALT, COOLANT');
+  stage.replaceChildren(el);
+  return el;
+};
+const [URGENT, POLITE] = [0, 1];
+const region = (el, i) => el.querySelectorAll('.ov-annunciator__say')[i].textContent;
+let el;
+
+// 1. One trip is said on its own, in the assertive region.
+el = fresh();
+el.conditions = [{ label: 'HYD PRESS', value: true }];
+await settle();
+ok('one trip is said once', region(el, URGENT) === 'HYD PRESS alert', region(el, URGENT));
+
+// 2. THE BUG: three trips in one update were written one after another into
+// the same region, and only the last survived to be read.
+el = fresh();
+el.conditions = [
+  { label: 'HYD PRESS', value: true },
+  { label: 'CABIN ALT', value: true },
+  { label: 'COOLANT', value: true },
+];
+await settle();
+const said = region(el, URGENT);
+ok('three trips in one update are all said', ['HYD PRESS', 'CABIN ALT', 'COOLANT'].every((l) => said.includes(`${l} alert`)), said);
+ok('...in the order they tripped', said === 'HYD PRESS alert. CABIN ALT alert. COOLANT alert', said);
+control('CONTROL: only the last trip reaches the region (must fail)', said === 'COOLANT alert', said);
+
+// 3. A dropout of the whole source is the same batch on the polite region.
+el.conditions = [
+  { label: 'HYD PRESS', value: null },
+  { label: 'CABIN ALT', value: null },
+  { label: 'COOLANT', value: null },
+];
+await settle();
+const lost = region(el, POLITE);
+ok('a whole dropout names every tile it took', ['HYD PRESS', 'CABIN ALT', 'COOLANT'].every((l) => lost.includes(l)), lost);
+control('CONTROL: a whole dropout is spoken as one tile (must fail)', lost === 'COOLANT no reading', lost);
+
+// 4. Separate tasks are separate announcements, not one growing string.
+el = fresh();
+el.set('HYD PRESS', true);
+await settle();
+el.set('CABIN ALT', true);
+await settle();
+ok('a later trip replaces, it does not append', region(el, URGENT) === 'CABIN ALT alert', region(el, URGENT));
+
+const passed = results.filter((x) => x.pass).length;
+const failed = results.length - passed;
+const controlsFailed = controls.filter((x) => !x.pass).length;
+const gate = failed === 0 && controlsFailed === controls.length && controls.length > 0;
+const lines = [
+  ...results.map((x) => `${x.pass ? 'PASS' : 'FAIL'}  ${x.name}${x.pass ? '' : '  got ' + JSON.stringify(x.got)}`),
+  ...controls.map((x) => `${x.pass ? 'CONTROL PASSED (BAD)' : 'CONTROL FAILED (good)'}  ${x.name}`),
+  '',
+  `${passed} passed, ${failed} failed, ${controlsFailed}/${controls.length} controls failed as required`,
+  `GATE: ${gate ? 'PASS' : 'FAIL'}`,
+];
+const out = document.getElementById('out');
+out.textContent = lines.join('\n');
+out.setAttribute('data-gate', gate ? 'pass' : 'fail');
+</script>

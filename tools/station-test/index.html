@@ -1,0 +1,188 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>ov-station harness</title>
+<!-- The refusal gate for the ov-station element. Serve the repo root
+     (tools/serve.py) and open /tools/station-test/. The last line must read
+     GATE: PASS, and every CONTROL (an assertion false on purpose) must fail. -->
+<link rel="stylesheet" href="../../src/tokens.css">
+<link rel="stylesheet" href="../../src/chrome.css">
+<link rel="stylesheet" href="../../src/station.css">
+<style>
+  body { background: #06060a; color: #cfe; font: 13px ui-monospace, monospace; padding: 20px; }
+  pre { white-space: pre-wrap; }
+  #stage { max-inline-size: 720px; container-type: inline-size; }
+</style>
+<div id="stage" data-ov-theme="terminal"></div>
+<pre id="out">running...</pre>
+<script>
+  window.__raf = 0;
+  const raf = window.requestAnimationFrame.bind(window);
+  window.requestAnimationFrame = (f) => { window.__raf++; return raf(f); };
+</script>
+<script>
+  // 🔴 A THROW IS A RED GATE, NOT A HANG. Without this an element that throws
+  // mid-run leaves "running..." in the block, which reads as neither pass nor
+  // fail - and a gate whose failure looks like a stall cannot be trusted.
+  const fatal = (what) => {
+    const out = document.getElementById('out');
+    if (out) out.textContent = `THREW: ${what}\n\nGATE: FAIL`;
+  };
+  addEventListener('error', (e) => fatal(e.error?.stack || e.message || e));
+  addEventListener('unhandledrejection', (e) => fatal(e.reason?.stack || e.reason));
+</script>
+<script type="module">
+const SRC = new URLSearchParams(location.search).get('src') || '../../src/ov-station.js';
+// ⚠️ `mut/x.js` is a BARE SPECIFIER to the module loader and will not
+// resolve; it has to be made a URL against this page first.
+const { OvStation } = await import(new URL(SRC, location.href).href);
+
+const stage = document.getElementById('stage');
+const results = [];
+const ok = (name, cond, got) => results.push({ name, pass: !!cond, got });
+const controls = [];
+const control = (name, cond, got) => controls.push({ name, pass: !!cond, got });
+const settle = () => new Promise((r) => setTimeout(r, 0));
+
+let NOW = 1_800_000_000_000;
+OvStation.now = () => NOW;
+const step = (s = 1) => { NOW += s * 1000; };
+
+const ELS = 'wind, visibility, cloud, temperature, lightning, rvr';
+const make = (attrs = {}) => {
+  const el = document.createElement('ov-station');
+  el.setAttribute('label', 'KXYZ');
+  el.setAttribute('elements', ELS);
+  for (const [k, v] of Object.entries(attrs)) el.setAttribute(k, v);
+  stage.replaceChildren(el);
+  return el;
+};
+const tile = (st, name) => st.querySelector(`[data-ov-element="${name}"]`);
+const state = (st, name) => tile(st, name)?.getAttribute('data-ov-state');
+const read = (st, name) => tile(st, name)?.querySelector('.ov-station__read').textContent;
+const why = (st, name) => tile(st, name)?.querySelector('.ov-station__why').textContent;
+const said = (st) => st.querySelector('.ov-station__say').textContent;
+const FULL = {
+  age: 120, method: 'automated', maintenance: false,
+  equipment: ['wind', 'visibility', 'cloud', 'temperature', 'rvr'],
+  elements: [
+    { name: 'wind', value: '240/08', unit: 'kt' },
+    { name: 'visibility', value: '9999', unit: 'm' },
+    { name: 'cloud', detected: false },
+    { name: 'temperature', value: '11/06', unit: '°C' },
+    { name: 'rvr', operating: false },
+  ],
+};
+let st;
+
+// 1. A value is a value, and says how it was made.
+st = make({ 'max-age': '3600' });
+st.observation = FULL;
+ok('a reported element shows its value', state(st, 'wind') === 'value' && read(st, 'wind') === '240/08 kt', read(st, 'wind'));
+ok('...with how it was derived', tile(st, 'wind').querySelector('.ov-station__how2').textContent === 'AUTO', tile(st, 'wind').querySelector('.ov-station__how2').textContent);
+ok('the host is a group, not an img (its tiles must stay readable)', st.getAttribute('role') === 'group', st.getAttribute('role'));
+
+// 2-4. The four kinds of nothing, kept apart.
+ok('⭐ a sensor the station does not have: NOT EQUIPPED', state(st, 'lightning') === 'not-equipped' && read(st, 'lightning') === 'NOT EQUIPPED', read(st, 'lightning'));
+ok('...saying its silence is not a claim about the weather', /silence says nothing about the weather/.test(why(st, 'lightning')), why(st, 'lightning'));
+ok('⭐ an equipped sensor that is down: NOT OPERATING', state(st, 'rvr') === 'not-operating' && read(st, 'rvr') === 'NOT OPERATING', read(st, 'rvr'));
+ok('⭐ nothing detected by a machine: NO CLOUD DETECTED, not SKY CLEAR', state(st, 'cloud') === 'ncd' && read(st, 'cloud') === 'NO CLOUD DETECTED', read(st, 'cloud'));
+ok('...and it says it is not a human sky clear', /not a human sky clear/.test(why(st, 'cloud')), why(st, 'cloud'));
+control('CONTROL: an automatic empty sky reads SKY CLEAR (must fail)', read(st, 'cloud') === 'SKY CLEAR', read(st, 'cloud'));
+control('CONTROL: a sensor the station lacks reads DETECTED NONE (must fail)', read(st, 'lightning') === 'DETECTED NONE', read(st, 'lightning'));
+
+// 5. UNABLE TO DETECT is its own answer.
+st = make();
+st.observation = { ...FULL, elements: [...FULL.elements.filter((e) => e.name !== 'cloud'), { name: 'cloud', capable: false }] };
+ok('⭐ running, and the class is beyond it: UNABLE TO DETECT', state(st, 'cloud') === 'incapable' && read(st, 'cloud') === 'UNABLE TO DETECT', read(st, 'cloud'));
+
+// 6. A person's clear is a person's.
+st = make();
+st.observation = { ...FULL, method: 'manual', elements: [...FULL.elements.filter((e) => e.name !== 'cloud'), { name: 'cloud', detected: false, method: 'manual' }] };
+ok('a human observer\'s empty sky reads SKY CLEAR', state(st, 'cloud') === 'clear' && read(st, 'cloud') === 'SKY CLEAR', read(st, 'cloud'));
+ok('...and an element may carry its own method (augmented)', (() => {
+  st.observation = { ...FULL, elements: [{ name: 'visibility', value: '2000', unit: 'm', method: 'augmented' }] };
+  return tile(st, 'visibility').querySelector('.ov-station__how2').textContent === 'AUG';
+})(), tile(st, 'visibility').querySelector('.ov-station__how2').textContent);
+
+// 7. Without the equipment list an absence cannot be read.
+st = make();
+st.observation = { age: 60, method: 'automated', maintenance: false, elements: [{ name: 'cloud', detected: false }, { name: 'wind', value: '120/04', unit: 'kt' }] };
+ok('⭐ with no equipment list, an empty element is ABSENCE UNREADABLE', state(st, 'cloud') === 'unreadable' && read(st, 'cloud') === 'ABSENCE UNREADABLE', read(st, 'cloud'));
+ok('...saying why: an unequipped silence looks the same', /looks the same as nothing detected/.test(why(st, 'cloud')), why(st, 'cloud'));
+ok('...and the head says the list is missing', /NO EQUIPMENT LIST/.test(st.querySelector('.ov-station__how').textContent), st.querySelector('.ov-station__how').textContent);
+ok('...while a REPORTED value is unaffected', state(st, 'wind') === 'value', state(st, 'wind'));
+control('CONTROL: with no equipment list an empty element reads DETECTED NONE (must fail)', read(st, 'cloud') === 'DETECTED NONE', read(st, 'cloud'));
+
+// 8. DETECTED NONE, when the list says it is equipped to look.
+st = make();
+st.observation = { ...FULL, equipment: ['wind', 'visibility', 'cloud', 'temperature', 'rvr', 'weather'], elements: [{ name: 'visibility', detected: false }] };
+ok('equipped, running and it looked: DETECTED NONE', state(st, 'visibility') === 'none' && read(st, 'visibility') === 'DETECTED NONE', read(st, 'visibility'));
+
+// 9. The maintenance flag, and what its absence does not mean.
+st = make();
+st.observation = FULL;
+ok('⭐ no maintenance flag is NOT healthy, and says so', /NO MAINTENANCE FLAG · not a health check/.test(st.querySelector('.ov-station__maint').textContent), st.querySelector('.ov-station__maint').textContent);
+control('CONTROL: no maintenance flag reads OK (must fail)', /\bOK\b|HEALTHY/.test(st.querySelector('.ov-station__maint').textContent), st.querySelector('.ov-station__maint').textContent);
+st.observation = { ...FULL, maintenance: true };
+ok('a flagged station says MAINTENANCE NEEDED ($)', /MAINTENANCE NEEDED \(\$\)/.test(st.querySelector('.ov-station__maint').textContent), st.querySelector('.ov-station__maint').textContent);
+st.observation = { ...FULL, maintenance: undefined };
+ok('a report with no flag field says the flag was NOT REPORTED', /MAINTENANCE FLAG NOT REPORTED/.test(st.querySelector('.ov-station__maint').textContent), st.querySelector('.ov-station__maint').textContent);
+
+// 10. A whole report of slashes.
+st = make();
+st.observation = { age: 30, method: 'automated', maintenance: null, equipment: ['wind', 'visibility', 'cloud', 'temperature', 'lightning', 'rvr'], elements: ELS.split(',').map((n) => ({ name: n.trim(), operating: false })) };
+ok('⭐ every element down: STATION NOT OPERATING, and nothing is an observation', st.getAttribute('data-ov-station') === 'down' && /STATION NOT OPERATING/.test(st.textContent) && st.getAttribute('data-ov-refusal') === 'unknown', st.getAttribute('data-ov-station'));
+
+// 11. Age, staleness, and no report at all.
+st = make({ 'max-age': '3600' });
+st.observation = { ...FULL, age: 7200 };
+ok('a report past max-age is marked stale, with its age', st.getAttribute('data-ov-qualified') === 'stale' && /2h 00m OLD · OVER 1h/.test(st.querySelector('.ov-station__age').textContent), st.querySelector('.ov-station__age').textContent);
+st.observation = { ...FULL, age: null };
+ok('a report with no time says so, rather than looking fresh', /REPORT TIME NOT GIVEN/.test(st.querySelector('.ov-station__age').textContent), st.querySelector('.ov-station__age').textContent);
+st = make();
+ok('no report at all: NO REPORT, refused', st.getAttribute('data-ov-station') === 'none' && st.getAttribute('data-ov-refusal') === 'unknown' && /NO REPORT/.test(st.textContent), st.getAttribute('data-ov-station'));
+
+// 12. Declared elements keep their place; a missing one is NOT REPORTED.
+st = make();
+st.observation = { ...FULL, elements: [{ name: 'temperature', value: '03/M01', unit: '°C' }] };
+ok('an element the report never mentions is NOT REPORTED, not absent', state(st, 'wind') === 'not-reported' && read(st, 'wind') === 'NOT REPORTED', read(st, 'wind'));
+ok('...and the declared order is kept', [...st.querySelectorAll('[data-ov-element]')].map((t) => t.dataset.ovElement).join() === ELS.split(', ').join(), [...st.querySelectorAll('[data-ov-element]')].map((t) => t.dataset.ovElement));
+
+// 13. A sensor going down is announced, once, and several are joined.
+st = make();
+st.observation = FULL;
+await settle();
+st.querySelector('.ov-station__say').textContent = '';
+step(); st.observation = { ...FULL, elements: [{ name: 'wind', operating: false }, { name: 'visibility', operating: false }, { name: 'cloud', detected: false }] };
+await settle();
+ok('two sensors going down in one report: one joined announcement', /wind sensor not operating; visibility sensor not operating/.test(said(st)), said(st));
+step(); st.observation = FULL;
+await settle();
+ok('...and coming back is announced too', /wind back/.test(said(st)), said(st));
+
+// 14. Nothing per frame, and nothing overflowing at 380px.
+/* 🔴 THE CLAIM IS ABOUT THIS ELEMENT'S CODE, SO IT IS CHECKED THERE. A
+ * page-wide rAF count stopped being a statement about this element the moment
+ * ov-source began driving feeds on a frame ticker: it was measuring whether
+ * the page had arrived yet, and passing by luck. Nor can a delta isolate it,
+ * because that ticker keeps counting in the background. So the assertion is
+ * static and exact - this module never asks for a frame at all. */
+{
+  const text = await (await fetch(new URL(SRC, location.href).href)).text();
+  const asks = /requestAnimationFrame/.test(text);
+  ok('the element never asks for an animation frame, anywhere in its source', !asks, asks);
+  control('CONTROL: the element draws on a frame (must fail)', asks, asks);
+}
+stage.style.inlineSize = '380px';
+await settle();
+ok('at 380px nothing overflows sideways', st.scrollWidth <= 381, st.scrollWidth);
+
+const passed = results.filter((r) => r.pass).length;
+const failed = results.filter((r) => !r.pass);
+const cfailed = controls.filter((c) => !c.pass).length;
+const lines = results.map((r) => `${r.pass ? 'PASS' : 'FAIL'} ${r.name}${r.pass ? '' : '  got: ' + JSON.stringify(r.got)}`)
+  .concat(controls.map((c) => `${c.pass ? 'CONTROL PASSED (BAD)' : 'control failed (good)'} ${c.name}`));
+const gate = failed.length === 0 && cfailed === controls.length;
+lines.push('', `${passed} passed, ${failed.length} failed, ${cfailed}/${controls.length} controls failed as required`, `GATE: ${gate ? 'PASS' : 'FAIL'}`);
+document.getElementById('out').textContent = lines.join('\n');
+</script>

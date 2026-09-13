@@ -1,0 +1,83 @@
+/* ---- CASCADE LAYER ------------------------------------------------------
+ *
+ * Everything the kit ships sits in ONE layer named `overscan`, so a consumer's
+ * own CSS beats it without a specificity fight and without !important. That is
+ * close to mandatory for a distributed kit: an app should be able to restyle a
+ * panel by writing a plain rule.
+ *
+ * ⚠️ ONE layer, deliberately, NOT a sub-layer per file. Sub-layers look tidier
+ * and would silently reorder the kit against itself: layer order beats
+ * specificity, so a high-specificity rule in an early file that currently wins
+ * would start losing to a low-specificity rule in a later one. A single layer
+ * preserves source order exactly, so nothing inside the kit changes.
+ *
+ * Unlayered author CSS wins over all of it. That is the point.
+ */
+
+@layer overscan {
+/* Decorative GL. See ov-ornament.js: it encodes nothing, on purpose.
+ *
+ * Two shapes, and they need opposite positioning, which is why this is not one
+ * rule with a modifier:
+ *
+ *   <ov-ornament>            IN FLOW. A strip, a block, a spacer. It takes part
+ *                          in the panel's layout like any other child and has
+ *                          a default height so it does not collapse.
+ *
+ *   .ov-ornament--behind     OUT OF FLOW. A backdrop for the box it is in,
+ *                          filling it and sitting under the content, which is
+ *                          the per-panel shader background.
+ */
+
+ov-ornament {
+  display: block;
+  position: relative;
+  block-size: var(--ov-ornament-size, 18px);
+  overflow: hidden;
+  pointer-events: none;
+}
+
+ov-ornament canvas {
+  display: block;
+  inline-size: 100%;
+  block-size: 100%;
+}
+
+/* A backdrop rather than a strip. Same element, taken out of flow.
+ *
+ * 🔴 The panel's own child rule is `.ov-panel > *:not(ov-field):not(.ov-panel__label)`
+ * which sets `position: relative; z-index: 1`. That selector is (0,3,1) and
+ * beats this class at (0,1,0), so an accent used as a backdrop inside a panel
+ * would be dragged back into the flow and stacked ON TOP of the content: the
+ * exact `> *` trap documented in chrome.css, which has now eaten something
+ * five times. `!important` is the honest fix here rather than escalating the
+ * selector, because the intent is genuinely "this always wins": an element
+ * whose whole job is to sit behind the content must never be positioned by a
+ * wildcard rule that cannot know what it is. */
+ov-ornament.ov-ornament--behind {
+  position: absolute !important;
+  inset: 0;
+  z-index: 0 !important;
+  block-size: auto;
+}
+
+/* A panel that carries a backdrop needs a stacking context of its own, or the
+ * absolutely positioned accent escapes to the nearest positioned ancestor.
+ * .ov-panel is already position:relative, so this is for everything else. */
+.ov-has-ornament {
+  position: relative;
+}
+
+/* Common sizes, so a caller is not inventing pixel values per use. The rule
+ * these encode: a rail marks a boundary, a block fills a gap, a bar is a
+ * heading's underline. */
+.ov-ornament--rail { --ov-ornament-size: 3px; }
+.ov-ornament--bar { --ov-ornament-size: 10px; }
+.ov-ornament--block { --ov-ornament-size: 46px; }
+
+@media (prefers-reduced-motion: reduce) {
+  /* The clock is frozen in the loop rather than the draw being stopped, so
+   * the ornament still renders. Nothing to do here; noted so the absence of
+   * a rule is not read as an oversight. */
+}
+}

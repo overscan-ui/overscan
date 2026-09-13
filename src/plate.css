@@ -1,0 +1,106 @@
+/* ---- CASCADE LAYER ------------------------------------------------------
+ *
+ * Everything the kit ships sits in ONE layer named `overscan`, so a consumer's
+ * own CSS beats it without a specificity fight and without !important. That is
+ * close to mandatory for a distributed kit: an app should be able to restyle a
+ * panel by writing a plain rule.
+ *
+ * ⚠️ ONE layer, deliberately, NOT a sub-layer per file. Sub-layers look tidier
+ * and would silently reorder the kit against itself: layer order beats
+ * specificity, so a high-specificity rule in an early file that currently wins
+ * would start losing to a low-specificity rule in a later one. A single layer
+ * preserves source order exactly, so nothing inside the kit changes.
+ *
+ * Unlayered author CSS wins over all of it. That is the point.
+ */
+
+@layer overscan {
+/* An image plate: a picture you can zoom into, and the detections on it. */
+
+ov-plate {
+  display: grid;
+  gap: 8px;
+  font-family: var(--ov-font-mono);
+  font-size: var(--ov-size-1);
+  letter-spacing: 1px;
+  color: var(--ov-accent);
+}
+
+.ov-plate__stage {
+  position: relative;
+  block-size: var(--ov-plate-height, 360px);
+  overflow: hidden;
+  background: var(--ov-field);
+  border: var(--ov-bezel) solid var(--ov-line-strong);
+  cursor: grab;
+  touch-action: none;
+  outline: none;
+}
+.ov-plate__stage:active { cursor: grabbing; }
+.ov-plate__stage:focus-visible { border-color: var(--ov-accent); }
+
+.ov-plate__canvas,
+.ov-plate__marks {
+  position: absolute;
+  inset: 0;
+  inline-size: 100%;
+  block-size: 100%;
+  display: block;
+}
+
+/* The share of the view no sensor produced. Hatched, never filled: a flat
+ * colour there would read as a dark part of the picture. */
+.ov-plate__hatch { stroke: var(--ov-line); stroke-width: 1.5; }
+.ov-plate__edge {
+  fill: none;
+  stroke: var(--ov-line-strong);
+  stroke-width: 1;
+  stroke-dasharray: 2 3;
+}
+
+.ov-plate__bracket { fill: none; stroke: var(--ov-accent); stroke-width: 1.5; }
+.ov-plate__tag {
+  fill: var(--ov-accent);
+  font-family: var(--ov-font-mono);
+  font-size: 11px;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+}
+/* A detection with no score is not a detection with a good score. */
+.ov-plate__tag.is-unscored { fill: var(--ov-alarm); }
+
+/* No picture at all: the refusal sits where the picture would be. */
+.ov-plate__void {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  color: var(--ov-alarm);
+  text-transform: uppercase;
+}
+/* 🔴 Author `display` beats the UA's [hidden], so without this the refusal
+ * sat on top of every picture that loaded. */
+.ov-plate__void[hidden] { display: none; }
+
+.ov-plate__readout {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 20px;
+  color: var(--ov-dim);
+}
+.ov-plate__mag { color: var(--ov-accent); }
+.ov-plate__ceiling.is-at { color: var(--ov-ink); }
+.ov-plate__blank.is-blank { color: var(--ov-ink); }
+.ov-plate__asked,
+.ov-plate__unmatched { color: var(--ov-alarm); }
+
+.ov-plate__refused {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  color: var(--ov-faint);
+}
+.ov-plate__refused:empty { display: none; }
+.ov-plate__refused li::before { content: '\2013\2013\00a0'; color: var(--ov-alarm); }
+.ov-plate__refused b { font-weight: 400; color: var(--ov-alarm); }
+}

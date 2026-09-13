@@ -1,0 +1,116 @@
+@layer overscan {
+/* The banked range bar. See ov-rangebar.js for the refusal.
+ *
+ * ⚠️ The limit bands are QUIET on purpose (alarm 9%, trip 20%). The first
+ * cut drew them at 18/38% and the static bands out-shouted the pointers.
+ *
+ * Vertical columns side by side, ISA-101 style. The banding is deliberately
+ * quiet (gray scale, colour only where something is wrong), because the
+ * point of a high-performance display is that normal is boring and abnormal
+ * is the only thing that stands out.
+ */
+
+ov-rangebar {
+  /* 9ch: the widest readouts are NO DATA and a stale "2.1 12s". */
+  --ov-rangebar-col-w: 9ch;
+  --ov-rangebar-h: 150px;
+  display: grid;
+  gap: 6px;
+  /* One row's worth, capped by the container: fits a shrink-wrap stage on
+   * one row and still wraps in a 226px reference cell. --ov-rangebar-n is
+   * set by the element from its channel count. */
+  inline-size: calc(var(--ov-rangebar-n, 1) * var(--ov-rangebar-col-w) + (var(--ov-rangebar-n, 1) - 1) * 10px);
+  max-inline-size: 100%;
+  font-family: var(--ov-font-mono);
+  font-size: 10px;
+  letter-spacing: .06em;
+  color: var(--ov-ink);
+}
+
+.ov-rangebar__bank {
+  position: relative;
+  display: flex;
+  gap: 10px;
+  /* Wraps rather than overflows on a narrow stage; a wrapped row is still
+   * banked, because every column shares the same centre height. */
+  flex-wrap: wrap;
+}
+
+.ov-rangebar__col {
+  display: grid;
+  grid-template-rows: auto var(--ov-rangebar-h) auto auto;
+  gap: 4px;
+  inline-size: var(--ov-rangebar-col-w);
+  justify-items: center;
+  text-align: center;
+}
+.ov-rangebar__label { max-inline-size: 100%; overflow: hidden; color: var(--ov-faint); letter-spacing: .1em; white-space: nowrap; }
+
+.ov-rangebar__track {
+  position: relative;
+  inline-size: 18px;
+  border: 1px solid var(--ov-line-strong);
+  background: var(--ov-panel);
+}
+/* The normal CENTRE, the line the banked pointers sit on. */
+.ov-rangebar__track::after {
+  content: "";
+  position: absolute;
+  inset-inline: -4px;
+  inset-block-end: 50%;
+  border-block-end: 1px dotted var(--ov-line-strong);
+}
+.ov-rangebar__col[data-ov-unbanked] .ov-rangebar__track::after { display: none; }
+
+.ov-rangebar__band { position: absolute; inset-inline: 0; }
+.ov-rangebar__band--normal { background: color-mix(in srgb, var(--ov-ink) 16%, transparent); }
+.ov-rangebar__band--alarm { background: color-mix(in srgb, var(--ov-alarm) 9%, transparent); }
+.ov-rangebar__band--trip { background: color-mix(in srgb, var(--ov-alarm) 20%, transparent); }
+/* Beyond what the instrument can measure: not scale. */
+.ov-rangebar__band--norange {
+  background: repeating-linear-gradient(135deg,
+    color-mix(in srgb, var(--ov-faint) 22%, transparent) 0 2px, transparent 2px 6px), var(--ov-field);
+}
+
+/* The pointer: a bar across the track with a tick outside it. */
+.ov-rangebar__pointer {
+  position: absolute;
+  inset-inline: -6px -2px;
+  block-size: 3px;
+  translate: 0 50%;
+  background: var(--ov-ink);
+}
+.ov-rangebar__col[data-ov-state="off-normal"] .ov-rangebar__pointer { background: var(--ov-accent); }
+.ov-rangebar__col[data-ov-state="alarm"] .ov-rangebar__pointer,
+.ov-rangebar__col[data-ov-state="trip"] .ov-rangebar__pointer,
+.ov-rangebar__col[data-ov-state^="off-"] .ov-rangebar__pointer { background: var(--ov-alarm); }
+.ov-rangebar__col[data-ov-qualified="stale"] .ov-rangebar__pointer {
+  background: transparent;
+  outline: 1px solid var(--ov-ink);
+}
+
+/* Off scale: pinned at the range end, and SAID with an arrow outside it. */
+.ov-rangebar__off {
+  position: absolute;
+  inset-inline-start: calc(100% + 3px);
+  translate: 0 50%;
+  color: var(--ov-alarm);
+  font-size: 10px;
+  line-height: 1;
+}
+
+.ov-rangebar__read { font-variant-numeric: tabular-nums; white-space: nowrap; }
+.ov-rangebar__unit { color: var(--ov-faint); font-size: 9px; white-space: nowrap; }
+.ov-rangebar__col[data-ov-state="alarm"] .ov-rangebar__read,
+.ov-rangebar__col[data-ov-state="trip"] .ov-rangebar__read,
+.ov-rangebar__col[data-ov-state^="off-"] .ov-rangebar__read,
+.ov-rangebar__col[data-ov-state="bad"] .ov-rangebar__read { color: var(--ov-alarm); }
+.ov-rangebar__col[data-ov-state="trip"] .ov-rangebar__label { color: var(--ov-alarm); }
+.ov-rangebar__col[data-ov-state="none"] .ov-rangebar__read,
+.ov-rangebar__col[data-ov-qualified="stale"] .ov-rangebar__read { color: var(--ov-faint); }
+/* No reading: the track itself says so. */
+.ov-rangebar__col[data-ov-state="none"] .ov-rangebar__track,
+.ov-rangebar__col[data-ov-state="bad"] .ov-rangebar__track { border-style: dashed; }
+
+.ov-rangebar__note { margin: 0; color: var(--ov-alarm); font-size: 10px; letter-spacing: .06em; }
+}

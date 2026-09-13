@@ -1,0 +1,49 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>ov-sequence tests</title>
+<!-- Over tools/serve.py: /tools/sequence-test/ . The last case is a CONTROL that must fail. -->
+<link rel="stylesheet" href="../../src/tokens.css">
+<link rel="stylesheet" href="../../src/finish.css">
+<link rel="stylesheet" href="../../src/sequence.css">
+<style>
+  body { margin: 0; background: #08080a; color: #ccc; font: 12px ui-monospace, monospace; }
+  .row { display: flex; flex-wrap: wrap; gap: 18px; padding: 16px 24px; align-items: start; }
+  .cap { color: #888; margin-block-end: 6px; }
+  #tests { white-space: pre; color: #9f9; padding: 16px 24px; }
+  #tests.fail { color: #f77; }
+</style>
+<section class="ov ov-finish row" data-ov-theme="esper" id="a"></section>
+<section class="ov ov-finish row" data-ov-theme="antiseptic" id="b"></section>
+<div id="tests">running…</div>
+<script type="module">
+  import '../../src/ov-sequence.js';
+  await customElements.whenDefined('ov-sequence');
+  // A seeded reference, and a read of it with mismatches, an unsequenced run,
+  // scattered N, and a low-quality tail.
+  let seed = 11; const rnd = () => (seed = seed * 48271 % 2147483647) / 2147483647;
+  const ref = Array.from({ length: 160 }, () => 'ACGT'[Math.floor(rnd() * 4)]).join('');
+  const read = [...ref].map((c, i) => (i >= 62 && i < 80 ? '-' : i % 37 === 5 ? 'N' : rnd() < 0.03 ? 'ACGT'[(('ACGT'.indexOf(c)) + 1) % 4] : c)).join('');
+  const quality = [...ref].map((_, i) => (i >= 140 ? 12 : 38));
+  const mk = (host, cap, seq, attrs = {}) => { const d = document.createElement('div'); d.innerHTML = `<div class="cap">${cap}</div>`; const el = document.createElement('ov-sequence'); for (const [k, v] of Object.entries(attrs)) el.setAttribute(k, v); d.append(el); document.getElementById(host).append(d); el.sequence = seq; return el; };
+  const full = mk('a', 'a read with gaps, N, mismatches and a low-quality tail', { reference: ref, read, quality });
+  const short = mk('b', 'a read not aligned to its reference', { reference: ref, read: read.slice(0, 150) });
+  const clean = mk('b', 'a clean read', { reference: ref.slice(0, 40), read: ref.slice(0, 40) });
+  const none = mk('b', 'no sequence', null);
+  const readLine = (el) => [...el.querySelectorAll('.ov-sequence__line.is-read i')];
+  const refLine = (el) => [...el.querySelectorAll('.ov-sequence__line.is-ref i')];
+  const cases = [
+    ['the unsequenced run stays a gap, never the reference', () => { const r = readLine(full), f = refLine(full); return r.slice(62, 80).every((c) => c.textContent === '-') && f.slice(62, 80).some((c) => c.textContent !== '-'); }],
+    ['N stays N', () => readLine(full).filter((c) => c.classList.contains('is-n')).every((c) => c.textContent === 'N')],
+    ['a base below quality is CALLED N, its guess not shown', () => readLine(full).slice(140).every((c) => c.textContent === 'N' && (c.classList.contains('is-lowq') || c.classList.contains('is-n')))],
+    ['mismatches are marked', () => readLine(full).some((c) => c.classList.contains('is-mismatch'))],
+    ['the readout says what was not filled, each position counted once', () => { const m = /(\d+) unread, NOT filled from the reference \(18 gap, (\d+) N, (\d+) below quality 20\)/.exec(full.textContent); return m && +m[1] === 18 + +m[2] + +m[3] && +m[3] === 19; }],
+    ['a read of a different length is refused, not aligned', () => short.getAttribute('data-ov-refusal') === 'unknown' && short.textContent.includes('NOT ALIGNED')],
+    ['a clean read reports every position read', () => clean.textContent.includes('40 of 40 positions read') && !clean.textContent.includes('unread')],
+    ['no sequence is a refusal', () => none.getAttribute('data-ov-refusal') === 'unknown'],
+    ['CONTROL: a false claim is caught', () => readLine(full)[70].textContent === refLine(full)[70].textContent],
+  ];
+  let bad = 0;
+  const res = cases.map(([name, fn]) => { let r = false; try { r = !!fn(); } catch (e) { r = false; } const c = name.startsWith('CONTROL'); const pass = c ? !r : r; if (!pass) bad += 1; return `${pass ? 'ok  ' : 'FAIL'} ${name}${c ? ' (must fail)' : ''}`; });
+  const el = document.getElementById('tests'); el.textContent = `${cases.length - bad} of ${cases.length} pass\n` + res.join('\n'); el.classList.toggle('fail', bad > 0);
+  window.seqResults = { total: cases.length, bad, out: res };
+</script>

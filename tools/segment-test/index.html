@@ -1,0 +1,57 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>ov-segment harness</title>
+<!-- The property-upgrade gate for src/ov-segment.js. Serve the repo root
+     (python3 tools/serve.py) and open tools/segment-test/. The last line must
+     read GATE: PASS, and every CONTROL (an assertion false on purpose) must
+     fail. -->
+<link rel="stylesheet" href="../../src/tokens.css">
+<link rel="stylesheet" href="../../src/segment.css">
+<style>
+  body { background: #06060a; color: #cfe; font: 13px ui-monospace, monospace; padding: 20px; }
+  pre { white-space: pre-wrap; }
+</style>
+<div id="stage" data-ov-theme="industrial"><ov-segment id="s" digits="4" value="0"></ov-segment></div>
+<pre id="out">running...</pre>
+<script type="module">
+const results = [];
+const ok = (name, cond, got) => results.push({ name, pass: !!cond, got });
+const controls = [];
+const control = (name, cond, got) => controls.push({ name, pass: !!cond, got });
+
+// A framework sets properties as soon as it creates the node, which can be
+// before the module defining the element has run. That lands as an OWN
+// property and masks the prototype accessor unless the element reclaims it
+// on upgrade. So: set it first, define second. No static import on purpose.
+const s = document.getElementById('s');
+s.value = '12';
+await import('../../src/ov-segment.js');
+await customElements.whenDefined('ov-segment');
+const name = () => s.getAttribute('aria-label');
+
+ok('a value set before upgrade is drawn, not the attribute', name() === '12', name());
+ok('...and the own property is gone, so the accessor is live', !Object.prototype.hasOwnProperty.call(s, 'value'), Object.keys(s));
+control('CONTROL: the stale attribute value is shown (must fail)', name() === '0', name());
+
+s.value = '34';
+ok('a later property write redraws', name() === '34', name());
+
+s.value = null;
+ok('null after upgrade is a dropout, not the attribute', s.getAttribute('data-ov-refusal') === 'unknown', s.getAttribute('data-ov-refusal'));
+control('CONTROL: a dropout falls back to the attribute (must fail)', name() === '0', name());
+
+const passed = results.filter((x) => x.pass).length;
+const failed = results.length - passed;
+const controlsFailed = controls.filter((x) => !x.pass).length;
+const gate = failed === 0 && controlsFailed === controls.length && controls.length > 0;
+const lines = [
+  ...results.map((x) => `${x.pass ? 'PASS' : 'FAIL'}  ${x.name}${x.pass ? '' : '  got ' + JSON.stringify(x.got)}`),
+  ...controls.map((x) => `${x.pass ? 'CONTROL PASSED (BAD)' : 'CONTROL FAILED (good)'}  ${x.name}`),
+  '',
+  `${passed} passed, ${failed} failed, ${controlsFailed}/${controls.length} controls failed as required`,
+  `GATE: ${gate ? 'PASS' : 'FAIL'}`,
+];
+const out = document.getElementById('out');
+out.textContent = lines.join('\n');
+out.setAttribute('data-gate', gate ? 'pass' : 'fail');
+</script>

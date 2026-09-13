@@ -1,0 +1,150 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>ov-fan harness</title>
+<link rel="stylesheet" href="../../src/tokens.css">
+<link rel="stylesheet" href="../../src/fan.css">
+<style>
+  body { background: #06060a; color: #cfe; font: 13px ui-monospace, monospace; padding: 20px; }
+  #stage { display: grid; grid-template-columns: repeat(auto-fill, 420px); gap: 16px; }
+  pre { white-space: pre-wrap; }
+</style>
+<div id="stage" data-ov-theme="industrial"></div>
+<pre id="out">running...</pre>
+<script type="module">
+import '../../src/ov-fan.js';
+await customElements.whenDefined('ov-fan');
+
+const stage = document.getElementById('stage');
+const results = [];
+const ok = (name, cond, got) => results.push({ name, pass: !!cond, got });
+const controls = [];
+const control = (name, cond, got) => controls.push({ name, pass: !!cond, got });
+const fresh = (forecast, attrs = {}) => {
+  const el = document.createElement('ov-fan');
+  for (const [k, v] of Object.entries(attrs)) el.setAttribute(k, v);
+  stage.append(el);
+  el.forecast = forecast;
+  return el;
+};
+const text = (el) => el.querySelector('.ov-fan__readout')?.textContent || el.textContent;
+const bands = (el) => [...el.querySelectorAll('.ov-fan__band')];
+const nowX = (el) => Number(el.querySelector('.ov-fan__now')?.getAttribute('x1'));
+const lines = (el) => [...el.querySelectorAll('polyline, path')];
+const maxX = (poly) => Math.max(...poly.getAttribute('points').trim().split(/\s+/).map((p) => Number(p.split(',')[0])));
+// The y extent of one band's polygon at its last (rightmost) vertex pair.
+const bandSpan = (el, key) => {
+  const p = el.querySelector(`.ov-fan__band[data-band="${key}"]`).getAttribute('points').trim().split(/\s+/).map((s) => s.split(',').map(Number));
+  const n = p.length / 2;
+  return Math.abs(p[n].slice(-1)[0] - p[n - 1].slice(-1)[0]);
+};
+
+// Seeded, so every run draws the same numbers.
+let seed = 11; const rnd = () => (seed = seed * 48271 % 2147483647) / 2147483647;
+const gauss = () => { let s = 0; for (let i = 0; i < 12; i++) s += rnd(); return s - 6; };
+const history = [2.0, 2.2, 2.1, 2.4, { value: 2.6, label: 'NOW' }];
+const tpn = (n, s1 = 0.3, s2 = 0.3) => Array.from({ length: n }, (_, i) => ({ label: `+${i + 1}`, mode: 2.6 + 0.05 * i, sigma: [s1 + 0.1 * i, s2 + 0.1 * i] }));
+
+// 1. The plain case: the Bank's construction, eight steps.
+const a = fresh({ history, horizon: tpn(8) });
+ok('nine bands per run, and each holds 10%', bands(a).length === 9 && a.report().equal && /9 bands of 10%/.test(text(a)), bands(a).length);
+ok('the readout says what the shading covers and what it leaves out', /90% inside the shading, 10% outside it/.test(text(a)), text(a));
+ok('the outer region is labelled, above and below', /5% ABOVE/.test(a.textContent) && /5% BELOW/.test(a.textContent), '');
+ok('no band has an outline', bands(a).every((b) => getComputedStyle(b).stroke === 'none'), getComputedStyle(bands(a)[0]).stroke);
+ok('the central band is the densest', getComputedStyle(a.querySelector('.is-k0')).fill !== getComputedStyle(a.querySelector('.is-k4')).fill, '');
+ok('no line is drawn past NOW: the only line is the measured history', lines(a).length === 1 && maxX(lines(a)[0]) <= nowX(a) + 0.01, lines(a).map(maxX));
+ok('an automatic axis leaves room past the 90% edge on both sides', !a.report().cut && !a.report().tight, a.report());
+ok('role img, and the name carries the claim', a.getAttribute('role') === 'img' && /fan chart, 90% inside the shading/.test(a.getAttribute('aria-label')), a.getAttribute('aria-label'));
+
+// 2. A central value handed in is counted, never drawn.
+const withMedian = tpn(6).map((s) => ({ ...s, median: s.mode }));
+const b = fresh({ history, horizon: withMedian });
+ok('a median given is counted in the readout and not drawn', /central value given for 6 steps: not drawn/.test(text(b)) && lines(b).length === 1 && b.report().central === 6, text(b));
+
+// 3. Skew is kept, not mirrored.
+const c = fresh({ history, horizon: tpn(6, 0.2, 0.8) });
+// The drawn ratio of the outer bands must be the ratio their quantiles imply:
+// kept, not mirrored and not averaged.
+const cq = c.step(tpn(6, 0.2, 0.8)[5]).q;
+const want = (cq[95] - cq[85]) / (cq[15] - cq[5]), drew = bandSpan(c, '85-95') / bandSpan(c, '5-15');
+ok('a two-piece normal leaning up draws its tails in the ratio its quantiles give', want > 1.3 && Math.abs(drew / want - 1) < 0.05 && c.report().lean === 'risk leans up', [want, drew]);
+const cd = fresh({ history, horizon: tpn(6, 0.8, 0.2) });
+ok('and one leaning down says so', cd.report().lean === 'risk leans down', cd.report().lean);
+
+// 4. The construction is right: a standard normal's 5th and 95th percentiles.
+const q = a.step({ mode: 0, sigma: 1 }).q;
+ok('two-piece normal with equal spreads is the normal: 95th = 1.645', Math.abs(q[95] - 1.6449) < 1e-3 && Math.abs(q[5] + 1.6449) < 1e-3 && Math.abs(q[45] + 0.1257) < 1e-3, [q[5], q[45], q[95]]);
+const qs = a.step({ mode: 0, sigma: [1, 3] }).q;
+ok('skewed spreads: a quarter of the mass is below the mode', Math.abs(a.step({ mode: 0, sigma: [1, 3] }).q[25] - 0) < 1e-9, qs[25]);
+
+// 5. Draws: quantiles computed here, and too few refused per step.
+const drawsStep = (n, mu) => ({ label: `n${n}`, draws: Array.from({ length: n }, () => mu + 0.4 * gauss()) });
+const d = fresh({ history, horizon: [drawsStep(2000, 2.6), drawsStep(2000, 2.7), drawsStep(30, 2.8), drawsStep(2000, 2.9)] });
+const dq = d.step(drawsStep(4000, 0)).q;
+ok('from draws: the 95th percentile of N(0, 0.4) is near 0.66', Math.abs(dq[95] - 0.658) < 0.04, dq[95]);
+ok('a step with fewer than min-draws is a gap, said, and not bridged', d.report().gaps === 1 && /30 draws, fewer than 50/.test(text(d)) && d.querySelectorAll('.ov-fan__gap').length === 1 && bands(d).length === 18, [d.report().gaps, bands(d).length]);
+ok('min-draws is the author\'s to set', (d.setAttribute('min-draws', '20'), d.report().gaps === 0 && bands(d).length === 9), d.report().gaps);
+ok('the readout names the construction', /from 2,000\+ draws/.test(text(fresh({ history, horizon: [drawsStep(2000, 1), drawsStep(3000, 1)] }))), '');
+
+// 6. Given quantiles: crossing refused, a missing pair makes bands unequal.
+const full = (m) => ({ 5: m - 1, 15: m - 0.7, 25: m - 0.5, 35: m - 0.3, 45: m - 0.1, 55: m + 0.1, 65: m + 0.3, 75: m + 0.5, 85: m + 0.7, 95: m + 1 });
+const e = fresh({ history, horizon: [{ quantiles: full(3) }, { quantiles: { ...full(3), 35: 9 } }, { quantiles: full(3) }] });
+ok('quantiles that cross are a gap, not drawn', e.report().gaps === 1 && /quantiles cross/.test(text(e)), text(e));
+const sparse = (m) => ({ 5: m - 1, 25: m - 0.5, 45: m - 0.1, 55: m + 0.1, 75: m + 0.5, 95: m + 1 });
+const f = fresh({ history, horizon: [{ quantiles: sparse(3) }, { quantiles: sparse(3.2) }] });
+ok('a missing pair makes 20% bands, and the readout says unequal', !f.report().equal && /bands unequal: 10\/20%/.test(text(f)) && bands(f).length === 5, [text(f), bands(f).length]);
+const g2 = fresh({ history, horizon: [{ quantiles: { 25: 2, 75: 4 } }, { quantiles: { 25: 2, 75: 4.5 } }] });
+ok('only the 25-75 pair: 50% inside, 25% each side, labelled so', /50% inside the shading, 50% outside it/.test(text(g2)) && /25% ABOVE/.test(g2.textContent), text(g2));
+
+// 7. A null step splits the fan into two runs.
+const h = fresh({ history, horizon: [...tpn(3), null, ...tpn(3)] });
+ok('a null step is a gap: two runs, one gap mark', bands(h).length === 18 && h.querySelectorAll('.ov-fan__gap').length === 1 && h.getAttribute('data-ov-fan') === 'broken', bands(h).length);
+
+// 8. The author's axis.
+const cut = fresh({ history, horizon: tpn(8) }, { min: '1.5', max: '3.5' });
+ok('an axis that cuts into the fan is marked and said', cut.report().cut && /axis cuts the fan/.test(text(cut)) && cut.querySelectorAll('.ov-fan__cut').length > 0, text(cut));
+const top95 = Math.max(...tpn(8).map((s) => a.step(s).q[95]));
+const bot5 = Math.min(...tpn(8).map((s) => a.step(s).q[5]));
+const tight = fresh({ history, horizon: tpn(8) }, { min: String(Math.min(bot5, 2.0) - 0.5), max: String(top95 + 0.01) });
+ok('an axis that ends on the 90% edge is said: no room beyond it', tight.report().tight && /axis ends at the 90% edge/.test(text(tight)), text(tight));
+
+// 9. History: a gap is a gap.
+const hi = fresh({ history: [2, 2.1, null, 2.3, 2.4], horizon: tpn(3) });
+ok('a missing history reading breaks the history line', hi.querySelectorAll('.ov-fan__history').length === 2, hi.querySelectorAll('.ov-fan__history').length);
+const noh = fresh({ horizon: tpn(3) });
+ok('no history: NOW is not marked, and it says so', !noh.querySelector('.ov-fan__now') && /no history/.test(text(noh)), text(noh));
+
+// 10. Age.
+const st = fresh({ history, horizon: tpn(4), age: 90000 }, { 'max-age': '86400' });
+ok('past max-age the forecast is STALE, through the kit qualifier', st.getAttribute('data-ov-qualified') === 'stale' && /issued 25h ago: STALE/.test(text(st)), [st.getAttribute('data-ov-qualified'), text(st)]);
+const fr = fresh({ history, horizon: tpn(4), age: 600 }, { 'max-age': '86400' });
+ok('inside max-age it is not stale, and the age is still said', !fr.hasAttribute('data-ov-qualified') && /issued 10m ago/.test(text(fr)), text(fr));
+
+// 11. Nothing, and back.
+const n = fresh(null);
+ok('no forecast is the kit\'s unknown', n.getAttribute('data-ov-refusal') === 'unknown' && /NO FORECAST/.test(n.textContent), n.outerHTML.slice(0, 120));
+const bad = fresh({ history, horizon: [null, { mode: 2, sigma: -1 }] });
+ok('a forecast with no usable step is refused, not drawn empty', bad.getAttribute('data-ov-refusal') === 'unknown' && /NO USABLE FORECAST/.test(bad.textContent), bad.textContent);
+n.forecast = { history, horizon: tpn(3) };
+ok('a refusal clears when a forecast arrives', !n.hasAttribute('data-ov-refusal') && bands(n).length === 9, n.getAttribute('data-ov-refusal'));
+n.forecast = null;
+ok('and returns when it is taken away', n.getAttribute('data-ov-refusal') === 'unknown', '');
+ok('same width refused as drawn (the demo card measures once)', n.getBoundingClientRect().width === a.getBoundingClientRect().width, [n.getBoundingClientRect().width, a.getBoundingClientRect().width]);
+
+// CONTROLS: false claims that a working harness must reject.
+control('a central line is drawn through the projection', lines(b).some((l) => maxX(l) > nowX(b) + 0.01), '');
+control('the 90% edge has an outline', bands(a).some((x) => getComputedStyle(x).stroke !== 'none'), '');
+control('the too-few step was bridged', (d.setAttribute('min-draws', '50'), bands(d).length === 9), bands(d).length);
+
+const passed = results.filter((x) => x.pass).length;
+const failed = results.length - passed;
+const controlsFailed = controls.filter((x) => !x.pass).length;
+const gate = failed === 0 && controlsFailed === controls.length && controls.length > 0;
+const out = document.getElementById('out');
+out.textContent = [
+  ...results.map((x) => `${x.pass ? 'PASS' : 'FAIL'}  ${x.name}${x.pass ? '' : '  got ' + JSON.stringify(x.got)}`),
+  ...controls.map((x) => `${x.pass ? 'CONTROL PASSED (BAD)' : 'CONTROL FAILED (good)'}  ${x.name}`),
+  '', `${passed} passed, ${failed} failed, ${controlsFailed}/${controls.length} controls failed as required`,
+  `GATE: ${gate ? 'PASS' : 'FAIL'}`,
+].join('\n');
+out.setAttribute('data-gate', gate ? 'pass' : 'fail');
+</script>

@@ -1,0 +1,344 @@
+/* ---- CASCADE LAYER ------------------------------------------------------
+ *
+ * Everything the kit ships sits in ONE layer named `overscan`, so a consumer's
+ * own CSS beats it without a specificity fight and without !important. That is
+ * close to mandatory for a distributed kit: an app should be able to restyle a
+ * panel by writing a plain rule.
+ *
+ * ⚠️ ONE layer, deliberately, NOT a sub-layer per file. Sub-layers look tidier
+ * and would silently reorder the kit against itself: layer order beats
+ * specificity, so a high-specificity rule in an early file that currently wins
+ * would start losing to a low-specificity rule in a later one. A single layer
+ * preserves source order exactly, so nothing inside the kit changes.
+ *
+ * Unlayered author CSS wins over all of it. That is the point.
+ */
+
+@layer overscan {
+/* Node graph. See src/ov-graph.js.
+ *
+ * Nodes are DOM and the wires are one SVG overlay, so the whole thing is
+ * reachable from the tokens: corner treatment, bezel weight, case, tracking
+ * and every colour arrive from the same control surface the panels use. A
+ * canvas graph would have to implement all of that a second time, and that is
+ * the reason this aesthetic's signature surface is the worst
+ * possible place to reach for a canvas.
+ */
+
+ov-graph {
+  position: relative;
+  display: block;
+  min-block-size: 380px;
+  background: var(--ov-field);
+  border: var(--ov-bezel) solid var(--ov-line);
+  overflow: hidden;
+  font-family: var(--ov-font-mono);
+  /* A working surface reads as one, so the grid is furniture at the hairline
+     token and never at the meaningful one. */
+  background-image:
+    linear-gradient(to right, var(--ov-line) 1px, transparent 1px),
+    linear-gradient(to bottom, var(--ov-line) 1px, transparent 1px);
+  background-size: 28px 28px;
+}
+
+.ov-graph__wires {
+  position: absolute;
+  inset: 0;
+  /* The wires sit under the nodes and take no pointer events, so a curve
+     passing across a node cannot steal a socket's click. */
+  pointer-events: none;
+  z-index: 0;
+}
+
+/* And the labels sit over them, for the reason in ov-graph.js: a note under
+   the node it crosses is a note the graph did not manage to make. */
+.ov-graph__notes {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 2;
+}
+
+/* ---- wires ------------------------------------------------------------- */
+
+.ov-wire {
+  fill: none;
+  stroke: var(--ov-line-strong);
+  stroke-width: 1.6;
+}
+
+/* A conversion is a QUALIFIER: the link is real and carries a real value, and
+   the value is not the type the socket it lands on would suggest. Marked, in
+   the second lit hue rather than the alarm, because nothing is wrong. */
+.ov-wire--converted {
+  stroke: var(--ov-accent-2);
+  stroke-dasharray: 7 3;
+}
+
+/* A refusal. No connection exists; this is the drawing of one that does not,
+   kept on screen so an author's mistake is visible rather than deleted. */
+.ov-wire--refused {
+  stroke: var(--ov-alarm);
+  stroke-dasharray: 2 4;
+  stroke-width: 1.2;
+  opacity: 0.8;
+}
+
+.ov-wire--pending {
+  stroke: var(--ov-accent);
+  stroke-dasharray: 4 4;
+}
+
+/* ⚠️ A label on a wire lands wherever the wire's midpoint happens to be,
+   which is regularly on top of a node. Knocking it out against the field with
+   a stroke drawn UNDER the fill keeps it legible over anything, which is the
+   same problem the map labels solved and the same answer. */
+.ov-wire__note {
+  fill: var(--ov-accent-2);
+  stroke: var(--ov-field);
+  stroke-width: 3.5;
+  stroke-linejoin: round;
+  paint-order: stroke fill;
+  font-family: var(--ov-font-mono);
+  font-size: 9px;
+  letter-spacing: 1px;
+  text-anchor: middle;
+  text-transform: uppercase;
+}
+
+.ov-wire__note--refused { fill: var(--ov-alarm); }
+
+/* ---- nodes -------------------------------------------------------------- */
+
+ov-node {
+  position: absolute;
+  z-index: 1;
+  inset-block-start: var(--ov-node-y, 0);
+  inset-inline-start: var(--ov-node-x, 0);
+  inline-size: var(--ov-node-w, 168px);
+  display: block;
+  background: var(--ov-panel);
+  border: var(--ov-bezel) solid var(--ov-line-strong);
+  border-radius: var(--ov-corner);
+  transform: skewX(calc(var(--ov-shear) * -1));
+}
+
+.ov-node__head {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  padding: 5px 8px;
+  background: var(--ov-raised);
+  border-block-end: var(--ov-rule) solid var(--ov-line-strong);
+  cursor: grab;
+  /* The header is the drag handle, so it must not select text under a drag. */
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+/* ⭐ The evaluation step, on every node. "The layout is the program" is a
+   claim, and this is the graph paying it: the number is the order the node
+   would actually be evaluated in, computed from the accepted links. A node
+   with no order shows `--`, which is not a step and cannot be read as one. */
+.ov-node__step {
+  font-size: var(--ov-size-1);
+  color: var(--ov-faint);
+  font-variant-numeric: tabular-nums;
+}
+
+.ov-node__label {
+  flex: 1;
+  font-size: var(--ov-size-2);
+  letter-spacing: var(--ov-track);
+  text-transform: var(--ov-case);
+  color: var(--ov-ink);
+}
+
+.ov-node__state {
+  font-size: var(--ov-size-1);
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  color: var(--ov-alarm);
+}
+
+/* A node with no value of its own. It does NOT show a zero. */
+ov-node[data-ov-state="unknown"] { border-color: var(--ov-alarm); }
+ov-node[data-ov-state="cycle"] { border-color: var(--ov-alarm); }
+
+/* Downstream of something with no value. Different claim, quieter mark: the
+   node is fine and its input is not. */
+ov-node[data-ov-state="blocked"] {
+  border-color: var(--ov-line-strong);
+  border-style: dashed;
+}
+ov-node[data-ov-state="blocked"] .ov-node__state { color: var(--ov-faint); }
+
+/* ---- sockets ------------------------------------------------------------ */
+
+ov-socket {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  position: relative;
+  padding: 2px 8px;
+  font-size: var(--ov-size-1);
+  color: var(--ov-dim);
+  cursor: crosshair;
+}
+
+/* An output row reads name, then type, then the pin at the outer edge.
+   ⚠️ `flex-direction: row-reverse` reversed all three, so an output read
+   "vector out" instead of "out vector": the type arrived before the thing it
+   describes. Only the PIN has to move, so only the pin is reordered. */
+ov-socket[data-dir="out"] { text-align: end; }
+ov-socket[data-dir="out"] .ov-sock__name { order: 1; }
+ov-socket[data-dir="out"] .ov-sock__type { order: 2; }
+ov-socket[data-dir="out"] .ov-sock__pin { order: 3; }
+
+.ov-sock__pin {
+  inline-size: 9px;
+  block-size: 9px;
+  flex: 0 0 auto;
+  background: var(--ov-panel);
+  border: 1.5px solid var(--ov-line-strong);
+  border-radius: var(--ov-ctl-corner);
+  /* Half outside the node, the way a real pin sits on a connector. */
+  margin-inline-start: -13px;
+}
+ov-socket[data-dir="out"] .ov-sock__pin { margin-inline: 0 -13px; }
+ov-socket[data-dir="out"] .ov-sock__type { text-align: end; }
+
+/* A required input announces itself before anything is connected to it, so
+   the reason a node will refuse is visible in the node rather than only in
+   the message it produces afterwards. */
+ov-socket[required] .ov-sock__pin { background: var(--ov-line-strong); }
+
+.ov-sock__name { flex: 1; }
+
+.ov-sock__type {
+  color: var(--ov-faint);
+  letter-spacing: 1px;
+}
+
+ov-socket:focus-visible {
+  outline: 2px solid var(--ov-accent);
+  /* An outline paints outside the border box and this element is inside a
+     clipped, cornered panel, so it has to come back in to be seen at all. */
+  outline-offset: -2px;
+}
+
+/* ---- what would happen if you dropped here ------------------------------ *
+ *
+ * ⭐ Shown while the link is still in the air. A node editor that lets you
+ * complete a gesture and then does nothing has refused without saying so,
+ * which is worse than refusing loudly: the user is left to guess whether the
+ * tool is broken or the connection was wrong. */
+
+ov-graph[data-ov-linking] ov-socket[data-ov-would] { opacity: 0.35; }
+
+ov-graph[data-ov-linking] ov-socket[data-ov-would="ok"] {
+  opacity: 1;
+  color: var(--ov-accent);
+}
+ov-graph[data-ov-linking] ov-socket[data-ov-would="ok"] .ov-sock__pin {
+  background: var(--ov-accent);
+  border-color: var(--ov-accent);
+}
+
+/* A widening is offered, and named, rather than presented as a plain fit. */
+ov-graph[data-ov-linking] ov-socket[data-ov-would="broadcast"],
+ov-graph[data-ov-linking] ov-socket[data-ov-would="held"],
+ov-graph[data-ov-linking] ov-socket[data-ov-would="components"] {
+  opacity: 1;
+  color: var(--ov-accent-2);
+}
+ov-graph[data-ov-linking] ov-socket[data-ov-would="broadcast"] .ov-sock__pin,
+ov-graph[data-ov-linking] ov-socket[data-ov-would="held"] .ov-sock__pin,
+ov-graph[data-ov-linking] ov-socket[data-ov-would="components"] .ov-sock__pin {
+  border-color: var(--ov-accent-2);
+}
+
+ov-graph[data-ov-linking] ov-socket[data-ov-would]::after {
+  content: attr(data-ov-would);
+  position: absolute;
+  inset-inline-start: 100%;
+  inset-block-start: 50%;
+  transform: translateY(-50%);
+  margin-inline-start: 6px;
+  white-space: nowrap;
+  font-size: var(--ov-size-1);
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  color: var(--ov-alarm);
+  pointer-events: none;
+}
+ov-graph[data-ov-linking] ov-socket[data-ov-would="ok"]::after { content: none; }
+ov-graph[data-ov-linking] ov-socket[data-ov-would="broadcast"]::after,
+ov-graph[data-ov-linking] ov-socket[data-ov-would="held"]::after,
+ov-graph[data-ov-linking] ov-socket[data-ov-would="components"]::after {
+  color: var(--ov-accent-2);
+}
+
+/* ---- what the graph says about itself ----------------------------------- */
+
+.ov-graph__say {
+  position: absolute;
+  inset-block-end: 0;
+  inset-inline: 0;
+  z-index: 2;
+  margin: 0;
+  padding: 4px 8px;
+  background: var(--ov-raised);
+  border-block-start: var(--ov-rule) solid var(--ov-line-strong);
+  font-size: var(--ov-size-1);
+  letter-spacing: 1px;
+  color: var(--ov-dim);
+  min-block-size: 1.2em;
+}
+
+ov-graph[data-ov-last-refusal] .ov-graph__say { color: var(--ov-alarm); }
+
+ov-graph::after {
+  content: attr(data-ov-evaluable) " nodes evaluable";
+  position: absolute;
+  inset-block-start: 0;
+  inset-inline-end: 0;
+  z-index: 2;
+  padding: 4px 8px;
+  font-size: var(--ov-size-1);
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  color: var(--ov-faint);
+  pointer-events: none;
+}
+
+/* Visually hidden, and PRESENT. See the note in ov-graph.js: `hidden` took
+   every refusal out of the accessibility tree, so the reason existed and
+   nothing could read it. As a side effect the graph now reads back as a list
+   of its own connections, each with its verdict. */
+.ov-link {
+  position: absolute;
+  inline-size: 1px;
+  block-size: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+/* A link whose markup names a socket that is not there has nothing to draw
+   between, so the reason is printed where the link was declared. */
+.ov-link--orphan {
+  inline-size: auto;
+  block-size: auto;
+  overflow: visible;
+  clip-path: none;
+  position: absolute;
+  inset-block-end: 22px;
+  inset-inline-start: 8px;
+  z-index: 2;
+  font-size: var(--ov-size-1);
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  color: var(--ov-alarm);
+}
+}

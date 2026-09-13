@@ -1,0 +1,82 @@
+@layer overscan {
+/* Deviation from a declared baseline. See ov-baseline.js for the refusal.
+ *
+ * 🔴 THE ARROW IS NEVER SCALED WITH THE BAR. The bar's ends are printed
+ * (±scale), and the arrow sits in its own ring with its own full-tilt rate
+ * printed underneath, so the two cannot be read as one instrument.
+ */
+
+ov-baseline {
+  display: grid;
+  gap: 5px;
+  inline-size: 30ch;
+  max-inline-size: 100%;
+  box-sizing: border-box;
+  padding: 8px 10px;
+  border: var(--ov-rule, 1px) solid var(--ov-line);
+  background: var(--ov-panel);
+  font-family: var(--ov-font-mono);
+  font-size: 11px;
+  letter-spacing: .06em;
+  color: var(--ov-ink);
+}
+
+.ov-baseline__head { display: flex; justify-content: space-between; gap: 8px; color: var(--ov-faint); font-size: 10px; letter-spacing: .12em; }
+.ov-baseline__main { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.ov-baseline__num { font-size: 26px; line-height: 1; letter-spacing: .02em; font-variant-numeric: tabular-nums; }
+.ov-baseline__qual { font-size: 9.5px; color: var(--ov-alarm); border: 1px dashed var(--ov-alarm); padding: 1px 4px; }
+ov-baseline[data-ov-qualifier="stale"] .ov-baseline__num,
+ov-baseline[data-ov-qualifier="substituted"] .ov-baseline__num { color: var(--ov-faint); }
+.ov-baseline__dev { font-size: 10.5px; letter-spacing: .08em; }
+
+.ov-baseline__arrow { inline-size: 24px; block-size: 24px; flex: none; overflow: visible; }
+.ov-baseline__arrow[hidden] { display: none; }
+.ov-baseline__arrow path { fill: none; stroke: var(--ov-accent); stroke-width: 2; stroke-linecap: square; }
+.ov-baseline__ring { fill: none; stroke: var(--ov-line-strong); stroke-width: 1; }
+/* At or past full tilt the ring closes in the alarm colour: the arrow has
+ * run out of angle, and says so rather than implying a ceiling. */
+.ov-baseline__arrow[data-ov-full] .ov-baseline__ring { stroke: var(--ov-alarm); stroke-dasharray: 3 2; }
+
+/* ---- the deviation bar: centre is the baseline, ends are ±scale ---- */
+.ov-baseline__bar {
+  position: relative;
+  block-size: 10px;
+  margin-block-end: 12px;
+  border: 1px solid var(--ov-line-strong);
+}
+.ov-baseline__fill {
+  position: absolute;
+  inset-block: 1px;
+  inset-inline-start: var(--ov-baseline-from, 50%);
+  inset-inline-end: calc(100% - var(--ov-baseline-to, 50%));
+  background: var(--ov-accent);
+}
+.ov-baseline__zero { position: absolute; inset-block: -3px; inset-inline-start: calc(50% - .5px); inline-size: 1px; background: var(--ov-ink); }
+.ov-baseline__end { position: absolute; inset-block-start: 11px; font-size: 8.5px; color: var(--ov-faint); }
+.ov-baseline__end--lo { inset-inline-start: 0; }
+.ov-baseline__end--hi { inset-inline-end: 0; }
+/* Past the scale: the fill is hatched and the bar edged in alarm, so a
+ * pinned bar never reads as "exactly at the limit". */
+.ov-baseline__bar[data-ov-over] { border-color: var(--ov-alarm); }
+.ov-baseline__bar[data-ov-over] .ov-baseline__fill {
+  background: repeating-linear-gradient(135deg, var(--ov-alarm) 0 2px, transparent 2px 4px);
+}
+
+.ov-baseline__base,
+.ov-baseline__trend { margin: 0; font-size: 9.5px; color: var(--ov-faint); letter-spacing: .06em; }
+ov-baseline[data-ov-baseline="refused"] .ov-baseline__base,
+ov-baseline[data-ov-baseline="bad"] .ov-baseline__base { color: var(--ov-alarm); }
+ov-baseline[data-ov-baseline="refused"] { border-style: dashed; border-color: var(--ov-alarm); }
+/* Expired (opt-in max-baseline-age): still used, and marked. The deviation
+ * text is faint and the bar's fill hatched, as a stale reading is dimmed. */
+ov-baseline[data-ov-baseline="expired"] .ov-baseline__base,
+ov-baseline[data-ov-baseline-age-unknown] .ov-baseline__base { color: var(--ov-alarm); }
+ov-baseline[data-ov-baseline="expired"] .ov-baseline__dev { color: var(--ov-faint); }
+ov-baseline[data-ov-baseline="expired"] .ov-baseline__fill {
+  background: repeating-linear-gradient(135deg, var(--ov-accent) 0 2px, transparent 2px 4px);
+}
+ov-baseline[data-ov-trend="short"] .ov-baseline__trend,
+ov-baseline[data-ov-trend="norate"] .ov-baseline__trend { color: var(--ov-ink); }
+
+.ov-baseline__note { margin: 0; color: var(--ov-alarm); font-size: 9.5px; letter-spacing: .04em; }
+}

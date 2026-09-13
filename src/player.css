@@ -1,0 +1,380 @@
+@layer overscan {
+/* The media player. See ov-player.js for the refusal.
+ *
+ * ⚠️ The player's buttons are selected as `button` inside its own parts, never
+ * as `.ov-btn`: a rule naming the kit's button class reads, to
+ * tools/harness_sheets.py, as this sheet styling every .ov-btn in the kit,
+ * and it is not. The buttons still wear the kit's .ov-btn furniture.
+ *
+ * 🔴 NOTHING RESTS ON COLOUR. Every state is a word the element writes, and
+ * the drawing differs in form: played ranges are SOLID, buffered ranges are
+ * HATCHED and sit where they are with their gaps left empty, the playhead is
+ * a solid line only over playback and dashed otherwise, a picture that is not
+ * playback is covered by a band naming what it is, and LIVE is a filled pill
+ * only when claimed, an outlined dashed one when behind.
+ */
+
+ov-player {
+  --ov-pl-glow: calc(var(--ov-bloom, .2) * 14px);
+  display: grid;
+  gap: 6px;
+  min-inline-size: 0;
+  font-family: var(--ov-font-mono);
+  font-size: var(--ov-size-1, 10px);
+  color: var(--ov-ink);
+  outline: none;
+}
+ov-player:focus-visible { outline: var(--ov-rule, 1px) dashed var(--ov-accent); outline-offset: 4px; }
+ov-player { container-type: inline-size; }
+/* 🔴 hidden MEANS hidden. The icon buttons' display:inline-flex beat the
+ * attribute, and GO TO LIVE showed on every recording (found in a real browser;
+ * the gate had read .hidden instead of the computed display). */
+ov-player [hidden] { display: none !important; }
+
+.ov-player__head {
+  display: flex;
+  align-items: baseline;
+  gap: 1.5ch;
+  padding-block-end: 4px;
+  border-block-end: var(--ov-rule, 1px) solid var(--ov-line);
+}
+.ov-player__label {
+  flex: 1 1 auto;
+  font-size: var(--ov-size-2, 12px);
+  letter-spacing: .14em;
+  text-transform: uppercase;
+}
+.ov-player__live {
+  padding: 2px 6px;
+  letter-spacing: .14em;
+  white-space: nowrap;
+  border: var(--ov-rule, 1px) dashed var(--ov-faint);
+  color: var(--ov-faint);
+}
+.ov-player__live:empty { display: none; }
+ov-player[data-ov-live-claim] .ov-player__live {
+  border: var(--ov-rule, 1px) solid var(--ov-accent);
+  background: var(--ov-accent);
+  color: var(--ov-field);
+}
+.ov-player__state {
+  padding: 2px 6px;
+  border: var(--ov-rule, 1px) solid var(--ov-accent);
+  color: var(--ov-accent);
+  letter-spacing: .14em;
+  white-space: nowrap;
+}
+ov-player:not([data-ov-media="playing"]) .ov-player__state { border-style: dashed; color: var(--ov-dim, var(--ov-ink)); border-color: var(--ov-line); }
+ov-player:is([data-ov-media="buffering"], [data-ov-media="stalled"], [data-ov-media="frozen"],
+  [data-ov-media="picture-frozen"], [data-ov-media="blocked"], [data-ov-media="error"]) .ov-player__state {
+  border: 3px double var(--ov-alarm);
+  color: var(--ov-alarm);
+}
+
+/* ---- the picture ------------------------------------------------------ */
+
+.ov-player__frame {
+  position: relative;
+  aspect-ratio: 16 / 9;
+  max-inline-size: 100%;
+  background: #000;
+  border: var(--ov-rule, 1px) solid var(--ov-line);
+  overflow: hidden;
+}
+.ov-player__frame > :is(video, audio) {
+  display: block;
+  inline-size: 100%;
+  block-size: 100%;
+  object-fit: contain;
+}
+/* At the top edge: the foot of the picture belongs to captions (found in a
+ * real browser: the band covered the caption line) and to the overlay. */
+.ov-player__veil {
+  position: absolute;
+  inset: 0 0 auto;
+  z-index: 1;
+  padding: 6px 10px;
+  letter-spacing: .16em;
+  text-align: center;
+  color: var(--ov-alarm);
+  background: color-mix(in srgb, var(--ov-field) 80%, transparent);
+  border-block-end: 2px dashed var(--ov-alarm);
+}
+.ov-player__veil:empty { display: none; }
+/* A picture held while the player is not playing is dimmed: the band names it. */
+ov-player:not([data-ov-media="playing"]) .ov-player__frame > video { filter: saturate(.3) brightness(.7); }
+ov-player:is([data-ov-media="paused"], [data-ov-media="ended"], [data-ov-media="seeking"]) .ov-player__veil {
+  color: var(--ov-faint);
+  border-block-end-color: var(--ov-faint);
+}
+
+/* ---- the bar ---------------------------------------------------------- */
+
+.ov-player__bar { position: relative; min-block-size: 18px; }
+ov-player[data-ov-audio] .ov-player__bar:has(.ov-player__wave:not([hidden])) { min-block-size: 64px; }
+.ov-player__track {
+  position: absolute;
+  inset: 5px 0;
+  border: var(--ov-rule, 1px) solid var(--ov-line);
+  background: color-mix(in srgb, var(--ov-field) 85%, #000);
+}
+.ov-player__track :is(.ov-player__bufs, .ov-player__played) { position: absolute; inset: 0; }
+.ov-player__track i { position: absolute; inset-block: 0; display: block; }
+/* Buffered: hatched, never filled. */
+.ov-player__buf {
+  background: repeating-linear-gradient(135deg,
+    color-mix(in srgb, var(--ov-ink) 38%, transparent) 0 2px, transparent 2px 5px);
+}
+/* Played: solid. Over a waveform it is a tint, so the file's shape stays readable. */
+.ov-player__seg {
+  background: var(--ov-accent);
+  box-shadow: 0 0 var(--ov-pl-glow) var(--ov-accent);
+}
+/* Over a waveform the buffer is a band along the foot, still hatched, so the file's shape stays readable. */
+.ov-player__track:has(.ov-player__wave:not([hidden])) .ov-player__buf { inset-block: auto 0; block-size: 5px; }
+.ov-player__track:has(.ov-player__wave:not([hidden])) .ov-player__seg {
+  background: color-mix(in srgb, var(--ov-accent) 30%, transparent);
+  box-shadow: inset 0 -3px 0 var(--ov-accent);
+}
+/* The file's own waveform, decoded from it. */
+.ov-player__wave {
+  position: absolute;
+  inset: 0;
+  inline-size: 100%;
+  block-size: 100%;
+}
+.ov-player__wave path { fill: color-mix(in srgb, var(--ov-ink) 55%, transparent); stroke: none; }
+/* The live window: where LIVE may be claimed, marked by a bracket, not a fill. */
+.ov-player__edge {
+  position: absolute;
+  inset-block: -4px;
+  border-block: 2px solid var(--ov-accent);
+  border-inline-end: 2px solid var(--ov-accent);
+  opacity: .7;
+}
+.ov-player__head-mark {
+  position: absolute;
+  inset-block: -5px;
+  inline-size: 0;
+  border-inline-start: 2px solid var(--ov-ink);
+  translate: -1px 0;
+}
+.ov-player__head-mark[data-ov-moving="no"] { border-inline-start: 2px dashed var(--ov-alarm); }
+.ov-player__seek {
+  position: absolute;
+  inset: 0;
+  inline-size: 100%;
+  block-size: 100%;
+  margin: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+.ov-player__tip {
+  position: absolute;
+  inset-block-end: calc(100% + 4px);
+  translate: -50% 0;
+  padding: 2px 6px;
+  white-space: nowrap;
+  pointer-events: none;
+  letter-spacing: .08em;
+  background: var(--ov-field);
+  border: var(--ov-rule, 1px) solid var(--ov-line);
+  color: var(--ov-ink);
+}
+.ov-player__tip[data-ov-where="not-buffered"] { border-style: dashed; color: var(--ov-alarm); }
+.ov-player__bar[data-ov-refusal]::after {
+  content: attr(data-ov-refusal);
+  display: block;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  color: var(--ov-alarm);
+}
+
+/* ---- controls and counts ---------------------------------------------- */
+
+.ov-player__controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 16px;
+}
+.ov-player__group { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.ov-player__group--end { justify-content: flex-end; }
+.ov-player__controls button { font-size: var(--ov-size-1, 10px); }
+/* Pressed is the kit's own lit state (chrome.css): reverse video in terminal,
+ * the lit colours elsewhere. An accent colour set here painted terminal's
+ * white text onto its white lit ground and left three blank boxes. */
+.ov-player__play[data-ov-pending="yes"] { border-style: dashed; }
+.ov-player__time { color: var(--ov-dim, var(--ov-ink)); font-variant-numeric: tabular-nums; letter-spacing: .06em; padding-inline-start: 6px; white-space: nowrap; }
+.ov-player__nocc { color: var(--ov-faint); letter-spacing: .08em; padding-inline: 4px; }
+.ov-player__vol { inline-size: 72px; }
+.ov-player__counts {
+  justify-self: end;
+  color: var(--ov-faint);
+  letter-spacing: .08em;
+  font-variant-numeric: tabular-nums;
+}
+.ov-player__counts:empty { display: none; }
+ov-player[data-ov-dropping] .ov-player__counts { color: var(--ov-ink); }
+
+.ov-player__why { color: var(--ov-alarm); letter-spacing: .1em; line-height: 1.4; }
+.ov-player__why:empty { display: none; }
+
+.ov-player__demo {
+  padding: 2px 6px;
+  font-size: 9px;
+  border: var(--ov-rule, 1px) dashed var(--ov-line);
+  color: var(--ov-faint);
+  letter-spacing: .16em;
+  text-align: center;
+}
+.ov-player__demo:empty { display: none; }
+
+.ov-player__say {
+  position: absolute;
+  inline-size: 1px;
+  block-size: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+/* ---- icons (the default) and words ------------------------------------ */
+
+/* An icon is a NAME (data-ov-icon); the theme draws it. player-icons.css gives
+ * every theme a mask per name, cut from one skeleton with that theme's pen,
+ * and gives terminal text instead, because a terminal has no icons. */
+.ov-player__icon {
+  display: none;
+  inline-size: var(--ov-pl-size, 16px);
+  block-size: var(--ov-pl-size, 16px);
+  line-height: 1;
+  background-color: var(--ov-pl-ink, currentColor);
+  -webkit-mask: var(--ov-pl-mask, none) center / contain no-repeat;
+  mask: var(--ov-pl-mask, none) center / contain no-repeat;
+}
+.ov-player__icon::before { content: var(--ov-pl-glyph, none); white-space: nowrap; letter-spacing: 0; text-transform: none; }
+/* A slot with no name draws nothing: with no mask its ink filled the whole box
+ * (the rate button, which is a value and has no icon, showed a white square). */
+ov-player .ov-player__icon:not([data-ov-icon]) { display: none !important; }
+.ov-player__controls button { display: inline-flex; align-items: center; justify-content: center; gap: .6ch; }
+ov-player:not([data-ov-controls="words"]) :is(.ov-player__controls, .ov-player__frame) .ov-player__icon { display: inline-block; }
+/* The word stays for assistive tech and for the words version; icons hide it visually. */
+ov-player:not([data-ov-controls="words"]) :is(.ov-player__controls button:not(.ov-player__rate, .ov-player__golive), .ov-player__nocc) .ov-player__word {
+  position: absolute;
+  inline-size: 1px;
+  block-size: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+/* Icon buttons keep the THEME'S OWN BUTTON: its border, cut corner, chamfer,
+ * lean, ticks, leading edge, contact line, brackets and lit state all come
+ * from chrome.css. Only the size is a media player's. (The first icon pass
+ * stripped all of that and every theme got the same frameless button, which
+ * is the failure TOKENS.md records: one kit recoloured ten ways.) The padding
+ * keeps chrome.css's rule of reserving the clip on the sides it takes. */
+ov-player:not([data-ov-controls="words"]) .ov-player__controls button {
+  min-block-size: 28px;
+  padding: 4px calc(6px + var(--ov-ctl-corner) + var(--ov-ctl-chamfer))
+           4px calc(6px + var(--ov-ctl-edge) + var(--ov-ctl-chamfer));
+}
+ov-player:not([data-ov-controls="words"]) .ov-player__play .ov-player__icon { --ov-pl-size-play: 18px; }
+ov-player:not([data-ov-controls="words"]) .ov-player__play[data-ov-pending="yes"] { color: var(--ov-alarm); }
+ov-player:not([data-ov-controls="words"]) .ov-player__rate { font-variant-numeric: tabular-nums; letter-spacing: .04em; }
+ov-player:not([data-ov-controls="words"]) .ov-player__nocc { display: inline-flex; align-items: center; color: var(--ov-faint); padding-inline: 8px; }
+ov-player:not([data-ov-controls="words"]) .ov-player__nocc[hidden] { display: none; }
+ov-player:not([data-ov-controls="words"]) .ov-player__group { gap: 2px; }
+ov-player:not([data-ov-controls="words"]) .ov-player__vol { inline-size: 64px; margin-inline-end: 4px; }
+
+/* The big play: only ever an offer to start. It is the theme's own button,
+ * larger, so a terminal offers "[ > ]" and aegis a chamfered plate. */
+.ov-player__big {
+  position: absolute;
+  inset: 50% auto auto 50%;
+  translate: -50% -50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-block-size: 40px;
+  padding: 8px calc(12px + var(--ov-ctl-corner) + var(--ov-ctl-chamfer))
+           8px calc(12px + var(--ov-ctl-edge) + var(--ov-ctl-chamfer));
+  font-size: var(--ov-size-5, 16px);
+}
+.ov-player__big .ov-player__icon { inline-size: calc(var(--ov-pl-size, 16px) * 1.4); block-size: calc(var(--ov-pl-size, 16px) * 1.4); }
+.ov-player__big[hidden] { display: none; }
+ov-player[data-ov-controls="words"] .ov-player__big { display: none; }
+/* The words version draws no icons. A kit sheet (chrome.css) set the span to
+ * block and won; the gate loaded fewer sheets than the demo and never saw it. */
+ov-player[data-ov-controls="words"] .ov-player__icon { display: none !important; }
+
+/* A control ON A PICTURE stands on the theme's field, not on the picture.
+ * A theme whose button has no ground (vector: an X-Y display draws lines, not
+ * areas) is legible on its own field and illegible over a test card, where the
+ * big play was four crosses and a hatched triangle lost in the colour bars.
+ * The furniture, the pen and the lit state stay the theme's; only the ground
+ * under them is borrowed from the theme's own field. */
+.ov-player__big,
+ov-player[data-ov-controls="overlay"] .ov-player__controls button:not([aria-pressed="true"]) {
+  background-color: color-mix(in srgb, var(--ov-field) 80%, transparent);
+}
+.ov-player__big:hover,
+ov-player[data-ov-controls="overlay"] .ov-player__controls button:not([aria-pressed="true"]):hover {
+  background-color: var(--ov-raised);
+}
+
+/* ---- overlay: the bar and controls over the foot of the picture ------- */
+
+ov-player[data-ov-controls="overlay"] { grid-template-columns: minmax(0, 1fr); }
+ov-player[data-ov-controls="overlay"] .ov-player__head { grid-row: 1; }
+ov-player[data-ov-controls="overlay"] .ov-player__frame { grid-row: 2 / 5; grid-column: 1; }
+ov-player[data-ov-controls="overlay"] .ov-player__frame::after {
+  content: "";
+  position: absolute;
+  inset: auto 0 0;
+  block-size: 42%;
+  background: linear-gradient(transparent, color-mix(in srgb, #000 78%, transparent));
+  pointer-events: none;
+}
+ov-player[data-ov-controls="overlay"] .ov-player__bar { grid-row: 3; grid-column: 1; z-index: 1; align-self: end; margin-inline: 12px; }
+ov-player[data-ov-controls="overlay"] .ov-player__controls { grid-row: 4; grid-column: 1; z-index: 1; align-self: end; padding: 0 8px 6px; }
+ov-player[data-ov-controls="overlay"] .ov-player__track { background: color-mix(in srgb, #000 55%, transparent); }
+ov-player[data-ov-controls="overlay"] .ov-player__time { color: #f2f2f2; }
+/* The veil moves to the top edge, where the controls cannot cover it. */
+/* Position only. It re-declared the border too, colour and all, and being
+ * later it beat the faint colour paused, ended and seeking are given. */
+ov-player[data-ov-controls="overlay"] .ov-player__veil {
+  inset: 0 0 auto;
+  z-index: 1;
+}
+
+/* Narrow players: the volume slider goes (mute and the keyboard still set the
+ * level, and the mute button names it), the time stays, because a position is
+ * a value and a value is never hidden, and the two groups may wrap onto a
+ * second row. ⚠️ Forcing one row was right for frameless icons and wrong once
+ * each theme's own button came back: industrial's 10px cut corner pads every
+ * button and pushed full screen off the picture. A control off the edge is a
+ * control that is not there. */
+@container (max-width: 560px) {
+  ov-player:not([data-ov-controls="words"]) .ov-player__controls { flex-wrap: wrap; gap: 4px 6px; }
+  ov-player:not([data-ov-controls="words"]) .ov-player__group { gap: 1px; }
+  ov-player:not([data-ov-controls="words"]) .ov-player__controls button { min-block-size: 26px; }
+  ov-player:not([data-ov-controls="words"]) .ov-player__time { padding-inline-start: 4px; letter-spacing: 0; }
+  ov-player:not([data-ov-controls="words"]) .ov-player__group { flex-wrap: nowrap; }
+  ov-player:not([data-ov-controls="words"]) .ov-player__vol { display: none; }
+  ov-player:not([data-ov-controls="words"]) .ov-player__controls button {
+    padding-inline: calc(3px + var(--ov-ctl-edge) + var(--ov-ctl-chamfer)) calc(3px + var(--ov-ctl-corner) + var(--ov-ctl-chamfer));
+  }
+  ov-player:not([data-ov-controls="words"]) .ov-player__nocc { padding-inline: 4px; }
+}
+
+/* Full screen: the whole player, readouts included, with the picture taking the room. */
+ov-player:fullscreen {
+  box-sizing: border-box;
+  padding: 16px;
+  background: var(--ov-field);
+  grid-template-rows: auto minmax(0, 1fr) auto auto auto auto;
+}
+ov-player:fullscreen .ov-player__frame { aspect-ratio: auto; }
+}

@@ -1,0 +1,201 @@
+@layer overscan {
+/* A mechanical switch and the talkback flag above it. See ov-switch.js.
+ *
+ * 🔴 THE FLAG AND THE HANDLE NEVER SHARE A COLOUR. The flag's word is drawn in
+ * the accent, the colour of a confirmed state; the handle and the set
+ * position's label are drawn in ink, because they are what the operator did
+ * and nothing more. The one light a switch has, the rocker's lamp, is lit
+ * from the talkback (data-ov-lit), never from the rocker.
+ *
+ * Drawn flat, as the part is seen from the front of a panel. A rod is narrow
+ * at the bushing and wide at its tip, because the tip is nearer the reader,
+ * and it stands end-on at a centre position. Barberpole is static stripes,
+ * never animated, so it cannot be read as the mechanism moving.
+ */
+
+ov-switch {
+  --ov-sw-row: 30px;
+  /* How far toward its position's row a rod reaches: short enough to read as
+     a bat on a bushing rather than a pointer across the plate. */
+  --ov-sw-reach: .75;
+  display: inline-grid; gap: 6px; justify-items: start; align-content: start;
+  min-inline-size: 0;
+  font-family: var(--ov-font-mono); font-size: var(--ov-size-1, 10px); color: var(--ov-ink);
+}
+ov-switch[data-ov-kind="lever"] { --ov-sw-row: 34px; }
+ov-switch[data-ov-kind="rocker"] { --ov-sw-row: 24px; }
+
+/* ---- the talkback flag ------------------------------------------------ */
+
+.ov-switch__flag {
+  box-sizing: border-box; min-inline-size: 44px; block-size: 22px; padding-inline: 6px;
+  display: grid; place-items: center;
+  border: var(--ov-bezel, 1px) solid var(--ov-line-strong); border-radius: 2px;
+  background: var(--ov-field); color: var(--ov-accent);
+  font-size: var(--ov-size-2, 12px); letter-spacing: .12em;
+}
+.ov-switch__flag[data-ov-flag="barberpole"] {
+  background: repeating-linear-gradient(-45deg, var(--ov-ink) 0 4px, var(--ov-field) 4px 8px);
+}
+
+/* ---- the plate: positions, and the mechanism beside them ------------- */
+
+.ov-switch__plate {
+  position: relative; display: grid; grid-auto-rows: var(--ov-sw-row);
+  min-inline-size: 13ch;
+}
+.ov-switch__pos {
+  font: inherit; letter-spacing: .12em; text-transform: var(--ov-case);
+  background: none; border: 0; margin: 0; cursor: pointer;
+  color: var(--ov-faint); text-align: start;
+  padding: 0 8px 0 58px;
+}
+.ov-switch__pos:hover:not(:disabled) { color: var(--ov-ink); }
+.ov-switch__pos:focus-visible { outline: var(--ov-rule, 1px) solid var(--ov-accent); outline-offset: -1px; }
+.ov-switch__pos:disabled { cursor: not-allowed; }
+.ov-switch__pos[data-ov-set] { color: var(--ov-ink); }
+
+.ov-switch__mech { position: absolute; inset-block: 0; inset-inline-start: 0; inline-size: 44px; pointer-events: none; z-index: 1; }
+.ov-switch__mech > i { position: absolute; inset-inline-start: 50%; }
+
+/* The bushing: one flat ring and its hole. */
+.ov-switch__pivot {
+  inset-block-start: 50%; inline-size: 22px; block-size: 22px; translate: -50% -50%;
+  border-radius: 50%; background: var(--ov-panel); box-shadow: inset 0 0 0 1px var(--ov-line-strong);
+}
+.ov-switch__pivot::after {
+  content: ""; position: absolute; inset: 7px; border-radius: 50%; background: var(--ov-field);
+}
+
+/* The rod. Its reach is scaled from the bushing, so its tip stops short of
+   the position's row. */
+.ov-switch__bat {
+  inline-size: 9px; translate: -50% 0; inset-block-start: 50%; block-size: 0;
+  background: color-mix(in srgb, var(--ov-ink) 62%, var(--ov-field));
+}
+ov-switch[data-ov-lean="up"] .ov-switch__bat {
+  inset-block-start: calc(50% - (50% - var(--ov-sw-y)) * var(--ov-sw-reach));
+  block-size: calc((50% - var(--ov-sw-y)) * var(--ov-sw-reach));
+  clip-path: polygon(0 0, 100% 0, 68% 100%, 32% 100%);
+}
+ov-switch[data-ov-lean="down"] .ov-switch__bat {
+  inset-block-start: 50%;
+  block-size: calc((var(--ov-sw-y) - 50%) * var(--ov-sw-reach));
+  clip-path: polygon(32% 0, 68% 0, 100% 100%, 0 100%);
+}
+/* The round end, foreshortened: an ellipse while it leans, a circle end-on. */
+.ov-switch__tip {
+  inset-block-start: calc(50% + (var(--ov-sw-y, 50%) - 50%) * var(--ov-sw-reach));
+  inline-size: 13px; block-size: 9px; translate: -50% -50%;
+  border-radius: 50%; background: var(--ov-ink);
+}
+ov-switch[data-ov-lean="mid"] .ov-switch__tip { block-size: 13px; }
+/* Nothing set: no handle is drawn, rather than one invented at the centre. */
+ov-switch[data-ov-handle=""] :is(.ov-switch__bat, .ov-switch__tip) { display: none; }
+
+/* look="triangle": a flat blade that widens to its end, seen edge-on there. */
+ov-switch[data-ov-look="triangle"] .ov-switch__bat { inline-size: 20px; }
+ov-switch[data-ov-look="triangle"][data-ov-lean="up"] .ov-switch__bat { clip-path: polygon(0 0, 100% 0, 58% 100%, 42% 100%); }
+ov-switch[data-ov-look="triangle"][data-ov-lean="down"] .ov-switch__bat { clip-path: polygon(42% 0, 58% 0, 100% 100%, 0 100%); }
+ov-switch[data-ov-look="triangle"] .ov-switch__tip { inline-size: 20px; block-size: 4px; border-radius: 0; }
+ov-switch[data-ov-look="triangle"][data-ov-lean="mid"] .ov-switch__tip { block-size: 7px; }
+
+/* Flick: a dashed ring round the bushing, because the rod springs back to it. */
+ov-switch[data-ov-kind="flick"] .ov-switch__pivot { outline: var(--ov-rule, 1px) dashed var(--ov-line-strong); outline-offset: 2px; }
+.ov-switch__cmd { color: var(--ov-faint); letter-spacing: .1em; }
+.ov-switch__cmd:empty { display: none; }
+
+/* ---- lever: a slot with a detent per position, and a bar in it ------- */
+
+ov-switch[data-ov-kind="lever"] :is(.ov-switch__pivot, .ov-switch__bat) { display: none; }
+ov-switch[data-ov-kind="lever"] .ov-switch__mech::before {
+  content: ""; position: absolute; inset-block: 4px; inset-inline-start: 50%; inline-size: 4px; translate: -50% 0;
+  background: var(--ov-field); box-shadow: 0 0 0 1px var(--ov-line-strong);
+}
+ov-switch[data-ov-kind="lever"] .ov-switch__pos { position: relative; }
+ov-switch[data-ov-kind="lever"] .ov-switch__pos::before {
+  content: ""; position: absolute; inset-inline-start: 11px; inline-size: 20px; inset-block-start: 50%;
+  border-block-start: var(--ov-rule, 1px) solid var(--ov-line-strong);
+}
+ov-switch[data-ov-kind="lever"] .ov-switch__tip {
+  inset-block-start: var(--ov-sw-y, 50%);
+  inline-size: 28px; block-size: 10px; border-radius: 1px;
+  background: var(--ov-ink);
+  box-shadow: inset 0 -3px 0 color-mix(in srgb, var(--ov-ink) 55%, var(--ov-field));
+}
+
+/* ---- rocker: two halves, the positions printed on them --------------- */
+/* The pressed half sits low; the raised half shows its edge, the side that
+ * tilts toward the reader. */
+
+ov-switch[data-ov-kind="rocker"] .ov-switch__mech { display: none; }
+ov-switch[data-ov-kind="rocker"] .ov-switch__plate {
+  min-inline-size: 0; inline-size: 36px; padding: 3px; border-radius: 3px;
+  background: var(--ov-field); box-shadow: inset 0 0 0 1px var(--ov-line-strong);
+}
+ov-switch[data-ov-kind="rocker"] .ov-switch__pos {
+  padding: 0; text-align: center; letter-spacing: 0; font-size: var(--ov-size-2, 12px);
+  color: var(--ov-faint); background: color-mix(in srgb, var(--ov-ink) 20%, var(--ov-panel));
+}
+ov-switch[data-ov-kind="rocker"] .ov-switch__pos:first-of-type { border-radius: 2px 2px 0 0; }
+ov-switch[data-ov-kind="rocker"] .ov-switch__pos:last-of-type { border-radius: 0 0 2px 2px; }
+ov-switch[data-ov-kind="rocker"] .ov-switch__pos:first-of-type:not([data-ov-set]) { box-shadow: inset 0 3px 0 color-mix(in srgb, var(--ov-ink) 40%, var(--ov-panel)); }
+ov-switch[data-ov-kind="rocker"] .ov-switch__pos:last-of-type:not([data-ov-set]) { box-shadow: inset 0 -3px 0 color-mix(in srgb, var(--ov-ink) 40%, var(--ov-panel)); }
+ov-switch[data-ov-kind="rocker"] .ov-switch__pos[data-ov-set] {
+  color: var(--ov-ink); background: color-mix(in srgb, var(--ov-ink) 6%, var(--ov-field));
+}
+/* ⭐ Lit only while the talkback confirms the lamp's position. */
+ov-switch[data-ov-kind="rocker"][data-ov-lit] .ov-switch__pos {
+  color: var(--ov-field); background: color-mix(in srgb, var(--ov-accent) 75%, var(--ov-field));
+}
+ov-switch[data-ov-kind="rocker"][data-ov-lit] .ov-switch__pos[data-ov-set] {
+  background: color-mix(in srgb, var(--ov-accent) 50%, var(--ov-field));
+}
+
+/* ---- the guard: a translucent cover on a hinge ------------------------ */
+/* The switch shows through it and the positions stay readable beside it; they
+ * are still disabled until the switch is armed. Room is kept above the plate
+ * whether the cover is shut or open, so arming does not move the layout. */
+
+ov-switch[guard] .ov-switch__plate { margin-block-start: 42px; }
+.ov-switch__guard {
+  position: absolute; z-index: 2;
+  inset: -9px auto -5px -6px; inline-size: 56px;
+  border-radius: 8px 8px 3px 3px;
+  background: color-mix(in srgb, var(--ov-alarm) 30%, transparent);
+  box-shadow: inset 0 0 0 1px var(--ov-alarm);
+  display: grid; place-items: end center; padding: 0 0 3px;
+  transform-origin: 50% 0;
+  transition: transform var(--ov-dur-fast, .15s) var(--ov-ease, ease), background var(--ov-dur-fast, .15s);
+}
+ov-switch[data-ov-kind="rocker"] .ov-switch__guard { inline-size: 48px; }
+.ov-switch__guardword { color: var(--ov-alarm); font-size: 8px; letter-spacing: .08em; background: var(--ov-field); padding: 0 2px; }
+/* The hinge belongs to the panel, so it stays put when the cover moves. */
+ov-switch[guard] .ov-switch__plate::before {
+  content: ""; position: absolute; z-index: 3;
+  inset-inline-start: -2px; inline-size: 48px; inset-block-start: -13px; block-size: 4px;
+  background: var(--ov-line-strong);
+}
+/* Open: lifted up and back past the hinge. A guard that is open is still
+   there, and the switch below it is plainly uncovered. */
+ov-switch[data-ov-armed] .ov-switch__guard {
+  transform: translateY(-4px) scaleY(-.45); pointer-events: none;
+  background: color-mix(in srgb, var(--ov-alarm) 16%, transparent);
+}
+ov-switch[data-ov-armed] .ov-switch__guardword { visibility: hidden; }
+
+.ov-switch__arm { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.ov-switch__armed {
+  display: none; color: var(--ov-alarm); letter-spacing: .16em;
+  border: var(--ov-rule, 1px) solid var(--ov-alarm); padding: 1px 5px;
+}
+ov-switch[data-ov-armed] .ov-switch__armed { display: inline-block; }
+
+.ov-switch__out { justify-self: stretch; }
+.ov-switch__why { color: var(--ov-ink); letter-spacing: .06em; line-height: 1.45; overflow-wrap: anywhere; }
+.ov-switch__why:empty { display: none; }
+
+@media (prefers-reduced-motion: reduce) {
+  .ov-switch__guard { transition: none; }
+}
+}

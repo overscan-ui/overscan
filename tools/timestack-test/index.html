@@ -1,0 +1,56 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>ov-timestack tests</title>
+<!-- Over tools/serve.py: /tools/timestack-test/ . The last case is a CONTROL that must fail. -->
+<link rel="stylesheet" href="../../src/tokens.css">
+<link rel="stylesheet" href="../../src/finish.css">
+<link rel="stylesheet" href="../../src/timestack.css">
+<style>
+  body { margin: 0; background: #08080a; color: #ccc; font: 12px ui-monospace, monospace; }
+  .row { display: grid; grid-template-columns: minmax(0, 860px); gap: 22px; padding: 16px 24px; }
+  .cap { color: #888; margin-block-end: 6px; }
+  #tests { white-space: pre; color: #9f9; padding: 16px 24px; }
+  #tests.fail { color: #f77; }
+</style>
+<section class="ov ov-finish row" data-ov-theme="antiseptic" id="a"></section>
+<div id="tests">running…</div>
+<script type="module">
+  import '../../src/ov-timestack.js';
+  await customElements.whenDefined('ov-timestack');
+  const mk = (cap, data, attrs = {}) => { const d = document.createElement('div'); d.innerHTML = `<div class="cap">${cap}</div>`; const el = document.createElement('ov-timestack'); for (const [k, v] of Object.entries(attrs)) el.setAttribute(k, v); d.append(el); document.getElementById('a').append(d); el.stamp = data; return el; };
+  const LEAP = { kernel: 'naif0012.tls', lastEntry: '2126-01-01T00:00:00Z' };
+  const OWLT = { seconds: 812.400, derived: 'light time from the trajectory', kernel: 'traj_2126_v3.bsp' };
+  const ERT = { value: '2126-03-11T04:25:39.412Z', derived: 'station receipt', station: 'DSS-43' };
+  const stated = mk('all four, consistent', { event: 'burn start', leapseconds: LEAP,
+    sclk: { value: '1/0791234567.123' },
+    scet: { value: '2126-03-11T04:12:07.012Z', derived: 'SCLK via clock correlation', kernel: 'sclk_0421.tsc', validThrough: '2126-06-30T00:00:00Z' },
+    owlt: OWLT, ert: ERT });
+  const computed = mk('no event time given: computed from receipt and light time', { event: 'burn start', leapseconds: LEAP, owlt: OWLT, ert: ERT });
+  const receiptOnly = mk('receipt only', { event: 'safe mode entry', ert: ERT });
+  const prov = mk('converted past the kernel', { event: 'antenna slew', leapseconds: LEAP,
+    scet: { value: '2126-09-11T02:00:00.000Z', derived: 'SCLK via clock correlation', kernel: 'sclk_0421.tsc', validThrough: '2126-06-30T00:00:00Z' } });
+  const disputed = mk('event time and ERT − OWLT disagree', { event: 'burn start', leapseconds: LEAP,
+    scet: { value: '2126-03-11T04:12:10.212Z', derived: 'SCLK via clock correlation', kernel: 'sclk_0421.tsc' }, owlt: OWLT, ert: ERT });
+  const undeclared = mk('a time with no derivation', { event: 'heater on', scet: { value: '2126-03-11T04:00:00Z' } });
+  const none = mk('nothing', null);
+  const row = (el, sys) => el.querySelector(`.ov-timestack__row[data-system="${sys}"]`);
+  const val = (el, sys) => row(el, sys)?.querySelector('.ov-timestack__value').textContent;
+  const cases = [
+    ['a stated event time is shown as the event, with how it was got', () => stated.getAttribute('data-ov-event') === 'stated' && val(stated, 'SCET') === '2126-03-11 04:12:07.012 UTC' && row(stated, 'SCET').textContent.includes('sclk_0421.tsc')],
+    ['with no event time, it is computed as ERT − OWLT, and labelled computed', () => computed.getAttribute('data-ov-event') === 'computed' && val(computed, 'SCET') === '2126-03-11 04:12:07.012 UTC' && row(computed, 'SCET').textContent.includes('computed: ERT − OWLT')],
+    ['⭐ receipt time is never shown as event time', () => receiptOnly.getAttribute('data-ov-event') === 'undetermined' && val(receiptOnly, 'SCET') === 'NOT DETERMINED' && !row(receiptOnly, 'SCET').textContent.includes('04:25:39')],
+    ['the receipt stays in its own row, labelled a receipt', () => val(receiptOnly, 'ERT') === '2126-03-11 04:25:39.412 UTC' && row(receiptOnly, 'ERT').textContent.includes('received, not when it happened')],
+    ['converted past the kernel is PROVISIONAL, and names the kernel', () => prov.getAttribute('data-ov-event') === 'provisional' && row(prov, 'SCET').textContent.includes('extrapolated past sclk_0421.tsc')],
+    ['more than six months past the last leapsecond is PROVISIONAL', () => row(prov, 'SCET').textContent.includes('six months past the last leapsecond in naif0012.tls')],
+    ['within the kernel, it is not provisional', () => !row(stated, 'SCET').textContent.includes('PROVISIONAL')],
+    ['disagreeing sources are DISPUTED, both shown, not averaged', () => disputed.getAttribute('data-ov-event') === 'disputed' && row(disputed, 'SCET').textContent.includes('3.200 s') && val(disputed, 'ERT−OWLT') === '2126-03-11 04:12:07.012 UTC'],
+    ['a time with no derivation says so', () => row(undeclared, 'SCET').textContent.includes('derivation not stated')],
+    ['light time is shown as a duration', () => val(stated, 'OWLT') === '13m 32.4s'],
+    ['no times is a refusal', () => none.getAttribute('data-ov-refusal') === 'unknown'],
+    ['CONTROL: a false claim is caught', () => val(receiptOnly, 'SCET') === val(receiptOnly, 'ERT')],
+  ];
+  let bad = 0;
+  const res = cases.map(([name, fn]) => { let r = false; try { r = !!fn(); } catch (e) { r = false; } const c = name.startsWith('CONTROL'); const pass = c ? !r : r; if (!pass) bad += 1; return `${pass ? 'ok  ' : 'FAIL'} ${name}${c ? ' (must fail)' : ''}`; });
+  const t = document.getElementById('tests'); t.textContent = `${cases.length - bad} of ${cases.length} pass\n` + res.join('\n'); t.classList.toggle('fail', bad > 0);
+  window.tsResults = { total: cases.length, bad, out: res };
+</script>

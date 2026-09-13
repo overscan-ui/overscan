@@ -1,0 +1,53 @@
+/* ---- CASCADE LAYER ------------------------------------------------------
+ *
+ * Everything the kit ships sits in ONE layer named `overscan`, so a consumer's
+ * own CSS beats it without a specificity fight and without !important. That is
+ * close to mandatory for a distributed kit: an app should be able to restyle a
+ * panel by writing a plain rule.
+ *
+ * ⚠️ ONE layer, deliberately, NOT a sub-layer per file. Sub-layers look tidier
+ * and would silently reorder the kit against itself: layer order beats
+ * specificity, so a high-specificity rule in an early file that currently wins
+ * would start losing to a low-specificity rule in a later one. A single layer
+ * preserves source order exactly, so nothing inside the kit changes.
+ *
+ * Unlayered author CSS wins over all of it. That is the point.
+ */
+
+@layer overscan {
+/* Where a source could be, drawn as every place it could be. */
+
+ov-locator {
+  display: grid;
+  gap: 6px;
+  font-family: var(--ov-font-mono);
+  font-size: var(--ov-size-1);
+  letter-spacing: 1px;
+  color: var(--ov-dim);
+}
+
+.ov-locator__stage {
+  position: relative;
+  aspect-ratio: 1;
+  inline-size: 100%;
+  max-inline-size: var(--ov-locator-size, 320px);
+  background: var(--ov-field);
+  border: var(--ov-bezel) solid var(--ov-line-strong);
+}
+.ov-locator__canvas, .ov-locator__marks { position: absolute; inset: 0; inline-size: 100%; block-size: 100%; }
+
+.ov-locator__axis { stroke: var(--ov-line); stroke-width: 1; }
+.ov-locator__fix { fill: none; stroke: var(--ov-accent-2); stroke-width: 1; stroke-dasharray: 3 3; }
+.ov-locator__fix.is-stale { stroke: var(--ov-faint); }
+.ov-locator__probe { fill: var(--ov-accent-2); }
+.ov-locator__probe.is-stale { fill: var(--ov-faint); }
+.ov-locator__tag { font: 9px var(--ov-font-mono); letter-spacing: 1px; fill: var(--ov-dim); text-transform: uppercase; }
+.ov-locator__point { fill: var(--ov-ink); }
+.ov-locator__halo { fill: none; stroke: var(--ov-ink); stroke-width: 1; }
+
+.ov-locator__readout { display: flex; flex-wrap: wrap; gap: 4px 20px; }
+.ov-locator__verdict { color: var(--ov-accent); }
+.ov-locator__verdict.is-candidates, .ov-locator__verdict.is-region { color: var(--ov-accent-2); }
+.ov-locator__verdict.is-disagree, .ov-locator__verdict.is-none { color: var(--ov-alarm); }
+.ov-locator__verdict.is-fix { color: var(--ov-ink); }
+}

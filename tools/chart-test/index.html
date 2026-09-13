@@ -1,0 +1,64 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>ov-chart harness: columns</title>
+<link rel="stylesheet" href="../../src/tokens.css">
+<link rel="stylesheet" href="../../src/chart.css">
+<style>
+  body { background: #06060a; color: #cfe; font: 13px ui-monospace, monospace; padding: 20px; }
+  #box { inline-size: 300px; border: 1px solid #345; }
+  pre { white-space: pre-wrap; }
+</style>
+<div id="box"></div>
+<pre id="out">running...</pre>
+<script type="module">
+/* A chart decimates to one bucket per column it has, so it needs its width.
+ * It used to read clientWidth inside render(), which forced a layout on every
+ * reading of every live chart. It now takes the width from a ResizeObserver,
+ * and redraws when that changes, since what it may draw depends on it.
+ *
+ * Both checks need the observer, which only reports when the page renders; a
+ * harness that renders no frames says so rather than passing them. */
+const impl = new URLSearchParams(location.search).get('impl') || '../../src/ov-chart.js';
+await import(impl);
+
+const results = [];
+const ok = (name, cond, got) => results.push({ name, pass: !!cond, got });
+const notRun = [];
+const frames = () => Promise.race([
+  new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(() => r(true)))),
+  new Promise((r) => setTimeout(() => r(false), 1500)),
+]);
+const box = document.getElementById('box');
+const el = document.createElement('ov-chart');
+el.setAttribute('values', Array.from({ length: 1000 }, (_, i) => (50 + 40 * Math.sin(i / 30)).toFixed(2)).join(','));
+box.append(el);
+// Coordinate pairs in the drawing: a proxy for how many buckets it drew.
+const pairs = () => (el.innerHTML.match(/\d+\.\d\d,\d+\.\d\d/g) || []).length;
+
+if (await frames()) {
+  // 1. Rendering reads no layout once the width is known.
+  const d = Object.getOwnPropertyDescriptor(Element.prototype, 'clientWidth');
+  let reads = 0;
+  Object.defineProperty(Element.prototype, 'clientWidth', { configurable: true, get() { reads += 1; return d.get.call(this); } });
+  for (let i = 0; i < 10; i++) el.render();
+  Object.defineProperty(Element.prototype, 'clientWidth', d);
+  ok('ten renders read clientWidth zero times', reads === 0, reads);
+
+  // 2. A narrower chart redraws itself with fewer buckets, unasked.
+  const wide = pairs();
+  box.style.inlineSize = '100px';
+  await frames(); await frames();
+  const narrow = pairs();
+  ok('a third of the width redraws with well under half the buckets', narrow > 0 && narrow < wide * 0.5, { wide, narrow });
+} else {
+  notRun.push('columns: this harness renders no frames, so the ResizeObserver never reported');
+}
+
+// 3. 🔴 The gate has to be able to fail.
+const control = { name: 'CONTROL (must fail)', pass: pairs() === -1, got: 'deliberate' };
+
+const passed = results.filter((x) => x.pass).length;
+const report = { impl, total: results.length, passed, failed: results.filter((x) => !x.pass), notRun, controlDidFail: control.pass === false };
+document.getElementById('out').textContent = JSON.stringify(report, null, 1);
+window.__chart = report;
+</script>

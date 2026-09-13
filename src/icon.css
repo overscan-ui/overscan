@@ -1,0 +1,69 @@
+/* ---- CASCADE LAYER ------------------------------------------------------
+ *
+ * Everything the kit ships sits in ONE layer named `overscan`, so a consumer's
+ * own CSS beats it without a specificity fight and without !important. That is
+ * close to mandatory for a distributed kit: an app should be able to restyle a
+ * panel by writing a plain rule.
+ *
+ * ⚠️ ONE layer, deliberately, NOT a sub-layer per file. Sub-layers look tidier
+ * and would silently reorder the kit against itself: layer order beats
+ * specificity, so a high-specificity rule in an early file that currently wins
+ * would start losing to a low-specificity rule in a later one. A single layer
+ * preserves source order exactly, so nothing inside the kit changes.
+ *
+ * Unlayered author CSS wins over all of it. That is the point.
+ */
+
+@layer overscan {
+/* Symbols. See tools/icons.py for the register.
+ *
+ * Everything here is `currentColor`, so a symbol takes the surrounding ink and
+ * therefore the theme, with no per-theme rule and no second implementation.
+ * That is the same reason the segment readout is drawn in the DOM rather than
+ * on a canvas.
+ */
+
+ov-icon {
+  display: inline-block;
+  inline-size: var(--ov-icon-size, 24px);
+  block-size: var(--ov-icon-size, 24px);
+  vertical-align: middle;
+  color: inherit;
+  flex: 0 0 auto;
+}
+
+.ov-icon__svg {
+  display: block;
+  inline-size: 100%;
+  block-size: 100%;
+  fill: none;
+  stroke: currentColor;
+  /* Stroke scales with the symbol, so a 16px symbol is not a 24px symbol with
+     a heavy outline. The register is drawn at 24 and 2 is its weight there. */
+  stroke-width: 2;
+  stroke-linecap: butt;
+  stroke-linejoin: miter;
+  vector-effect: non-scaling-stroke;
+}
+
+/* A symbol that is doing a job takes the lit colour; one that is furniture
+   does not. Opt-in, because most symbols sit beside text and should read as
+   part of it. */
+.ov-icon--lit { color: var(--ov-accent); }
+.ov-icon--alarm { color: var(--ov-alarm); }
+.ov-icon--quiet { color: var(--ov-faint); }
+
+/* 🔴 The refusal. There is no generic fallback glyph in this set, because a
+   fallback is the display inventing a meaning nobody assigned. Symbol 00 is
+   reserved for saying the register has no answer, and it is drawn in the alarm
+   colour so it cannot be mistaken for a symbol that means something. */
+ov-icon[data-ov-refusal] { color: var(--ov-alarm); }
+
+/* Anything wearing a symbol next to a label lines the two up on the text
+   baseline rather than on the box, which is where icon rows usually go wrong. */
+.ov-iconrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+}

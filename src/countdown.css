@@ -1,0 +1,109 @@
+@layer overscan {
+/* The mission clock. See ov-countdown.js for the refusal.
+ *
+ * 🔴 NO STATE RESTS ON ONE CHANNEL. live, holding, lost and unknown each have
+ * a text tag written by the element, a colour, and a shape difference in the
+ * readout (steady accent, steady dim, alarm dashes). Nothing here blinks: a
+ * countdown that flashes on HOLD reads as an alarm, and a hold is not one.
+ */
+
+ov-countdown {
+  /* Knob: the readout's size. A real length, not a percentage, for the same
+   * reason as every other kit element: a percentage defers to an ancestor that
+   * may be shrink-wrapping (the demo index is). */
+  --ov-countdown-size: var(--ov-size-6, 32px);
+
+  display: inline-grid;
+  /* The second column is reserved at the widest tag, see __tag below. */
+  grid-template-columns: auto minmax(calc(9ch + 9 * .12em + 12px), auto);
+  grid-template-areas:
+    "read tag"
+    "note note";
+  align-items: baseline;
+  column-gap: 1.2ch;
+  row-gap: 4px;
+  font-family: var(--ov-font-mono);
+  /* The tag's size, so the reserved column's ch and em are measured in the
+   * tag's own font. The readout sets its own size and is unaffected. */
+  font-size: var(--ov-size-1, 10px);
+  color: var(--ov-ink);
+  vertical-align: middle;
+}
+
+.ov-countdown__read {
+  grid-area: read;
+  font-size: var(--ov-countdown-size);
+  line-height: 1;
+  letter-spacing: .04em;
+  /* Digits must not shuffle sideways as they change: every mono face the
+   * themes use is already fixed-width, and this holds it if one is not. */
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  color: var(--ov-accent);
+}
+
+.ov-countdown__sign { color: var(--ov-faint); }
+
+.ov-countdown__tag,
+.ov-countdown__note {
+  font-size: var(--ov-size-1, 10px);
+  letter-spacing: .12em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+/* 🔴 THE ELEMENT IS THE SAME WIDTH IN EVERY STATE. A readout that grows when
+ * it refuses shoves its neighbours and overflows any box sized to it while it
+ * was counting (the demo index measures each preview once, and LOST came out
+ * clipped to "LOS"). ov-segment keeps every cell for the same reason. So the
+ * tag column is always there, reserved at the widest tag the element writes,
+ * NO TARGET plus the boxed tags' padding and border, even when it is empty.
+ * The reservation is on the GRID COLUMN, not the tag, so a boxed tag (HOLD,
+ * LOST) still hugs its word instead of stretching into an empty frame. The
+ * column is sized in the tag's font: the element's font-size IS the tag's. */
+.ov-countdown__tag {
+  grid-area: tag;
+  justify-self: start;
+  color: var(--ov-faint);
+}
+
+/* The sync age and the last synced value. --ov-faint rather than --ov-dim:
+ * it is small text and has to clear 4.5:1 on the field in every theme.
+ * `contain: inline-size` takes it out of the element's width, so the long
+ * LAST SYNC line wraps inside the readout instead of widening it. */
+.ov-countdown__note {
+  grid-area: note;
+  contain: inline-size;
+  white-space: normal;
+  color: var(--ov-faint);
+}
+
+/* holding: the number is a fact, so it stays legible, but it is not moving
+ * and must not look like a running count. Steady ink, not accent; the tag is
+ * boxed so HOLD survives a glance. */
+ov-countdown[data-ov-state="holding"] .ov-countdown__read { color: var(--ov-ink); }
+ov-countdown[data-ov-state="holding"] .ov-countdown__tag {
+  padding: 2px 5px;
+  border: var(--ov-rule, 1px) solid var(--ov-ink);
+  color: var(--ov-ink);
+}
+
+/* lost and unknown: the kit's refusal. Dashes in the alarm colour, never the
+ * last good value, which lives in the note with its own label. */
+ov-countdown[data-ov-refusal] .ov-countdown__read,
+ov-countdown[data-ov-refusal] .ov-countdown__tag { color: var(--ov-alarm); }
+ov-countdown[data-ov-state="lost"] .ov-countdown__tag {
+  padding: 2px 5px;
+  border: var(--ov-rule, 1px) solid var(--ov-alarm);
+}
+ov-countdown[data-ov-state="holding"][data-ov-clock="lost"] .ov-countdown__note { color: var(--ov-alarm); }
+
+.ov-countdown__say {
+  position: absolute;
+  inline-size: 1px;
+  block-size: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+}

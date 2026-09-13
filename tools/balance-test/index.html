@@ -1,0 +1,277 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>ov-balance harness</title>
+<!-- The refusal gate for the ov-balance element. Serve the repo root
+     (tools/serve.py) and open /tools/balance-test/. The last line must read
+     GATE: PASS, and every CONTROL (an assertion false on purpose) must fail. -->
+<link rel="stylesheet" href="../../src/tokens.css">
+<link rel="stylesheet" href="../../src/chrome.css">
+<link rel="stylesheet" href="../../src/balance.css">
+<style>
+  body { background: #06060a; color: #cfe; font: 13px ui-monospace, monospace; padding: 20px; }
+  pre { white-space: pre-wrap; }
+  #stage { max-inline-size: 640px; container-type: inline-size; }
+</style>
+<div id="stage" data-ov-theme="industrial"></div>
+<pre id="out">running...</pre>
+<script>
+  // Count animation frames asked for: the element must ask for none.
+  window.__raf = 0;
+  const raf = window.requestAnimationFrame.bind(window);
+  window.requestAnimationFrame = (f) => { window.__raf++; return raf(f); };
+
+  // 🔴 A THROW IS A RED GATE, NOT A HANG. Without this an element that throws
+  // mid-run leaves "running..." in the block, which reads as neither pass nor
+  // fail - and a gate whose failure looks like a stall cannot be trusted.
+  const fatal = (what) => {
+    const out = document.getElementById('out');
+    if (out) out.textContent = `THREW: ${what}\n\nGATE: FAIL`;
+  };
+  addEventListener('error', (e) => fatal(e.error?.stack || e.message || e));
+  addEventListener('unhandledrejection', (e) => fatal(e.reason?.stack || e.reason));
+</script>
+<script type="module">
+// ?src=mut/<mutant>.js runs the same gate against a copy with one
+// refusal broken on purpose: every mutant must turn the gate red.
+const SRC = new URLSearchParams(location.search).get('src') || '../../src/ov-balance.js';
+// ⚠️ `mut/x.js` is a BARE SPECIFIER to the module loader and will not
+// resolve; it has to be made a URL against this page first.
+const { OvBalance } = await import(new URL(SRC, location.href).href);
+
+const stage = document.getElementById('stage');
+const results = [];
+const ok = (name, cond, got) => results.push({ name, pass: !!cond, got });
+const controls = [];
+const control = (name, cond, got) => controls.push({ name, pass: !!cond, got });
+const settle = () => new Promise((r) => setTimeout(r, 0));
+
+let NOW = 1_800_000_000_000;
+OvBalance.now = () => NOW;
+const step = (s) => { NOW += s * 1000; };
+
+const make = (attrs) => {
+  const el = document.createElement('ov-balance');
+  for (const [k, v] of Object.entries(attrs)) el.setAttribute(k, v);
+  stage.replaceChildren(el);
+  return el;
+};
+
+const q = (b, s) => (b ? b.querySelector(s) : null);
+const text = (b, s) => (b ? q(b, s)?.textContent ?? null : null);
+const word = (b) => text(b, '.ov-balance__word');
+const why = (b) => text(b, '.ov-balance__why');
+const said = (b) => text(b, '.ov-balance__say');
+const stream = (b, id) => q(b, `[data-ov-stream="${id}"]`);
+/* 🔴 Ask what PAINTS, not what an attribute says. And refuse to answer for a
+ * DETACHED element: getComputedStyle returns empty strings off the document,
+ * so `"" !== "none"` reads as visible and the check silently passes. A throw
+ * is a red gate here, which is the only safe answer. */
+const shows = (el) => {
+  if (!el) return false;
+  if (!el.isConnected) throw new Error(`shows() on a detached element: ${el.getAttribute?.('class') || el.tagName}`);
+  return getComputedStyle(el).display !== 'none';
+};
+const boxH = (el) => (el ? Math.round(parseFloat(getComputedStyle(el).height)) : null);
+
+/* The BP Texas City tower: 170 ft, and a transmitter that reads a 10 ft band
+ * at the bottom of it. The level fell for three hours while the tower filled.
+ * CSB p. 54: the tower held 158 ft and the transmitter "read 78 percent
+ * (7.9 feet)". */
+const TOWER = {
+  label: 'RAFFINATE SPLITTER', unit: 'bbl', 'level-unit': 'ft',
+  height: '170', capacity: '42000', 'span-min': '0', 'span-max': '10',
+  window: '10800', 'meter-error': '0.5', 'level-error': '0.1', persist: '0',
+};
+const PER_FT = 42000 / 170;
+const FEED = (rate = 700) => [{ id: 'FEED', rate }];
+const LCV = (rate = 170) => [{ id: 'LEVEL CONTROL VALVE', rate }];
+
+/* Three hours of history, in half-hour samples, with the level going where
+ * the caller says and the meters reporting all along. */
+function runTower(b, levels, opts = {}) {
+  for (let i = 0; i < levels.length; i++) {
+    if (i) step(1800);
+    b.reading = { level: levels[i], in: opts.in ?? FEED(), out: opts.out ?? LCV() };
+  }
+}
+const FALLING = [9.0, 8.82, 8.63, 8.45, 8.27, 8.08, 7.9];
+let b;
+
+// ---- 1. The headline: a falling level under net inflow is a dispute -------
+b = make(TOWER);
+runTower(b, FALLING);
+await settle();
+ok('⭐ a level that FELL while the meters filled the vessel is disputed', b.getAttribute('data-ov-state') === 'disputed', b.getAttribute('data-ov-state'));
+ok('...and says so in words, not as a number to interpret', word(b) === 'LEVEL DISPUTED BY FLOWS', word(b));
+ok('⭐ ...with the residual in BOTH currencies: volume metered and level moved', why(b) === '+1,590 bbl metered over 3h 00m, level fell 1.1 ft where +6.4 ft was due', why(b));
+ok('...it is a refusal, marked as one', b.getAttribute('data-ov-refusal') === 'disputed-by-flows', b.getAttribute('data-ov-refusal'));
+ok('...the shown words reach CSS and speech alike', b.getAttribute('data-ov-refusal-text') === 'level disputed by flows', b.getAttribute('data-ov-refusal-text'));
+ok('...and it is announced', /level disputed by flows/.test(said(b)), said(b));
+ok('the two sums are both stated, so the reader can see them differ', /^1,95[0-9] bbl {2}· {2}7\.9 ft$/.test(text(b, '.ov-balance__fromlevel')) && /^3,81[0-9] bbl {2}· {2}15\.4 ft/.test(text(b, '.ov-balance__frommeters')), [text(b, '.ov-balance__fromlevel'), text(b, '.ov-balance__frommeters')]);
+ok('the residual carries the tolerance it was judged against', /^−1,86[0-9] bbl {2}· {2}TOLERANCE ±3[0-9](\.[0-9])?$/.test(text(b, '.ov-balance__residual')), text(b, '.ov-balance__residual'));
+ok('the declared window, tolerance and persistence are printed', text(b, '.ov-balance__rulebox') === 'OVER 3h 00m · ±0.5% + ±0.1 ft', text(b, '.ov-balance__rulebox'));
+ok('the host is a group, not an img (its stream rows must stay readable)', b.getAttribute('role') === 'group', b.getAttribute('role'));
+ok('the vessel is the only aria-hidden part', q(b, '.ov-balance__vessel')?.getAttribute('aria-hidden') === 'true' && b.getAttribute('aria-hidden') === null, b.getAttribute('aria-hidden'));
+ok('the accessible name carries the verdict and the evidence', /^RAFFINATE SPLITTER: level disputed by flows\. \+1,/.test(b.getAttribute('aria-label')), b.getAttribute('aria-label'));
+control('CONTROL: a falling level under net inflow reads as agreement (must fail)', b.getAttribute('data-ov-state') === 'agrees', b.getAttribute('data-ov-state'));
+control('CONTROL: the level is shown as a plain reading (must fail)', b.getAttribute('data-ov-refusal') === null, b.getAttribute('data-ov-refusal'));
+
+// The level the flows expect is drawn, dashed, and outside the span.
+ok('the level the flows expect is drawn as its own mark, naming it', text(b, '.ov-balance__mark--exp b') === 'FLOWS 15.4', text(b, '.ov-balance__mark--exp b'));
+ok('...on the opposite edge from the measured level, so the two never collide', getComputedStyle(q(b, '.ov-balance__mark--level b')).insetInlineStart === '0px' && getComputedStyle(q(b, '.ov-balance__mark--exp b')).insetInlineEnd === '0px', [getComputedStyle(q(b, '.ov-balance__mark--level b')).insetInlineStart, getComputedStyle(q(b, '.ov-balance__mark--exp b')).insetInlineEnd]);
+ok('...and low in the shell its label clears the line rather than the floor', q(b, '.ov-balance__mark--level').getAttribute('data-ov-place') === 'above', q(b, '.ov-balance__mark--level').getAttribute('data-ov-place'));
+ok('⭐ that it is above what the transmitter can see is stated in TEXT', /· {2}ABOVE SPAN$/.test(text(b, '.ov-balance__frommeters')), text(b, '.ov-balance__frommeters'));
+ok('...and the report knows it is above the span', b.report.aboveSpan === true, b.report.aboveSpan);
+ok('...the meters column is marked as above the span too', q(b, '.ov-balance__frommeters').hasAttribute('data-ov-above'), text(b, '.ov-balance__frommeters'));
+ok('the residual is drawn as a distance between the two marks', shows(q(b, '.ov-balance__gap')) && boxH(q(b, '.ov-balance__gap')) > 0, boxH(q(b, '.ov-balance__gap')));
+
+// ---- 2. The span is a permanent fact about the instrument ----------------
+ok('⭐ the part of the vessel no transmitter can see is drawn, and paints', shows(q(b, '.ov-balance__unmeasured--hi')) && boxH(q(b, '.ov-balance__unmeasured--hi')) > 0, boxH(q(b, '.ov-balance__unmeasured--hi')));
+ok('...and it is most of this vessel, said as a share', /TRANSMITTER SEES 0\.0–10\.0 ft OF 170\.0 · 6% OF THE VESSEL/.test(text(b, '.ov-balance__spanlabel')), text(b, '.ov-balance__spanlabel'));
+ok('...the unmeasured band is taller than the span band', boxH(q(b, '.ov-balance__unmeasured--hi')) > boxH(q(b, '.ov-balance__span')), [boxH(q(b, '.ov-balance__unmeasured--hi')), boxH(q(b, '.ov-balance__span'))]);
+control('CONTROL: the span covers the whole vessel (must fail)', Math.round(b.report.covered * 100) === 100, Math.round(b.report.covered * 100));
+control('CONTROL: nothing is drawn as unmeasured (must fail)', !shows(q(b, '.ov-balance__unmeasured--hi')), boxH(q(b, '.ov-balance__unmeasured--hi')));
+
+// A reading outside the span is not a measurement of the contents.
+b = make({ ...TOWER, 'span-max': '6' });
+runTower(b, FALLING);
+step(60); b.sample();
+await settle();
+ok('a level above the top of span is marked as outside it', q(b, '.ov-balance__mark--level').hasAttribute('data-ov-outside') && b.report.inSpan === false, b.report.inSpan);
+
+// ---- 3. A static level under inflow is the SAME state -------------------
+b = make({ label: 'TANK 912', unit: 'bbl', 'level-unit': 'ft', height: '40', capacity: '40000', 'span-min': '0', 'span-max': '40', window: '3600', 'meter-error': '0.5', 'level-error': '0.1', persist: '0' });
+for (let i = 0; i < 5; i++) {
+  if (i) step(900);
+  b.reading = { level: 24.0, in: [{ id: 'FEED LINE', rate: 500 }], out: [] };
+}
+await settle();
+ok('⭐ a level that did not move while the meters filled it is disputed too', b.getAttribute('data-ov-state') === 'disputed', b.getAttribute('data-ov-state'));
+ok('...the same words as the falling case: one state, not two', word(b) === 'LEVEL DISPUTED BY FLOWS', word(b));
+ok('...and the residual names the volume that went unaccounted', /^\+500 bbl metered over 1h 00m, level DID NOT MOVE where \+0\.5 ft was due$/.test(why(b)), why(b));
+ok('a tank filling with no outflow declared is still checkable', b.report.residual < 0, b.report.residual);
+control('CONTROL: only a static level is ever disputed (must fail)', Math.abs(b.report.dLevel) > 0, b.report.dLevel);
+
+// ---- 4. An unknown flow means NOT CHECKED, never confirmed --------------
+b = make(TOWER);
+runTower(b, FALLING);
+step(60); b.sample();
+await settle();
+b.reading = { level: 7.9, in: FEED(), out: [{ id: 'LEVEL CONTROL VALVE', rate: null }] };
+await settle();
+ok('⭐ one stream with no rate stops the check', b.getAttribute('data-ov-state') === 'unchecked', b.getAttribute('data-ov-state'));
+ok('...and names the stream it is missing', why(b) === 'NOT CHECKED · no rate from LEVEL CONTROL VALVE', why(b));
+ok('⭐ ...the level keeps its number and carries the unchecked QUALIFIER', b.getAttribute('data-ov-qualified') === 'unchecked' && /7\.9 ft/.test(text(b, '.ov-balance__fromlevel')), [b.getAttribute('data-ov-qualified'), text(b, '.ov-balance__fromlevel')]);
+ok('...so it is not a refusal: a refusal withholds the number', b.getAttribute('data-ov-refusal') === null, b.getAttribute('data-ov-refusal'));
+ok('...the streams it does have are not treated as the whole set', b.report.invMeters === null && text(b, '.ov-balance__frommeters') === '—', text(b, '.ov-balance__frommeters'));
+ok('...the unknown stream says NO RATE, never zero', text(stream(b, 'LEVEL CONTROL VALVE'), '.ov-balance__rate') === '—' && text(stream(b, 'LEVEL CONTROL VALVE'), '.ov-balance__sword') === 'NO RATE', [text(stream(b, 'LEVEL CONTROL VALVE'), '.ov-balance__rate'), text(stream(b, 'LEVEL CONTROL VALVE'), '.ov-balance__sword')]);
+ok('...and is announced', /not checked · no rate from level control valve/.test(said(b)), said(b));
+control('CONTROL: an unknown flow is taken as zero and the check runs (must fail)', b.getAttribute('data-ov-state') === 'disputed' || b.getAttribute('data-ov-state') === 'agrees', b.getAttribute('data-ov-state'));
+control('CONTROL: a meter with no rate reads 0 (must fail)', text(stream(b, 'LEVEL CONTROL VALVE'), '.ov-balance__rate') === '0 bbl/h', text(stream(b, 'LEVEL CONTROL VALVE'), '.ov-balance__rate'));
+
+// A failed meter is the same: not a rate of zero.
+b.reading = { level: 7.9, in: FEED(), out: [{ id: 'LEVEL CONTROL VALVE', rate: 170, status: 'failed' }] };
+await settle();
+ok('a meter declared failed is not a reading of its last rate', b.getAttribute('data-ov-state') === 'unchecked' && text(stream(b, 'LEVEL CONTROL VALVE'), '.ov-balance__sword') === 'METER FAILED', text(stream(b, 'LEVEL CONTROL VALVE'), '.ov-balance__sword'));
+ok('...and a meter genuinely reading zero says so instead', (() => { b.reading = { level: 7.9, in: FEED(), out: [{ id: 'LEVEL CONTROL VALVE', rate: 0 }] }; return text(stream(b, 'LEVEL CONTROL VALVE'), '.ov-balance__sword') === 'READING ZERO'; })(), text(stream(b, 'LEVEL CONTROL VALVE'), '.ov-balance__sword'));
+b = make(TOWER);
+b.reading = { level: 7.9, in: [], out: [] };
+await settle();
+ok('no metered stream at all is NOT CHECKED, not agreement', b.getAttribute('data-ov-state') === 'unchecked' && why(b) === 'NOT CHECKED · no metered stream declared', why(b));
+ok('...and the empty stream list is hidden rather than left as a rule', !shows(q(b, '.ov-balance__streams')), getComputedStyle(q(b, '.ov-balance__streams')).display);
+
+// ---- 5. A window not yet filled is not agreement ------------------------
+b = make(TOWER);
+b.reading = { level: 9.0, in: FEED(), out: LCV() };
+step(1800);
+b.reading = { level: 9.4, in: FEED(), out: LCV() };
+await settle();
+ok('⭐ before the window is filled the element says so', b.getAttribute('data-ov-state') === 'short' && /WINDOW NOT FILLED · 30m 00s of 3h 00m/.test(why(b)), [b.getAttribute('data-ov-state'), why(b)]);
+ok('...as NOT CHECKED, carrying the unchecked qualifier', word(b) === 'NOT CHECKED' && b.getAttribute('data-ov-qualified') === 'unchecked', [word(b), b.getAttribute('data-ov-qualified')]);
+ok('...and no residual is offered from a part-window', b.report.residual === null, b.report.residual);
+control('CONTROL: a part-filled window is judged anyway (must fail)', b.report.residual !== null, b.report.residual);
+
+// ---- 6. The tolerance and the window are declared, never defaulted -----
+b = make({ ...TOWER, 'meter-error': '' });
+runTower(b, FALLING);
+await settle();
+ok('⭐ with no meter uncertainty declared the element refuses to judge', b.getAttribute('data-ov-state') === 'unruled' && /meter-error and level-error are required/.test(why(b)), [b.getAttribute('data-ov-state'), why(b)]);
+ok('...and prints that the tolerance is not declared', /NO TOLERANCE/.test(text(b, '.ov-balance__rulebox')), text(b, '.ov-balance__rulebox'));
+control('CONTROL: a missing tolerance is quietly defaulted (must fail)', b.getAttribute('data-ov-state') === 'disputed' || b.getAttribute('data-ov-state') === 'agrees', b.getAttribute('data-ov-state'));
+
+b = make({ ...TOWER, window: '' });
+runTower(b, FALLING);
+await settle();
+ok('with no window declared there is no period to strike a balance over', b.getAttribute('data-ov-state') === 'unruled' && /NO WINDOW DECLARED/.test(why(b)), why(b));
+
+b = make({ label: 'VESSEL', unit: 'bbl', 'level-unit': 'ft', window: '3600', 'meter-error': '0.5', 'level-error': '0.1' });
+b.reading = { level: 9, in: FEED(), out: LCV() };
+await settle();
+ok('a vessel with no height or capacity cannot turn a level into an inventory', b.getAttribute('data-ov-state') === 'undeclared' && /height and capacity are required/.test(why(b)), why(b));
+ok('...and the shell says so rather than drawing an empty tank', q(b, '.ov-balance__shell').hasAttribute('data-ov-undeclared'), true);
+
+// ---- 7. Agreement, when it is earned -----------------------------------
+b = make(TOWER);
+// The level rises exactly as the meters say it should: +530 bbl/h for 3 h.
+const rise = [9.0];
+for (let i = 1; i <= 6; i++) rise.push(9.0 + (530 * 0.5 * i) / PER_FT);
+runTower(b, rise);
+await settle();
+ok('a level that moved as the meters said it would AGREES', b.getAttribute('data-ov-state') === 'agrees', [b.getAttribute('data-ov-state'), b.report.residual, b.report.tol]);
+ok('...and says what tolerance it agreed within', /LEVEL AND FLOWS AGREE within ±3[0-9](\.[0-9])? bbl/.test(why(b)), why(b));
+ok('...with no refusal and no qualifier', b.getAttribute('data-ov-refusal') === null && b.getAttribute('data-ov-qualified') === null, [b.getAttribute('data-ov-refusal'), b.getAttribute('data-ov-qualified')]);
+ok('...and the residual gap is not drawn when there is nothing to show', !shows(q(b, '.ov-balance__gap')), getComputedStyle(q(b, '.ov-balance__gap')).display);
+ok('the level is still marked as outside the transmitter span up there', q(b, '.ov-balance__mark--level').hasAttribute('data-ov-outside'), b.report.inSpan);
+
+// ---- 7b. A dispute must last its declared persistence before it is called
+b = make({ ...TOWER, persist: '120' });
+runTower(b, FALLING);
+await settle();
+ok('⭐ a residual beyond tolerance is not yet a dispute', b.getAttribute('data-ov-state') === 'watching', b.getAttribute('data-ov-state'));
+ok('...and the element prints how long it has held, against the rule', /^RESIDUAL BEYOND TOLERANCE FOR 0s OF 2m 00s$/.test(why(b)), why(b));
+ok('...it is not announced as a dispute while it is still being watched', !/disputed/.test(said(b)), said(b));
+ok('...and it is not marked as a refusal yet', b.getAttribute('data-ov-refusal') === null, b.getAttribute('data-ov-refusal'));
+step(60); b.sample();
+await settle();
+ok('...halfway through, it still says so', b.getAttribute('data-ov-state') === 'watching' && /FOR 1m 00s OF 2m 00s/.test(why(b)), why(b));
+step(60); b.sample();
+await settle();
+ok('...and past the declared persistence it becomes a dispute', b.getAttribute('data-ov-state') === 'disputed' && b.getAttribute('data-ov-refusal') === 'disputed-by-flows', b.getAttribute('data-ov-state'));
+control('CONTROL: the dispute is called at once, ignoring persistence (must fail)', false, 'see the watching checks above');
+
+// ---- 8. What the element must not do -----------------------------------
+/* 🔴 THE CLAIM IS ABOUT THIS ELEMENT'S CODE, SO IT IS CHECKED THERE. A
+ * page-wide rAF count stopped being a statement about this element the moment
+ * ov-source began driving feeds on a frame ticker: it was measuring whether
+ * the page had arrived yet, and passing by luck. Nor can a delta isolate it,
+ * because that ticker keeps counting in the background. So the assertion is
+ * static and exact - this module never asks for a frame at all. */
+{
+  const text = await (await fetch(new URL(SRC, location.href).href)).text();
+  const asks = /requestAnimationFrame/.test(text);
+  ok('the element never asks for an animation frame, anywhere in its source', !asks, asks);
+  control('CONTROL: the element draws on a frame (must fail)', asks, asks);
+}
+b = make(TOWER);
+runTower(b, FALLING);
+step(60); b.sample();
+await settle();
+const said1 = said(b);
+step(5); b.sample(); b.sample();
+await settle();
+ok('a residual that stays beyond tolerance is not announced again every second', said(b) === said1, [said1, said(b)]);
+b.remove();
+ok('a removed element stops its timer', b._timer === 0, b._timer);
+
+// ---- report ----
+const bad = results.filter((r) => !r.pass);
+const liveControls = controls.filter((c) => c.pass);
+const lines = [];
+for (const r of results) lines.push(`${r.pass ? 'ok  ' : 'FAIL'} ${r.name}${r.pass ? '' : `\n       got: ${JSON.stringify(r.got)}`}`);
+lines.push('');
+for (const c of controls) lines.push(`${c.pass ? 'CONTROL DID NOT FAIL' : 'control failed as required'}  ${c.name}${c.pass ? `\n       got: ${JSON.stringify(c.got)}` : ''}`);
+lines.push('');
+lines.push(`${results.length - bad.length}/${results.length} checks, ${controls.length - liveControls.length}/${controls.length} controls failed as required`);
+lines.push(bad.length === 0 && liveControls.length === 0 ? 'GATE: PASS' : 'GATE: FAIL');
+document.getElementById('out').textContent = lines.join('\n');
+</script>

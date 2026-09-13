@@ -1,0 +1,96 @@
+/* ---- CASCADE LAYER ------------------------------------------------------
+ *
+ * Everything the kit ships sits in ONE layer named `overscan`, so a consumer's
+ * own CSS beats it without a specificity fight and without !important. That is
+ * close to mandatory for a distributed kit: an app should be able to restyle a
+ * panel by writing a plain rule.
+ *
+ * ⚠️ ONE layer, deliberately, NOT a sub-layer per file. Sub-layers look tidier
+ * and would silently reorder the kit against itself: layer order beats
+ * specificity, so a high-specificity rule in an early file that currently wins
+ * would start losing to a low-specificity rule in a later one. A single layer
+ * preserves source order exactly, so nothing inside the kit changes.
+ *
+ * Unlayered author CSS wins over all of it. That is the point.
+ */
+
+@layer overscan {
+/* The GL persistence scope. See ov-scope.js for why it exists alongside
+ * <ov-wave>: beam intensity is dwell time, which a stroked polyline cannot
+ * express. <ov-wave> stays the default. */
+
+ov-scope {
+  position: relative;
+  display: block;
+  block-size: var(--ov-scope-height, 130px);
+  overflow: hidden;
+  border: var(--ov-rule) solid var(--ov-line);
+}
+
+ov-scope canvas {
+  display: block;
+  inline-size: 100%;
+  block-size: 100%;
+}
+
+/* The sample-rate note, over the trace. Same discipline as ov-wave: an
+ * instrument that drops most of what it is given says so on itself. */
+ov-scope .ov-scope__note {
+  position: absolute;
+  inset-block-end: 0;
+  inset-inline-start: 0;
+  padding: 3px 6px;
+  font-size: var(--ov-size-1);
+  letter-spacing: 0.6px;
+  color: var(--ov-dim);
+  background: color-mix(in srgb, var(--ov-field) 78%, transparent);
+  pointer-events: none;
+}
+
+/* 🔴 A scope with no signal draws NO TRACE and says so. A flat line at zero is
+ * a reading, and the one thing this kit will not do is show a number it was
+ * never given. */
+ov-scope[data-ov-refusal] .ov-scope__note {
+  color: var(--ov-alarm);
+  text-transform: uppercase;
+}
+
+/* ---- waterfall ---------------------------------------------------------- */
+
+/* A spectrogram: time down, frequency across, intensity as colour. Shares this
+ * file with the scope because they are the same kind of thing, a GL instrument
+ * interior fed by a data texture, and they share every convention. */
+ov-waterfall {
+  position: relative;
+  display: block;
+  block-size: var(--ov-waterfall-height, 160px);
+  overflow: hidden;
+  border: var(--ov-rule) solid var(--ov-line);
+}
+
+ov-waterfall canvas {
+  display: block;
+  inline-size: 100%;
+  block-size: 100%;
+}
+
+/* ⭐ The floor is printed ON the instrument. A spectrogram that clips quiet to
+ * black without saying so has hidden the difference between "quiet" and
+ * "nothing", and those are different readings. */
+ov-waterfall .ov-waterfall__note {
+  position: absolute;
+  inset-block-end: 0;
+  inset-inline-start: 0;
+  padding: 3px 6px;
+  font-size: var(--ov-size-1);
+  letter-spacing: 0.6px;
+  color: var(--ov-dim);
+  background: color-mix(in srgb, var(--ov-field) 78%, transparent);
+  pointer-events: none;
+}
+
+ov-waterfall[data-ov-refusal] .ov-waterfall__note {
+  color: var(--ov-alarm);
+  text-transform: uppercase;
+}
+}

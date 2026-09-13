@@ -1,0 +1,164 @@
+@layer overscan {
+/* The layered timeline. See ov-timeline.js for the refusal.
+ *
+ * 🔴 ABSENCE IS THE RESTING STATE. The track's own background is the hatched
+ * NO DATA pattern, and a span is a solid panel laid over it. So a gap is not
+ * blank track (which reads as silence) but visibly "nothing recorded here",
+ * and presence is only ever drawn where a span put it.
+ */
+
+ov-timeline {
+  /* Real widths, not percentages: the demo index shrink-wraps its previews,
+   * and a percentage there resolves to nothing. */
+  /* Room for the longest layer name PLUS a theme's button furniture:
+   * terminal wraps a button in [ ], and at 10ch "[VISUAL]" broke onto
+   * three lines. */
+  --ov-timeline-name-w: 12ch;
+  --ov-timeline-track-w: 44ch;
+  --ov-timeline-lane-h: 34px;
+  /* Must equal the .ov-slider thumb width in control.css: spans and the
+   * playhead are inset by half of it, so they line up with the thumb. */
+  --ov-timeline-thumb: 10px;
+
+  /* A DEFINITE preferred width on the element, capped by its container: it
+   * fits a 226px reference cell, does not collapse on a shrink-wrapping
+   * stage, and the track column is the same width for the seek input and
+   * every lane.
+   * ⚠️ The first cut put the preferred width on each TRACK instead, and in a
+   * wide container the seek input filled the column while the tracks did
+   * not, so the seek thumb stopped sitting over the playheads. */
+  display: grid;
+  inline-size: calc(var(--ov-timeline-name-w) + var(--ov-timeline-track-w) + 9ch + 16px);
+  max-inline-size: 100%;
+  gap: 6px;
+  font-family: var(--ov-font-mono);
+  font-size: 11px;
+  letter-spacing: .06em;
+  color: var(--ov-ink);
+}
+
+.ov-timeline__head {
+  display: flex;
+  justify-content: space-between;
+  gap: 2ch;
+  color: var(--ov-faint);
+  letter-spacing: .12em;
+}
+.ov-timeline__now { color: var(--ov-ink); font-variant-numeric: tabular-nums; }
+ov-timeline[data-ov-solo-empty="true"] .ov-timeline__mode { color: var(--ov-alarm); }
+ov-timeline[data-ov-live] .ov-timeline__now { color: var(--ov-alarm); }
+
+/* The seek input sits over the track column only, so its thumb lines up with
+ * the playheads below it. */
+.ov-timeline__axis {
+  display: grid;
+  grid-template-columns: var(--ov-timeline-name-w) minmax(8ch, 1fr) 9ch;
+  column-gap: 8px;
+}
+.ov-timeline__seek {
+  grid-column: 2;
+  inline-size: 100%;
+  margin: 0;
+}
+.ov-timeline__axis[data-ov-refusal]::after {
+  content: "no duration to place a playhead in";
+  grid-column: 2;
+  color: var(--ov-alarm);
+  font-size: 10px;
+}
+
+.ov-timeline__lanes { display: grid; gap: 3px; }
+
+.ov-timeline__lane {
+  display: grid;
+  /* The TRACK is what gives: it is proportional, so a narrow one is the
+   * same recording drawn smaller. */
+  grid-template-columns: var(--ov-timeline-name-w) minmax(8ch, 1fr) 9ch;
+  column-gap: 8px;
+  align-items: stretch;
+}
+
+/* Solo is a real button: tap to solo, as in the deck. */
+.ov-timeline__name {
+  /* .ov-btn supplies the theme's control furniture (brackets, bevels,
+   * chamfers); this only fits it to the lane. */
+  justify-content: flex-start;
+  min-inline-size: 0;
+  padding-inline: 8px;
+  font-size: 10px;
+  letter-spacing: .12em;
+  text-align: start;
+  white-space: nowrap;
+  overflow: hidden;
+}
+.ov-timeline__name:focus-visible { outline: 2px solid var(--ov-ink); outline-offset: 2px; }
+.ov-timeline__lane[data-ov-solo] .ov-timeline__name {
+  outline: 1px solid var(--ov-accent);
+  outline-offset: -1px;
+  color: var(--ov-accent);
+}
+
+.ov-timeline__track {
+  position: relative;
+  block-size: var(--ov-timeline-lane-h);
+  border: 1px solid var(--ov-line);
+  /* NO DATA, by default. */
+  background:
+    repeating-linear-gradient(135deg,
+      color-mix(in srgb, var(--ov-faint) 16%, transparent) 0 2px, transparent 2px 7px),
+    var(--ov-field);
+  cursor: ew-resize;
+  touch-action: none;
+  overflow: hidden;
+}
+
+.ov-timeline__span {
+  position: absolute;
+  inset-block: 0;
+  /* border-box: the 1px edges are part of the span's width, not added to it.
+   * content-box drew every span 2px longer than its data, so a span that
+   * ended at 0:40 was drawn past it. */
+  box-sizing: border-box;
+  background: var(--ov-panel);
+  border-inline: 1px solid var(--ov-line-strong);
+}
+.ov-timeline__span svg {
+  position: absolute;
+  inset: 4px 0;
+  inline-size: 100%;
+  block-size: calc(100% - 8px);
+}
+/* The trace and its fills. All of them live inside a span's own svg, so no
+ * fill can reach a gap. Opacity 0.22 is ov-chart's band. */
+.ov-timeline__line { fill: none; stroke: var(--ov-accent); stroke-width: 1.25; }
+.ov-timeline__area--area { fill: var(--ov-accent); fill-opacity: .22; stroke: none; }
+.ov-timeline__area--gradient { stroke: none; }
+.ov-timeline__stop-top { stop-color: var(--ov-accent); stop-opacity: .5; }
+.ov-timeline__stop-base { stop-color: var(--ov-accent); stop-opacity: 0; }
+.ov-timeline__bar { fill: var(--ov-accent); fill-opacity: .75; }
+.ov-timeline__base { fill: none; stroke: var(--ov-accent); stroke-opacity: .6; stroke-width: 1; }
+
+.ov-timeline__playhead {
+  position: absolute;
+  inset-block: 0;
+  inline-size: 0;
+  border-inline-start: 1px solid var(--ov-ink);
+  pointer-events: none;
+}
+
+.ov-timeline__value {
+  align-self: center;
+  color: var(--ov-ink);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: .08em;
+}
+.ov-timeline__lane[data-ov-at="absent"] .ov-timeline__value { color: var(--ov-faint); }
+
+/* A muted lane stays on screen, dimmed: solo is a view, and the other layers
+ * are still in the recording. Opacity is not used on the TEXT, which would
+ * drop below contrast; the track and trace dim instead. */
+.ov-timeline__lane[data-ov-muted] .ov-timeline__track { filter: saturate(.2) brightness(.55); }
+.ov-timeline__lane[data-ov-muted] .ov-timeline__value { color: var(--ov-faint); }
+
+.ov-timeline__note { margin: 0; color: var(--ov-alarm); font-size: 10px; letter-spacing: .06em; }
+}

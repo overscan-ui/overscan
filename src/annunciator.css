@@ -1,0 +1,191 @@
+@layer overscan {
+/* The annunciator panel. See ov-annunciator.js for the refusal.
+ *
+ * 🔴 NO STATE RESTS ON ONE CHANNEL. Every state has a fill or border shape, a
+ * colour, AND a text tag written by the element. Flashing is the fourth
+ * channel for `alert` and is the one reduced motion takes away, which is safe
+ * only because the other three are still there: ALERT and ACK differ in their
+ * tag whether or not anything blinks.
+ */
+
+ov-annunciator {
+  /* Knobs. The tile width is a REAL width, not a percentage: a percentage is
+   * a deferral that resolves to nothing under a shrink-wrapping ancestor, and
+   * the demo index shrink-wraps its previews. */
+  --ov-annunciator-cols: 4;
+  --ov-annunciator-tile-w: 12ch;
+  --ov-annunciator-period: 800ms;
+
+  display: inline-grid;
+  gap: var(--ov-gap, 8px);
+  font-family: var(--ov-font-mono);
+  color: var(--ov-ink);
+}
+
+.ov-annunciator__grid {
+  display: grid;
+  grid-template-columns: repeat(var(--ov-annunciator-cols), minmax(var(--ov-annunciator-tile-w), 1fr));
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.ov-annunciator__tile {
+  position: relative;
+  display: grid;
+  place-items: center;
+  min-block-size: 3.4em;
+  padding: 12px 8px 6px;
+  border: var(--ov-rule, 1px) solid var(--ov-line);
+  background: var(--ov-panel);
+  /* Dark but legible. A real lamp is unreadable when off; a screen has no
+   * excuse, and an operator should be able to read the layout at rest.
+   * ⚠️ --ov-faint, not --ov-line-strong: line-strong on panel is 3.1:1 in
+   * antiseptic, under 4.5 at this size. faint clears it in all ten themes. */
+  color: var(--ov-faint);
+  font-size: 11px;
+  letter-spacing: .08em;
+  text-align: center;
+  text-transform: uppercase;
+}
+
+.ov-annunciator__tag {
+  position: absolute;
+  inset-block-start: 3px;
+  inset-inline-end: 5px;
+  font-size: 8.5px;
+  letter-spacing: .1em;
+  line-height: 1;
+}
+
+/* alert: live and nobody has seen it. Filled and flashing, in phase with
+ * every other alert tile (the element offsets each animation by one clock). */
+.ov-annunciator__tile[data-ov-state="alert"] {
+  border-color: var(--ov-alarm);
+  background: var(--ov-alarm);
+  color: var(--ov-field);
+  animation: ov-annunciator-flash var(--ov-annunciator-period) steps(1, end) infinite;
+}
+
+/* acked: live, seen. Filled and steady. */
+.ov-annunciator__tile[data-ov-state="acked"] {
+  border-color: var(--ov-alarm);
+  background: var(--ov-alarm);
+  color: var(--ov-field);
+}
+
+/* latched: tripped, recovered, never seen. The shape differs from live
+ * (hatched outline, not a fill) so the two cannot be confused at a glance,
+ * which is the whole refusal.
+ * ⚠️ The hatch is 14%, not more: the label is --ov-alarm ON the hatch, and at
+ * 24% antiseptic fell to 4.3:1. 14% is 4.9:1 at worst across all ten themes. */
+.ov-annunciator__tile[data-ov-state="latched"] {
+  border: 2px solid var(--ov-alarm);
+  background:
+    repeating-linear-gradient(135deg,
+      color-mix(in srgb, var(--ov-alarm) 14%, transparent) 0 3px,
+      transparent 3px 8px),
+    var(--ov-panel);
+  color: var(--ov-alarm);
+}
+
+/* unknown: the kit's `unknown` refusal. Never the dark normal tile, because
+ * a dark tile claims the condition is absent and nobody measured that. */
+.ov-annunciator__tile[data-ov-state="unknown"] {
+  border: var(--ov-rule, 1px) dashed var(--ov-faint);
+  background: var(--ov-field);
+  color: var(--ov-faint);
+}
+.ov-annunciator__tile[data-ov-state="unknown"][data-ov-latched] {
+  border-color: var(--ov-alarm);
+}
+.ov-annunciator__tile[data-ov-state="unknown"] .ov-annunciator__tag,
+.ov-annunciator__tile[data-ov-latched] .ov-annunciator__tag { color: var(--ov-alarm); }
+
+/* stale: shown, and marked by its tag, as everywhere else in the kit. Not
+ * dimmed: the at-rest label is already at the contrast floor. */
+
+.ov-annunciator__tile[data-ov-retired] { outline: 1px dotted var(--ov-alarm); outline-offset: 2px; }
+
+/* Shelved: still on the panel, still saying its state, but not flashing and
+ * not lighting the master. A dotted edge and a faint wash, never hidden. */
+.ov-annunciator__tile[data-ov-shelved] {
+  animation: none;
+  outline: 1px dotted var(--ov-faint);
+  outline-offset: -4px;
+}
+.ov-annunciator__tile[data-ov-shelved][data-ov-state="alert"],
+.ov-annunciator__tile[data-ov-shelved][data-ov-state="acked"] {
+  background: color-mix(in srgb, var(--ov-alarm) 30%, var(--ov-panel));
+  color: var(--ov-ink);
+}
+.ov-annunciator__tile[data-ov-shelved] .ov-annunciator__tag { color: var(--ov-faint); }
+
+.ov-annunciator__shelve {
+  position: absolute;
+  inset-block-end: 2px;
+  inset-inline-start: 4px;
+  padding: 0 3px;
+  border: 1px solid currentColor;
+  background: none;
+  color: inherit;
+  font: inherit;
+  font-size: 7.5px;
+  letter-spacing: .1em;
+  opacity: .75;
+  cursor: pointer;
+}
+.ov-annunciator__shelve:focus-visible { outline: 2px solid var(--ov-ink); opacity: 1; }
+
+@keyframes ov-annunciator-flash {
+  50% { background: var(--ov-panel); color: var(--ov-alarm); }
+}
+
+.ov-annunciator__master {
+  display: inline-flex;
+  justify-content: space-between;
+  gap: 1.5ch;
+  padding: 8px 12px;
+  border: 2px solid var(--ov-line-strong);
+  background: var(--ov-panel);
+  color: var(--ov-faint);
+  font: inherit;
+  font-size: 12px;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+ov-annunciator[data-ov-master="lit"] .ov-annunciator__master {
+  border-color: var(--ov-alarm);
+  background: var(--ov-alarm);
+  color: var(--ov-field);
+  animation: ov-annunciator-flash var(--ov-annunciator-period) steps(1, end) infinite;
+}
+ov-annunciator[data-ov-master="dark"] .ov-annunciator__master { cursor: default; }
+.ov-annunciator__master:focus-visible { outline: 2px solid var(--ov-ink); outline-offset: 2px; }
+
+.ov-annunciator__note {
+  margin: 0;
+  color: var(--ov-alarm);
+  font-size: 10px;
+  letter-spacing: .06em;
+}
+
+.ov-annunciator__say {
+  position: absolute;
+  inline-size: 1px;
+  block-size: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  /* Nothing blinks. ALERT vs ACK is still carried by the tag, and the alert
+   * tile gets a heavier edge so the difference is not text alone. */
+  .ov-annunciator__tile[data-ov-state="alert"],
+  ov-annunciator[data-ov-master="lit"] .ov-annunciator__master { animation: none; }
+  .ov-annunciator__tile[data-ov-state="alert"] { box-shadow: inset 0 0 0 3px var(--ov-field); }
+}
+}

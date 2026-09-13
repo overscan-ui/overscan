@@ -1,0 +1,117 @@
+/* ---- CASCADE LAYER ------------------------------------------------------
+ *
+ * Everything the kit ships sits in ONE layer named `overscan`, so a consumer's
+ * own CSS beats it without a specificity fight and without !important. That is
+ * close to mandatory for a distributed kit: an app should be able to restyle a
+ * panel by writing a plain rule.
+ *
+ * ⚠️ ONE layer, deliberately, NOT a sub-layer per file. Sub-layers look tidier
+ * and would silently reorder the kit against itself: layer order beats
+ * specificity, so a high-specificity rule in an early file that currently wins
+ * would start losing to a low-specificity rule in a later one. A single layer
+ * preserves source order exactly, so nothing inside the kit changes.
+ *
+ * Unlayered author CSS wins over all of it. That is the point.
+ */
+
+@layer overscan {
+/* Per-character text.
+ *
+ * Every effect here delays by --ov-char, which is the index of the unit. That
+ * is the whole difference from the line-level vocabulary in motion.css: there
+ * a mask moves across the text, here the units arrive.
+ */
+
+ov-text { display: inline-block; position: relative; }
+
+/* Clipped, NOT visibility:hidden and NOT display:none. Both of those remove it
+ * from the accessibility tree, which is a known text-splitting bug: the only
+ * accessible
+ * copy of the string disappeared while the visible copy stayed aria-hidden, so
+ * the component announced nothing at all. */
+.ov-text__sr {
+  position: absolute;
+  inline-size: 1px;
+  block-size: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.ov-text__cells { display: inline-flex; }
+
+.ov-text__c {
+  font-style: normal;
+  display: inline-block;
+  animation-delay: calc(var(--ov-char) * var(--ov-char-step, 34ms));
+  animation-fill-mode: both;
+}
+
+/* ---- cascade ----------------------------------------------------------- */
+
+/* Units arrive one at a time. Geometry and clipping only: a per-character fade
+ * would spend the whole animation at contrast ratios nobody measured. */
+@keyframes ov-char-in {
+  from { clip-path: inset(0 0 100% 0); transform: translateY(-0.16em); }
+  to   { clip-path: inset(0 0 0 0); transform: none; }
+}
+
+ov-text[data-ov-effect="cascade"] .ov-text__c {
+  animation-name: ov-char-in;
+  animation-duration: var(--ov-dur-base, 180ms);
+  animation-timing-function: var(--ov-ease);
+}
+
+/* ---- settle ------------------------------------------------------------ */
+
+/* Each unit arrives displaced and walks back to where it belongs. Stepped, not
+ * eased, because this is cyber's register: the tearing snaps between held
+ * positions rather than sliding, which is what reads as digital rather than as
+ * analogue wobble. The displacement decays across the keyframes so the line
+ * calms rather than stopping dead. */
+@keyframes ov-char-settle {
+  0%   { transform: translate(calc(var(--ov-jx, 0) * 1px), calc(var(--ov-jy, 0) * 1px)); }
+  35%  { transform: translate(calc(var(--ov-jx, 0) * -0.55px), calc(var(--ov-jy, 0) * 0.5px)); }
+  60%  { transform: translate(calc(var(--ov-jx, 0) * 0.3px), calc(var(--ov-jy, 0) * -0.25px)); }
+  82%  { transform: translate(calc(var(--ov-jx, 0) * -0.12px), 0); }
+  100% { transform: none; }
+}
+
+ov-text[data-ov-effect="settle"] .ov-text__c {
+  animation-name: ov-char-settle;
+  animation-duration: var(--ov-char-settle-dur, 620ms);
+  animation-timing-function: steps(1);
+  animation-delay: calc(var(--ov-char) * var(--ov-char-step, 26ms));
+}
+
+/* ---- decode ------------------------------------------------------------ */
+
+/* The scramble is done in script, because it changes the CONTENT. All the CSS
+ * does is hold the settled character steady. */
+ov-text[data-ov-effect="decode"] .ov-text__c { animation: none; }
+
+/* ---- jitter ------------------------------------------------------------ */
+
+@keyframes ov-char-jitter {
+  0%, 92%, 100% { transform: none; }
+  94% { transform: translateY(-1px); }
+  97% { transform: translateY(1px); }
+}
+
+ov-text[data-ov-effect="jitter"] .ov-text__c {
+  animation: ov-char-jitter 2.6s steps(1) infinite;
+  animation-delay: calc(var(--ov-char) * 90ms);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  /* Perpetual first, and completely. */
+  ov-text[data-ov-effect="jitter"] .ov-text__c { animation: none; }
+  /* Finite ones resolve. */
+  ov-text[data-ov-effect="settle"] .ov-text__c { animation: none; transform: none; }
+  ov-text[data-ov-effect="cascade"] .ov-text__c {
+    animation: none;
+    clip-path: none;
+    transform: none;
+  }
+}
+}

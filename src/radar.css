@@ -1,0 +1,105 @@
+/* ---- CASCADE LAYER ------------------------------------------------------
+ *
+ * Everything the kit ships sits in ONE layer named `overscan`, so a consumer's
+ * own CSS beats it without a specificity fight and without !important. That is
+ * close to mandatory for a distributed kit: an app should be able to restyle a
+ * panel by writing a plain rule.
+ *
+ * ⚠️ ONE layer, deliberately, NOT a sub-layer per file. Sub-layers look tidier
+ * and would silently reorder the kit against itself: layer order beats
+ * specificity, so a high-specificity rule in an early file that currently wins
+ * would start losing to a low-specificity rule in a later one. A single layer
+ * preserves source order exactly, so nothing inside the kit changes.
+ *
+ * Unlayered author CSS wins over all of it. That is the point.
+ */
+
+@layer overscan {
+/* PPI. SVG in the DOM so the theme reaches every mark. */
+
+ov-radar {
+  position: relative;
+  display: block;
+  aspect-ratio: 1;
+  inline-size: var(--ov-radar-size, 180px);
+}
+
+.ov-radar__svg { inline-size: 100%; block-size: 100%; display: block; }
+
+.ov-radar__ring,
+.ov-radar__spoke {
+  fill: none;
+  stroke: var(--ov-line-strong);
+  stroke-width: 0.4;
+}
+
+.ov-radar__ringlabel {
+  fill: var(--ov-faint);
+  font-family: var(--ov-font-mono);
+  font-size: 3.4px;
+}
+
+.ov-radar__sweep {
+  stroke: var(--ov-accent);
+  stroke-width: 0.8;
+}
+
+.ov-radar__blip { fill: var(--ov-accent); }
+
+/* Elevation stalks: a line from the contact up (or down) to its height, a
+ * dot at the tip. Level (elevation 0) is a flat tick, a different mark. */
+.ov-radar__stalk {
+  stroke: var(--ov-accent);
+  stroke-width: 0.5;
+}
+.ov-radar__stalk--level { stroke-width: 0.8; }
+.ov-radar__stalktip { fill: var(--ov-accent); }
+
+/* The mode note: what this scope is NOT showing, in words, on its own line
+ * under the scope. Only a radar WITH a mode note stops being a fixed square:
+ * the scope keeps its aspect ratio and the element grows by the note, so no
+ * existing radar (which never has a note) changes size. */
+/* The trail: phosphor persistence under the scope. A conic ramp from the
+ * faintest (swept a full period ago, just AHEAD of the arm) to the brightest
+ * (just BEHIND it), linear like the blips' decay. Clipped to the scope's
+ * circle (r 48 of 100) and square to the scope, not to the element, so a
+ * mode note under the scope does not stretch it. */
+.ov-radar__trail {
+  position: absolute;
+  inset-block-start: 0;
+  inset-inline-start: 0;
+  inline-size: 100%;
+  aspect-ratio: 1;
+  clip-path: circle(48% at 50% 50%);
+  background: conic-gradient(from var(--ov-radar-angle, 0deg),
+    color-mix(in srgb, var(--ov-accent) 2%, transparent) 0deg,
+    color-mix(in srgb, var(--ov-accent) var(--ov-radar-trail, 24%), transparent) 360deg);
+  pointer-events: none;
+}
+.ov-radar__svg { position: relative; }
+/* Reduced motion: the scope plots everything at once and nothing sweeps, so
+ * there is no sweep age to show. */
+@media (prefers-reduced-motion: reduce) { .ov-radar__trail { display: none; } }
+
+ov-radar[data-ov-note] { aspect-ratio: auto; }
+ov-radar[data-ov-note] .ov-radar__svg { aspect-ratio: 1; block-size: auto; }
+.ov-radar__note {
+  padding-block-start: 6px;
+  font-size: var(--ov-size-1);
+  letter-spacing: 1px;
+  line-height: 1.5;
+  text-transform: uppercase;
+  color: var(--ov-faint);
+}
+
+ov-radar[data-ov-dropped]::after {
+  content: attr(data-ov-dropped-n);
+  position: absolute;
+  inset-block-end: 0;
+  inset-inline-start: 0;
+  font-size: var(--ov-size-1);
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  color: var(--ov-alarm);
+}
+}

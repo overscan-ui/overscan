@@ -1,0 +1,110 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>ov-consistency harness</title>
+<link rel="stylesheet" href="../../src/tokens.css">
+<link rel="stylesheet" href="../../src/consistency.css">
+<style>
+  body { background: #06060a; color: #cfe; font: 13px ui-monospace, monospace; padding: 20px; }
+  #stage { display: grid; grid-template-columns: repeat(auto-fill, 420px); gap: 16px; }
+  pre { white-space: pre-wrap; }
+</style>
+<div id="stage" data-ov-theme="industrial"></div>
+<pre id="out">running...</pre>
+<script type="module">
+import '../../src/ov-consistency.js';
+// The demo's own scene file, so the harness checks the data the page shows.
+const PASS = await (await fetch('../../demo/models/consistency-pass.json')).json();
+const pass = () => structuredClone(PASS);
+await customElements.whenDefined('ov-consistency');
+
+const stage = document.getElementById('stage');
+const results = [];
+const ok = (name, cond, got) => results.push({ name, pass: !!cond, got });
+const controls = [];
+const control = (name, cond, got) => controls.push({ name, pass: !!cond, got });
+const fresh = (data, attrs = {}) => {
+  const el = document.createElement('ov-consistency');
+  for (const [k, v] of Object.entries(attrs)) el.setAttribute(k, v);
+  stage.append(el);
+  el.watch = data;
+  return el;
+};
+const text = (el) => el.querySelector('.ov-consistency__readout')?.textContent || el.textContent;
+const change = (el, id, i = 0) => el.report().changes.filter((c) => c.id === id)[i];
+const win = (el, id) => el.report().windows.find((w) => w.id === id);
+
+// 1. The pass.
+const a = fresh(pass(), { 'max-age': '30' });
+ok('a change inside its command\'s window is COMMANDED, credited to it', change(a, 'HTR2').verdict === 'commanded' && change(a, 'HTR2').by === 'C40' && change(a, 'HTR2').a === 304 && change(a, 'HTR2').b === 320, change(a, 'HTR2'));
+ok('a change no command explains is UNCOMMANDED', change(a, 'VLV3').verdict === 'uncommanded' && change(a, 'VLV3').by === null, change(a, 'VLV3'));
+ok('and it is counted, marked, and sets the state', a.report().count.uncommanded === 1 && a.getAttribute('data-ov-consistency') === 'uncommanded' && a.querySelectorAll('.ov-consistency__bang').length === 1 && /1 UNCOMMANDED/.test(text(a)), a.report().count);
+ok('a change whose interval crosses a window edge is UNDETERMINED, with no verdict', change(a, 'PMP1').verdict === 'undetermined' && /1 undetermined/.test(text(a)), change(a, 'PMP1'));
+ok('a change in a window to a value the command did not expect is UNEXPECTED VALUE', change(a, 'MODE').verdict === 'unexpected' && change(a, 'MODE').to === 'STBY', change(a, 'MODE'));
+ok('a change inside a modelled command\'s window is MODELLED, not COMMANDED', change(a, 'ANT').verdict === 'modelled' && /explained only by a modelled command/.test(text(a)), change(a, 'ANT'));
+ok('a later command expecting a different value supersedes: the earlier window closes when the later opens', win(a, 'C45').superseded === 'C46' && win(a, 'C45').closesAt === 1014 && /1 window superseded/.test(text(a)), win(a, 'C45'));
+ok('and the change it asked for is credited to the superseding command', change(a, 'HTR2', 1).verdict === 'commanded' && change(a, 'HTR2', 1).by === 'C46', change(a, 'HTR2', 1));
+ok('a window opens after the delay and closes after the window plus jitter', win(a, 'C40').opensAt === 304 && win(a, 'C40').closesAt === 326 && /open 4s after sending, close 2s late/.test(text(a)), win(a, 'C40'));
+ok('a parameter past max-age is NOT WATCHED, not quiet', a.report().unwatched.BUS === 100 && /BUS not watched for 1m 40s: not judged/.test(text(a)) && a.querySelectorAll('.ov-consistency__unwatched').length === 1 && /NOT WATCHED/.test(a.textContent), a.report().unwatched);
+ok('a command to a parameter not shown is counted', /1 command to a parameter not shown/.test(text(a)), text(a));
+ok('each verdict has its own mark', ['commanded', 'uncommanded', 'undetermined', 'unexpected', 'modelled'].every((v) => a.querySelector(`.ov-consistency__change.is-${v}`)), '');
+ok('role img, and the name carries the claim', a.getAttribute('role') === 'img' && /status consistency, 6 changes on 6 parameters, 1 UNCOMMANDED/.test(a.getAttribute('aria-label')), a.getAttribute('aria-label'));
+
+// 2. The mark is as wide as the interval.
+const marks = [...a.querySelectorAll('.ov-consistency__strip')][1].querySelectorAll('.ov-consistency__change');
+const w16 = 16 / 1200 * Number([...a.querySelectorAll('.ov-consistency__strip')][1].getAttribute('viewBox').split(' ')[2]);
+ok('a change mark spans the interval between the two samples, not a point', marks.length === 1 && Math.abs(Number(marks[0].getAttribute('width')) - w16) < 0.2, marks[0] && marks[0].getAttribute('width'));
+
+// 2b. A wider watch is longer, never taller.
+const wide = fresh(pass(), { style: '--ov-consistency-size:900px;inline-size:900px' });
+const plotH = (el) => el.querySelector('.ov-consistency__plot').getBoundingClientRect().height;
+ok('the plot is the same height at 900px as at 420px', wide.getBoundingClientRect().width > 800 && Math.abs(plotH(wide) - plotH(a)) < 0.5 && plotH(a) === 40, [plotH(a), plotH(wide), wide.getBoundingClientRect().width]);
+const labelW = (el) => el.querySelector('.ov-consistency__v').getBoundingClientRect().width;
+ok('and its labels are not stretched with it', Math.abs(labelW(wide) - labelW(a)) < 0.5, [labelW(a), labelW(wide)]);
+
+// 3. Pinpoint timing.
+const one = (samples, commands, extra = {}) => fresh({ now: 200, delay: 10, jitter: 0, parameters: [{ id: 'P', samples }], commands, ...extra });
+const early = one([{ t: 96, v: 'A' }, { t: 100, v: 'A' }, { t: 108, v: 'B' }], [{ id: 'X', t: 100, target: 'P', expects: 'B', window: 20 }]);
+ok('a change before the command could have arrived is UNCOMMANDED', change(early, 'P').verdict === 'uncommanded', change(early, 'P'));
+const inside = one([{ t: 110, v: 'A' }, { t: 118, v: 'B' }], [{ id: 'X', t: 100, target: 'P', expects: 'B', window: 20 }]);
+ok('the same change after the delay is COMMANDED', change(inside, 'P').verdict === 'commanded', change(inside, 'P'));
+const after = one([{ t: 131, v: 'A' }, { t: 140, v: 'B' }], [{ id: 'X', t: 100, target: 'P', expects: 'B', window: 20 }]);
+ok('after the window closes, a change is UNCOMMANDED again', change(after, 'P').verdict === 'uncommanded', change(after, 'P'));
+const gap = one([{ t: 20, v: 'A' }, { t: 180, v: 'B' }], [{ id: 'X', t: 100, target: 'P', expects: 'B', window: 20 }]);
+ok('a long gap in the samples that spans a window is UNDETERMINED', change(gap, 'P').verdict === 'undetermined', change(gap, 'P'));
+const same = one([{ t: 110, v: 'A' }, { t: 140, v: 'B' }], [{ id: 'X', t: 100, target: 'P', expects: 'B', window: 20 }, { id: 'Y', t: 105, target: 'P', expects: 'B', window: 30 }]);
+ok('two commands expecting the same value do not supersede each other', !win(same, 'X').superseded && !win(same, 'Y').superseded && change(same, 'P').verdict === 'commanded' && change(same, 'P').by === 'Y', [win(same, 'X'), change(same, 'P')]);
+const noexp = one([{ t: 110, v: 'A' }, { t: 118, v: 'Q' }], [{ id: 'X', t: 100, target: 'P', window: 20 }]);
+ok('a command with no expected value explains any change in its window', change(noexp, 'P').verdict === 'commanded', change(noexp, 'P'));
+const junk = one([{ t: 110, v: 'A' }, { t: null, v: 'B' }, { t: 250, v: 'C' }], [{ id: 'X', target: 'P', window: 20 }]);
+ok('commands and samples without the fields they need are ignored and counted', /1 command without a time, window or target: ignored/.test(text(junk)) && /2 samples without a time or value, or after now: ignored/.test(text(junk)), text(junk));
+const clean = one([{ t: 110, v: 'A' }, { t: 118, v: 'B' }], [{ id: 'X', t: 100, target: 'P', expects: 'B', window: 20 }]);
+ok('nothing unexplained reads as consistent', clean.getAttribute('data-ov-consistency') === 'consistent', clean.getAttribute('data-ov-consistency'));
+
+// 4. Nothing, and back.
+const n = fresh(null);
+ok('no data is the kit\'s unknown', n.getAttribute('data-ov-refusal') === 'unknown' && /NO DATA/.test(n.textContent), '');
+n.watch = { parameters: [{ id: 'P', samples: [] }] };
+ok('data with no now is refused, not guessed', n.getAttribute('data-ov-refusal') === 'unknown' && /NO TIME GIVEN/.test(n.textContent), n.textContent);
+n.watch = pass();
+ok('a refusal clears when data arrives', !n.hasAttribute('data-ov-refusal') && n.querySelectorAll('.ov-consistency__row').length === 6, n.getAttribute('data-ov-refusal'));
+n.watch = null;
+ok('same width refused as drawn (the demo card measures once)', n.getBoundingClientRect().width === a.getBoundingClientRect().width, [n.getBoundingClientRect().width, a.getBoundingClientRect().width]);
+
+// CONTROLS: false claims that a working harness must reject.
+control('the uncommanded valve change is shown as commanded', change(a, 'VLV3').verdict === 'commanded', '');
+control('the change across a window edge was given a verdict', ['commanded', 'uncommanded'].includes(change(a, 'PMP1').verdict), '');
+control('the change is drawn at a point, not across its interval', Number(marks[0].getAttribute('width')) <= 2, '');
+
+const passed = results.filter((x) => x.pass).length;
+const failed = results.length - passed;
+const controlsFailed = controls.filter((x) => !x.pass).length;
+const gate = failed === 0 && controlsFailed === controls.length && controls.length > 0;
+const out = document.getElementById('out');
+out.textContent = [
+  ...results.map((x) => `${x.pass ? 'PASS' : 'FAIL'}  ${x.name}${x.pass ? '' : '  got ' + JSON.stringify(x.got)}`),
+  ...controls.map((x) => `${x.pass ? 'CONTROL PASSED (BAD)' : 'CONTROL FAILED (good)'}  ${x.name}`),
+  '', `${passed} passed, ${failed} failed, ${controlsFailed}/${controls.length} controls failed as required`,
+  `GATE: ${gate ? 'PASS' : 'FAIL'}`,
+].join('\n');
+out.setAttribute('data-gate', gate ? 'pass' : 'fail');
+</script>

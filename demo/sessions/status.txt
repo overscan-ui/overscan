@@ -1,0 +1,13 @@
+[?1049h]0;SECTOR 4 MONITOR[?25l[2J[H(0[1;1Hlqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqk[2;1Hx[2;60Hx[3;1Hx[3;60Hx[4;1Hx[4;60Hx[5;1Hx[5;60Hx[6;1Hx[6;60Hx[7;1Hx[7;60Hx[8;1Hmqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqj(B[1;3H REACTOR [2;4Hcore temp   [32m318.4 K[0m[3;4Hflux        [32m0.912[0m[4;4Hcoolant     [31;1mLOW[0m[5;4Hlast cal    [2mnever[0m[2;34H[38;5;208mVENT 4[0m[3;34H[7m ARMED [0m(0[9;1Hqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq[18;1Hqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq(B[9;3H LOG [10;17r[17;3H[K[2m2124.09[0m  purge cycle 00 [31mretry[0m
+[17;3H[K[2m2125.09[0m  purge cycle 01 nominal
+[17;3H[K[2m2126.09[0m  purge cycle 02 nominal
+[17;3H[K[2m2127.09[0m  purge cycle 03 nominal
+[17;3H[K[2m2128.09[0m  purge cycle 04 nominal
+[17;3H[K[2m2129.09[0m  purge cycle 05 [31mretry[0m
+[17;3H[K[2m2130.09[0m  purge cycle 06 nominal
+[17;3H[K[2m2131.09[0m  purge cycle 07 nominal
+[17;3H[K[2m2132.09[0m  purge cycle 08 nominal
+[17;3H[K[2m2133.09[0m  purge cycle 09 nominal
+[17;3H[K[2m2134.09[0m  purge cycle 10 [31mretry[0m
+[17;3H[K[2m2135.09[0m  purge cycle 11 nominal
+[r[20;2H[1m>[0m status[20;11H[?25h

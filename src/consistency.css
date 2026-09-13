@@ -1,0 +1,80 @@
+/* ---- CASCADE LAYER ------------------------------------------------------
+ *
+ * Everything the kit ships sits in ONE layer named `overscan`, so a consumer's
+ * own CSS beats it without a specificity fight and without !important. That is
+ * close to mandatory for a distributed kit: an app should be able to restyle a
+ * panel by writing a plain rule.
+ *
+ * ⚠️ ONE layer, deliberately, NOT a sub-layer per file. Sub-layers look tidier
+ * and would silently reorder the kit against itself: layer order beats
+ * specificity, so a high-specificity rule in an early file that currently wins
+ * would start losing to a low-specificity rule in a later one. A single layer
+ * preserves source order exactly, so nothing inside the kit changes.
+ *
+ * Unlayered author CSS wins over all of it. That is the point.
+ */
+
+@layer overscan {
+/* A status that may change only when a command says so. */
+
+ov-consistency {
+  display: grid;
+  gap: 8px;
+  font-family: var(--ov-font-mono);
+  font-size: var(--ov-size-1);
+  letter-spacing: 1px;
+  color: var(--ov-dim);
+  inline-size: 100%;
+  max-inline-size: var(--ov-consistency-size, 420px);
+}
+
+.ov-consistency__rows {
+  display: grid;
+  gap: 2px;
+  padding: 8px 10px 6px;
+  background: var(--ov-field);
+  border: var(--ov-bezel) solid var(--ov-line-strong);
+}
+.ov-consistency__row { display: grid; grid-template-columns: 5ch 11ch 1fr; gap: 8px; align-items: center; }
+.ov-consistency__row.is-alarm .ov-consistency__id { color: var(--ov-alarm); }
+.ov-consistency__id { font-size: 8px; color: var(--ov-ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ov-consistency__now { font-size: 8px; color: var(--ov-dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ov-consistency__now.is-unwatched { color: var(--ov-accent-2); }
+/* A fixed-height plot: a wider element makes the strip longer, never taller. */
+.ov-consistency__plot { position: relative; display: block; block-size: 40px; min-inline-size: 0; }
+.ov-consistency__strip { position: absolute; inset: 0; inline-size: 100%; block-size: 100%; overflow: visible; }
+.ov-consistency__cmd, .ov-consistency__v, .ov-consistency__bang { position: absolute; white-space: nowrap; pointer-events: none; }
+.ov-consistency__axis { display: flex; justify-content: space-between; margin-inline-start: calc(16ch + 16px); font-size: 7px; color: var(--ov-faint); }
+
+/* Windows: a bracket above, and a faint band where a change is permitted. */
+.ov-consistency__span { fill: color-mix(in srgb, var(--ov-accent) 12%, transparent); }
+.ov-consistency__bracket { fill: none; stroke: var(--ov-accent); stroke-width: 0.8; }
+.ov-consistency__cmd { font-size: 7px; line-height: 7px; color: var(--ov-faint); letter-spacing: 0.4px; }
+.is-modelled .ov-consistency__bracket { stroke-dasharray: 2 1.5; }
+.is-superseded .ov-consistency__bracket { stroke: var(--ov-line-strong); }
+.ov-consistency__cmd.is-superseded { text-decoration: line-through; }
+
+.ov-consistency__value { fill: color-mix(in srgb, var(--ov-ink) 16%, transparent); stroke: var(--ov-line-strong); stroke-width: 0.5; }
+.ov-consistency__v { font-size: 7px; line-height: 10px; color: var(--ov-ink); padding-inline-start: 3px; letter-spacing: 0.4px; }
+
+/* A change fills the whole interval it could have happened in. Each verdict
+   has a look of its own, not only a colour. */
+.ov-consistency__change { stroke-width: 1; }
+.ov-consistency__change.is-commanded { fill: color-mix(in srgb, var(--ov-accent) 55%, transparent); stroke: var(--ov-accent); }
+.ov-consistency__change.is-modelled { fill: none; stroke: var(--ov-accent); stroke-dasharray: 2 1.5; }
+.ov-consistency__change.is-unexpected { fill: color-mix(in srgb, var(--ov-accent-2) 45%, transparent); stroke: var(--ov-accent-2); stroke-dasharray: 3 1; }
+.ov-consistency__change.is-undetermined { fill: color-mix(in srgb, var(--ov-dim) 22%, transparent); stroke: var(--ov-dim); stroke-dasharray: 1 1.5; }
+/* 🔴 Uncommanded: solid alarm, and a mark under it. */
+.ov-consistency__change.is-uncommanded { fill: var(--ov-alarm); stroke: var(--ov-alarm); }
+.ov-consistency__bang { font-size: 9px; line-height: 9px; font-weight: 700; color: var(--ov-alarm); transform: translateX(-50%); }
+.ov-consistency__unwatched { fill: color-mix(in srgb, var(--ov-accent-2) 10%, transparent); stroke: var(--ov-accent-2); stroke-width: 0.6; stroke-dasharray: 2 2; }
+
+.ov-consistency__void {
+  display: grid; place-items: center; min-block-size: 140px;
+  color: var(--ov-alarm); text-transform: uppercase;
+  border: 1px dashed var(--ov-line-strong);
+}
+.ov-consistency__readout { display: flex; flex-wrap: wrap; gap: 4px 16px; }
+.ov-consistency__readout .is-flag { color: var(--ov-accent-2); }
+.ov-consistency__readout .is-alarm { color: var(--ov-alarm); }
+}

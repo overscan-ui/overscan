@@ -1,0 +1,65 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>overscan consumer test: one script tag</title>
+<!-- Run by tools/consumer-test.sh over http://localhost:8842/tmp/consumer/.
+     This is the home page's "WITH A SCRIPT TAG" route, tested exactly as the
+     page writes it: ONE stylesheet link and ONE module script at the whole-kit
+     entry points of the INSTALLED package, and nothing else. No import map, no
+     bundler.
+
+     🔴 IT EXISTS BECAUSE THE HOME PAGE NOW MAKES A CLAIM that nothing else
+     checks: "not one bare specifier ships in the source, so a browser resolves
+     every element from that one URL". index.html (the import-map consumer)
+     cannot catch a bare specifier creeping into src/, because its import map
+     would happily resolve `overscan/...` imports. This page has no map at all,
+     so the first bare specifier anywhere in the module graph leaves it stuck
+     on "running..." and the test refuses. -->
+<link rel="stylesheet" href="./node_modules/overscan/src/overscan.css">
+<script type="module" src="./node_modules/overscan/src/overscan.js"></script>
+<style>
+  body { background: #06060a; color: #cfe; font: 13px ui-monospace, monospace; padding: 20px; }
+  ov-chart { inline-size: 260px; block-size: 90px; }
+</style>
+<div id="stage" data-ov-theme="terminal">
+  <ov-chart id="chart" values="41,43,44,46,48,47,49"></ov-chart>
+  <ov-segment id="seg" digits="6" value="48120" unit="USD"></ov-segment>
+  <ov-segment id="ref" digits="6" value="null" unit="USD"></ov-segment>
+</div>
+<pre id="out">running...</pre>
+<script type="module">
+const results = [];
+const ok = (name, cond, got) => results.push({ name, pass: !!cond, got });
+const timeout = (ms) => new Promise((_, rej) => setTimeout(() => rej(new Error('timed out')), ms));
+try {
+  await Promise.race([
+    Promise.all([customElements.whenDefined('ov-chart'), customElements.whenDefined('ov-segment')]),
+    timeout(6000),
+  ]);
+  const chart = document.getElementById('chart');
+  const seg = document.getElementById('seg');
+  const ref = document.getElementById('ref');
+  /* ⚠️ A TIMER, NOT requestAnimationFrame. This runs under headless Chrome's
+   * --virtual-time-budget, which advances timers but does not tick animation
+   * frames, so a double-rAF wait here never resolves and the page sits on
+   * "running..." forever. The first cut did exactly that, and the runner read
+   * it as the kit failing to load. The identical page passed 8 of 8 in a real
+   * browser, which is what said the fault was in the waiting, not the kit. */
+  await new Promise((r) => setTimeout(r, 100));
+  ok('there is NO import map on this page', !document.querySelector('script[type="importmap"]'), 'none');
+  ok('one script tag registered ov-chart', chart.constructor !== HTMLElement, chart.constructor.name);
+  ok('...and ov-segment', seg.constructor !== HTMLElement, seg.constructor.name);
+  const box = chart.getBoundingClientRect();
+  ok('the chart paints a box', box.width > 40 && box.height > 20, [box.width, box.height]);
+  ok('...with an svg in it', !!chart.querySelector('svg'), chart.innerHTML.slice(0, 40));
+  ok('the segment lit segments', seg.querySelectorAll('[data-on]').length > 0, seg.querySelectorAll('[data-on]').length);
+  const accent = getComputedStyle(document.getElementById('stage')).getPropertyValue('--ov-accent').trim();
+  ok('one stylesheet @imported the tokens', accent.length > 0, accent);
+  ok('a null still refuses', ref.getAttribute('data-ov-refusal') === 'unknown', ref.getAttribute('data-ov-refusal'));
+} catch (e) {
+  ok('the module graph resolved with no import map', false, String(e));
+}
+const failed = results.filter((r) => !r.pass);
+document.getElementById('out').textContent =
+  results.map((r) => `${r.pass ? 'PASS' : 'FAIL'}  ${r.name}  (${JSON.stringify(r.got)})`).join('\n')
+  + `\n\n${results.length - failed.length} passed, ${failed.length} failed\nGATE: ${failed.length ? 'FAIL' : 'PASS'}`;
+</script>

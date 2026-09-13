@@ -1,0 +1,87 @@
+/* ---- CASCADE LAYER ------------------------------------------------------
+ *
+ * Everything the kit ships sits in ONE layer named `overscan`, so a consumer's
+ * own CSS beats it without a specificity fight and without !important. That is
+ * close to mandatory for a distributed kit: an app should be able to restyle a
+ * panel by writing a plain rule.
+ *
+ * ⚠️ ONE layer, deliberately, NOT a sub-layer per file. Sub-layers look tidier
+ * and would silently reorder the kit against itself: layer order beats
+ * specificity, so a high-specificity rule in an early file that currently wins
+ * would start losing to a low-specificity rule in a later one. A single layer
+ * preserves source order exactly, so nothing inside the kit changes.
+ *
+ * Unlayered author CSS wins over all of it. That is the point.
+ */
+
+@layer overscan {
+/* A finding's certainty in calibrated words, and only the words it has earned. */
+
+ov-likelihood {
+  display: grid;
+  gap: 8px;
+  font-family: var(--ov-font-mono);
+  font-size: var(--ov-size-1);
+  letter-spacing: 1px;
+  color: var(--ov-dim);
+  inline-size: 100%;
+  max-inline-size: var(--ov-likelihood-size, 420px);
+}
+
+.ov-likelihood__statement { color: var(--ov-ink); font-size: var(--ov-size-2); letter-spacing: 0.5px; line-height: 1.45; }
+.ov-likelihood__plate {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 14px;
+  padding: 10px 12px;
+  background: var(--ov-field);
+  border: var(--ov-bezel) solid var(--ov-line-strong);
+}
+.ov-likelihood__basis { display: grid; gap: 8px; align-content: start; }
+.ov-likelihood__matrix { display: grid; grid-template-columns: auto auto; gap: 3px 4px; align-items: center; }
+.ov-likelihood__axis { font-size: 7px; color: var(--ov-faint); letter-spacing: 0.8px; }
+.ov-likelihood__axis.is-y { writing-mode: vertical-rl; transform: rotate(180deg); grid-row: 1; }
+.ov-likelihood__axis.is-x { grid-column: 2; text-align: center; }
+.ov-likelihood__cells { display: grid; grid-template-columns: repeat(3, 16px); grid-auto-rows: 16px; gap: 2px; }
+/* The note's Figure 1: shading grows toward robust evidence, high agreement. */
+.ov-likelihood__cell { border: 1px solid var(--ov-line); background: color-mix(in srgb, var(--ov-accent) calc(var(--s) * 11%), transparent); }
+.ov-likelihood__cell.is-s0 { --s: 0; } .ov-likelihood__cell.is-s1 { --s: 1; } .ov-likelihood__cell.is-s2 { --s: 2; }
+.ov-likelihood__cell.is-s3 { --s: 3; } .ov-likelihood__cell.is-s4 { --s: 4; }
+.ov-likelihood__cell.is-on { outline: 2px solid var(--ov-ink); outline-offset: -1px; }
+.ov-likelihood__terms { font-size: 8px; line-height: 1.6; color: var(--ov-faint); }
+.ov-likelihood__terms b { color: var(--ov-ink); font-weight: 400; }
+
+.ov-likelihood__claims { display: grid; gap: 12px; align-content: start; min-inline-size: 0; }
+.ov-likelihood__conf, .ov-likelihood__like { display: grid; gap: 5px; }
+.ov-likelihood__k { font-size: 8px; color: var(--ov-faint); letter-spacing: 1.2px; }
+.ov-likelihood__word, .ov-likelihood__say { color: var(--ov-ink); font-size: var(--ov-size-2); }
+/* The calibrated terms are italic, as the IPCC sets them. */
+.ov-likelihood__word, .ov-likelihood__say em { font-style: italic; }
+.ov-likelihood__pips { display: flex; gap: 3px; }
+/* 🔴 Five steps, not a bar: confidence is ordinal, and a continuous bar would
+   read as a percentage. */
+.ov-likelihood__pip { inline-size: 18px; block-size: 6px; border: 1px solid var(--ov-line-strong); }
+.ov-likelihood__pip.is-on { background: var(--ov-accent); border-color: var(--ov-accent); }
+.ov-likelihood__track { position: relative; block-size: 10px; border-block-end: 1px solid var(--ov-line-strong); }
+.ov-likelihood__tick { position: absolute; inset-block-end: -3px; inline-size: 1px; block-size: 5px; background: var(--ov-line-strong); }
+.ov-likelihood__range { position: absolute; inset-block: 1px 2px; background: var(--ov-accent); }
+/* A term's edges are "fuzzy" (¶10): fade the last few percent in. */
+.ov-likelihood__range.is-fuzzy { background: linear-gradient(to right, transparent, var(--ov-accent) 12px, var(--ov-accent) calc(100% - 4px), color-mix(in srgb, var(--ov-accent) 60%, transparent)); }
+.ov-likelihood__point { position: absolute; inset-block: -2px 1px; inline-size: 2px; margin-inline-start: -1px; background: var(--ov-accent); }
+.ov-likelihood__ends { display: flex; justify-content: space-between; font-size: 7px; color: var(--ov-faint); }
+.ov-likelihood__held { color: var(--ov-alarm); font-size: 8px; line-height: 1.5; letter-spacing: 0.8px; }
+.is-withheld .ov-likelihood__held {
+  padding: 4px 6px; border: 1px dashed var(--ov-alarm);
+  background: repeating-linear-gradient(135deg, color-mix(in srgb, var(--ov-alarm) 14%, transparent) 0 2px, transparent 2px 6px);
+}
+.is-none .ov-likelihood__held { color: var(--ov-faint); }
+
+.ov-likelihood__account { font-size: 8px; line-height: 1.6; color: var(--ov-faint); border-inline-start: 2px solid var(--ov-line-strong); padding-inline-start: 8px; }
+.ov-likelihood__void {
+  display: grid; place-items: center; min-block-size: 140px;
+  color: var(--ov-alarm); text-transform: uppercase;
+  border: 1px dashed var(--ov-line-strong);
+}
+.ov-likelihood__readout { display: flex; flex-wrap: wrap; gap: 4px 16px; }
+.ov-likelihood__readout .is-flag { color: var(--ov-accent-2); }
+}

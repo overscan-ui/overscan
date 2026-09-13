@@ -1,0 +1,1010 @@
+/* ---- CASCADE LAYER ------------------------------------------------------
+ *
+ * Everything the kit ships sits in ONE layer named `overscan`, so a consumer's
+ * own CSS beats it without a specificity fight and without !important. That is
+ * close to mandatory for a distributed kit: an app should be able to restyle a
+ * panel by writing a plain rule.
+ *
+ * ⚠️ ONE layer, deliberately, NOT a sub-layer per file. Sub-layers look tidier
+ * and would silently reorder the kit against itself: layer order beats
+ * specificity, so a high-specificity rule in an early file that currently wins
+ * would start losing to a low-specificity rule in a later one. A single layer
+ * preserves source order exactly, so nothing inside the kit changes.
+ *
+ * Unlayered author CSS wins over all of it. That is the point.
+ */
+
+@layer overscan {
+/* Overscan chrome, P0 scope: what one panel needs.
+ * Static furniture only. No JavaScript, no canvas, everything reachable from
+ * the cascade so the theme, contrast and motion switches reach all of it.
+ */
+
+.ov {
+  font-family: var(--ov-font-mono);
+  font-size: var(--ov-size-2);
+  color: var(--ov-ink);
+  background: var(--ov-field);
+  letter-spacing: var(--ov-track);
+}
+
+/* ---- the scroll channel -------------------------------------------------
+ *
+ * 🔴 EVERY SCROLLBAR IN THE KIT WAS THE BROWSER'S LIGHT DEFAULT, 15px of it,
+ * because nothing in this repo had ever declared `color-scheme`. A UA that has
+ * not been told the page is dark draws light chrome, so a bright bar sat
+ * across every dark surface that scrolled. Measured over all 75 pages: the
+ * page's own scrollbar on 69 of them, the docs contents rail on 38, 23 code
+ * blocks, and both axes at once on `.ov-cli__out`, where a 15px bar cut the
+ * output in half.
+ *
+ * ⭐ ONE DECLARATION REACHES ALL OF IT, including the two places no kit rule
+ * can: the PAGE scrollbar, because the kit does not own `html` and must not
+ * start, and the popovers and native control interiors that appear in no
+ * `overflow` search of this repo because their scrolling comes from the UA
+ * stylesheet rather than from anything written here.
+ *
+ * ⚠️ UNCONDITIONAL, and that is measured rather than assumed: all ten palettes
+ * are dark, the lightest `--ov-field` being aegis at 0.005 relative luminance,
+ * so there is no light theme for this to be wrong on. It is declared on the
+ * theme selectors as well, so a kit dropped into a light host page darkens
+ * only the subtree it themes. Every native control the kit ships already sets
+ * `appearance: none` and draws itself, so nothing here restyles a control:
+ * what it changes is the chrome the UA still owns.
+ */
+:root,
+[data-ov-theme] { color-scheme: dark; }
+
+/* The channel itself, per theme.
+ *
+ * ⭐ THE RULE, so this is not ten hand-picked colours. TRACK is `--ov-field`:
+ * the channel is a recess cut through the panel to the deepest surface behind
+ * it. THUMB is `--ov-line-strong`: a thumb is a boundary, which is the one
+ * thing that token exists for.
+ *
+ * ⚠️ RESOLVED HERE, not stored per theme in tokens.css. A custom property
+ * holding a `var()` is substituted where it is DECLARED, so
+ * `--ov-scroll-thumb: var(--ov-line-strong)` on `:root` would freeze the
+ * terminal value and the other nine themes would inherit it. Read at the use
+ * site, inside the themed subtree, each theme resolves its own: ten distinct
+ * thumb/track pairs, confirmed in the browser rather than reasoned about.
+ *
+ * ⚠️ `--ov-line-strong` fails 4.5 as TEXT in 9 of 10 themes and is gated at 3.0
+ * as a BOUNDARY. A thumb is chrome and never carries text, so 3.0 is its gate.
+ *
+ * 🔴 COLOUR IS ALL WE GET, and the geometry stays the browser's. Chrome ignores
+ * `::-webkit-scrollbar` entirely once ANY standard scrollbar property is set,
+ * so the two cannot be combined: a `::-webkit-scrollbar-thumb` squaring the
+ * corners off to `--ov-ctl-corner` once sat in table.css and never drew once,
+ * which the measured 11px thin-scrollbar width gave away against the 10px it
+ * had asked for. The standard pair is kept because it is the half that reaches
+ * Firefox too.
+ *
+ * ⚠️ ONE LIST, NOT A RULE PER COMPONENT. This treatment started in table.css
+ * and stayed there, so seven other scrolling surfaces kept the default for as
+ * long as the table had been fixed. `.ov-pop` and `.ov-tip` are on the list
+ * because `[popover]` is scrollable by UA rule; grepping this repo for
+ * `overflow` finds neither.
+ *
+ * The two token names are override hooks: a theme wanting a different channel
+ * declares them in its own block and these pick them up.
+ */
+.ov-table__scroll,
+.ov-code__pre,
+.ov-cli__out,
+.ov-log__lines,
+.ov-window__body,
+.ov-rail,
+.ov-pop,
+.ov-tip {
+  scrollbar-width: thin;
+  scrollbar-color: var(--ov-scroll-thumb, var(--ov-line-strong))
+                   var(--ov-scroll-track, var(--ov-field));
+}
+
+/* ---- panel ------------------------------------------------------------- */
+
+/* ---- the cut edge ------------------------------------------------------ */
+
+/* 🔴 A CUT IS NOT A HOLE. `clip-path` REMOVES; it never draws. Every cut
+ * corner in this kit was therefore an outline that simply STOPPED: the border
+ * ran along the four straight sides and nothing at all ran along the diagonal,
+ * so the corner read as broken rather than as cut - on panels, buttons,
+ * inputs, selects, modals and the viewport alike.
+ *
+ * ⚠️ IT WAS FILED AS AN iOS RENDERING BUG AND PARKED WAITING ON A DEVICE,
+ * which is why it survived being reported several times. It reproduces in
+ * every browser, and the tell was there from the beginning: this was never a
+ * rendering difference between engines, because NOTHING WAS EVER DRAWING THAT
+ * EDGE. `demo/corner.html` compares five ways to perform the same cut and not
+ * one of them strokes the diagonal, so the whole page was asking the wrong
+ * question.
+ *
+ * The diagonal is drawn as a background layer, one per corner, sized by the
+ * cut it belongs to and inert at zero like every other treatment in this file.
+ *
+ * 🔴 DECLARED ON THE COMPONENTS, NOT ON :root. var() inside a custom property
+ * is substituted WHERE THE PROPERTY IS DECLARED, so a definition on :root
+ * would freeze --ov-furn at the root's value and the diagonal would never
+ * follow hover, pressed or refused. That is the same trap --ov-ctl-clip fell
+ * into one commit ago. */
+.ov-panel,
+.ov-btn,
+.ov-input,
+.ov-select,
+.ov-modal__box,
+.ov-screen__body .ov-viewport {
+  /* Stroke weight: whatever border this component is continuing. */
+  --ov-cut-w: 0px;
+  /* One size PER CORNER, rather than one for the single cut and one for the
+     chamfer. A control in the middle of a segmented group or a split button
+     has no outside on two of its sides, so it has to be able to cut some
+     corners and not others - and "one shape, several controls" is the whole
+     claim those assemblies make. */
+  --ov-cut-tl: 0px;
+  --ov-cut-tr: 0px;
+  --ov-cut-bl: 0px;
+  --ov-cut-br: 0px;
+
+  /* ⚠️ THE STROKE IS HALF-OUTSIDE ON PURPOSE, AND THAT IS WHAT MITRES IT.
+     Each layer fills everything on the OUTER side of its own diagonal and
+     lets `clip-path` trim the overhang, rather than trying to paint a band of
+     exactly the right width inside the cut. Drawn the tidy way - a band from
+     `50% - w` to `50%` inside a box exactly the size of the cut - the stroke
+     stops short of the straight borders it is supposed to meet, because the
+     mitre point lies OUTSIDE that box by w x (root2 - 1). The result is a
+     notch at each end of every diagonal: about 1px at a 3px bezel, and two
+     device pixels on a 2x screen.
+
+     So the box is nudged INWARD by w / root2 (0.7071) instead. Its diagonal
+     then sits exactly one stroke width inside the cut, the fill between them
+     is exactly w thick measured perpendicular, and it runs past both ends far
+     enough to meet the straight borders under them. The size is still exactly
+     the cut, so a corner that is not cut still draws nothing at all. */
+  --ov-cut-off: calc(var(--ov-cut-w) * 0.7071);
+  --ov-cut-img:
+    linear-gradient(135deg, transparent 50%, var(--ov-furn) 50%),
+    linear-gradient(135deg, var(--ov-furn) 50%, transparent 50%),
+    linear-gradient(45deg, transparent 50%, var(--ov-furn) 50%),
+    linear-gradient(45deg, var(--ov-furn) 50%, transparent 50%);
+  --ov-cut-size:
+    var(--ov-cut-br) var(--ov-cut-br),
+    var(--ov-cut-tl) var(--ov-cut-tl),
+    var(--ov-cut-tr) var(--ov-cut-tr),
+    var(--ov-cut-bl) var(--ov-cut-bl);
+  /* bottom right, top left, top right, bottom left - in that order, because
+     the bottom right is the one cut nearly every theme actually makes. */
+  --ov-cut-pos:
+    calc(100% - var(--ov-cut-off)) calc(100% - var(--ov-cut-off)),
+    var(--ov-cut-off) var(--ov-cut-off),
+    calc(100% - var(--ov-cut-off)) var(--ov-cut-off),
+    var(--ov-cut-off) calc(100% - var(--ov-cut-off));
+
+  /* The corners of the BORDER box, which is where the border being continued
+     actually is. The default origin is the padding box and would inset every
+     diagonal by the border width. */
+  background-origin: border-box;
+  background-repeat: no-repeat;
+}
+
+.ov-panel {
+  position: relative;
+  background-color: var(--ov-panel);
+  --ov-cut-w: var(--ov-bezel);
+  --ov-cut-br: var(--ov-corner);
+  background-image: var(--ov-cut-img);
+  background-size: var(--ov-cut-size);
+  background-position: var(--ov-cut-pos);
+  border: var(--ov-bezel) solid var(--ov-line-strong);
+  /* 🔴 A CLIP IS A CUT, and it clips DESCENDANTS. A clipped 14px
+   * corner removes 14px of a map, a table header and a right-aligned
+   * digit, and the fix is the same here: reserve interior padding equal to the
+   * clip on the sides the clip takes. Without this the corner eats whatever is
+   * nearest the bottom right, and it does it worst in the themes with the
+   * biggest corner, which is industrial at 10 and cyber at 6. */
+  padding-block: calc(var(--ov-pad) + 4px) calc(var(--ov-pad) + var(--ov-corner));
+  padding-inline: var(--ov-pad) calc(var(--ov-pad) + var(--ov-corner));
+  display: flex;
+  flex-direction: column;
+  gap: var(--ov-gap);
+
+  /* Corner treatment says WHERE a panel sits, never WHICH panel it is: a body
+   * panel cuts one diagonal, always the same one, at one size token.
+   *
+   * The polygon starts ABOVE the border box on purpose. A clip is a cut and it
+   * clips descendants, so a label that deliberately rides the top border would
+   * be sliced off by a polygon starting at 0 0. Extending the region upward by
+   * the label overhang is what lets both rules hold at once. */
+  clip-path: polygon(
+    0 calc(var(--ov-label-overhang) * -1),
+    100% calc(var(--ov-label-overhang) * -1),
+    100% calc(100% - var(--ov-corner)),
+    calc(100% - var(--ov-corner)) 100%,
+    0 100%
+  );
+}
+
+/* A panel can carry a shader interior. A positioned <ov-field> would otherwise
+ * paint above its static siblings, because positioned elements win over
+ * non-positioned ones in the same stacking context.
+ *
+ * 🔴 A `> *` selector that sets `position` is a trap, and this is the fifth
+ * time in this kit that one has eaten something. `.ov-panel > *` is (0,2,0) and
+ * beats `.ov-panel__label` at (0,1,0), so the label lost its absolute
+ * positioning, fell into the flow and rendered as a full-width bar. Anything
+ * that already positions itself has to be excluded by name, not assumed to win.
+ * The rule for this codebase: never let a wildcard child selector set
+ * `position`. */
+.ov-panel > *:not(ov-field):not(.ov-panel__label) {
+  position: relative;
+  z-index: 1;
+}
+
+.ov-panel__label { z-index: 2; }
+
+.ov-panel__label {
+  position: absolute;
+  top: calc(var(--ov-bezel) * -1);
+  left: calc(var(--ov-pad) + 2px);
+  transform: translateY(-50%);
+  padding: 0 6px;
+  /* Lit state comes from tokens, never from a theme name in this file. In a
+   * colour theme lit-bg is the panel and lit-fg is the accent; in a monochrome
+   * theme they swap, because its ink is already at the top of the ladder and
+   * there is no brighter to go. */
+  background: var(--ov-lit-bg);
+  color: var(--ov-lit-fg);
+  font-size: var(--ov-size-2);
+  text-transform: var(--ov-case);
+  letter-spacing: calc(var(--ov-track) + 0.4px);
+}
+
+/* ---- rows -------------------------------------------------------------- */
+
+.ov-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.ov-row__key {
+  flex: 1 1 auto;
+  color: var(--ov-dim);
+  text-transform: var(--ov-case);
+}
+
+.ov-row__key--faint { color: var(--ov-faint); }
+.ov-row__key--ink { color: var(--ov-ink); }
+
+/* Right-aligned in a column so decimal points land in the same place. A
+ * monospace face alone does not do this.
+ *
+ * Two corrections here, both found by rendering it rather than by reading it:
+ *
+ * 1. letter-spacing is ZEROED. A readout is never tracked. Tracking is for
+ *    labels; on digits it breaks column alignment and, worse, it inflates the
+ *    rendered width without changing `ch`, because `ch` is the advance width of
+ *    digit zero and knows nothing about the spacing added between characters.
+ * 2. `min-width` and `nowrap`, not a fixed `width`. At width:7ch the string
+ *    "318.4 K" is exactly 7 characters and still wrapped in every theme with
+ *    tracking on, putting the unit on its own line. A ch-sized box is a claim
+ *    about width that stops being true the moment anything else touches the
+ *    advance.
+ *
+ * This is the ch trap in TOKENS.md, committed by the file that documents it. */
+.ov-row__value {
+  flex: 0 0 auto;
+  min-width: 7ch;
+  text-align: right;
+  white-space: nowrap;
+  letter-spacing: 0;
+  color: var(--ov-ink);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---- status ------------------------------------------------------------ */
+
+.ov-dot {
+  inline-size: 8px;
+  block-size: 8px;
+  border-radius: 50%;
+  background: var(--ov-alarm);
+  flex: 0 0 auto;
+}
+
+.ov-alarm {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-top: 6px;
+  color: var(--ov-alarm);
+  text-transform: var(--ov-case);
+}
+
+/* ---- second accent ----------------------------------------------------- */
+
+.ov-aux {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--ov-accent-2);
+  font-size: var(--ov-size-1);
+  text-transform: var(--ov-case);
+}
+
+.ov-aux__bar {
+  inline-size: 44px;
+  block-size: 6px;
+  background: var(--ov-accent-2);
+  flex: 0 0 auto;
+}
+
+/* ---- instrument -------------------------------------------------------- */
+
+.ov-instrument { display: flex; flex-direction: column; gap: 4px; }
+
+.ov-instrument__label {
+  color: var(--ov-faint);
+  font-size: var(--ov-size-1);
+  text-transform: var(--ov-case);
+}
+
+.ov-bar {
+  display: flex;
+  align-items: flex-end;
+  gap: var(--ov-bar-gap, 2px);
+  block-size: var(--ov-bar-height, 10px);
+}
+
+.ov-bar__cell {
+  flex: 1 1 0;
+  block-size: 100%;
+  background: var(--ov-line);
+}
+
+.ov-bar__cell--on { background: var(--ov-accent); }
+.ov-bar__cell--alt { background: var(--ov-accent-2); }
+.ov-bar__cell--over { background: var(--ov-alarm); }
+
+/* ---- arrival ----------------------------------------------------------- */
+
+/* Arrival lives in motion.css and reveals by mask, not by fade.
+ *
+ * What was here was `opacity: 0 -> 1` on the panel, which is the exact thing
+ * motion.css forbids: an element fading in fails contrast while it fades, and
+ * every ratio in TOKENS.md is measured on the settled colour. Removed rather
+ * than kept, because a rule the kit breaks in its own stylesheet is not a rule.
+ * Add `class="ov-arrive"` and set --ov-stage to the panel's place in the
+ * signal path. */
+
+/* ---- button ------------------------------------------------------------ */
+
+/* Form comes from tokens, so the themes are different OBJECTS rather than one
+ * object recoloured. A terminal has no buttons: it has bracketed text you can
+ * select. 2001 has a flat colour block with no border at all. Industrial has a
+ * heavy bezel and a cut corner. Cyber leans.
+ *
+ * ⭐ FOUR MORE EDGE TREATMENTS, ALL DRAWN UNCONDITIONALLY AND ALL INERT AT
+ * ZERO, which is the move --ov-shear already makes at 0deg. A theme carries at
+ * most one of them and this file never learns which:
+ *
+ *   --ov-ctl-tick     crop marks at the corners instead of a continuous edge
+ *   --ov-ctl-over     pushes those marks off their edges so they CROSS
+ *   --ov-ctl-edge     one bar on the leading side only
+ *   --ov-ctl-base     an underline and nothing else
+ *   --ov-ctl-chamfer  all four corners taken off
+ *
+ * See FURNITURE in tools/palette.py for what each one is FOR. The reason this
+ * axis exists at all is that the four newest themes were strong backgrounds
+ * with the same rule-box button underneath, which fails the kit's own test
+ * that a theme is a mechanism and not a hue. */
+.ov-btn {
+  font: inherit;
+  letter-spacing: inherit;
+  text-transform: var(--ov-case);
+  color: var(--ov-ink);
+  /* background-COLOR, not the shorthand: the corner ticks are a
+     background-image and the shorthand would reset them on every state. */
+  background-color: var(--ov-btn-bg);
+  /* Eight layers, two per corner. Written out rather than hidden behind one
+     --ov-tick-bar token, because a custom property containing var() is
+     substituted WHERE IT IS DECLARED: a token defined once on :root would
+     freeze --ov-furn at the root's value and the ticks would never take the
+     state colour. Here the var() resolves on the button, which is the element
+     that knows both its theme and whether it is pressed. */
+  background-image:
+    linear-gradient(var(--ov-furn) 0 0), linear-gradient(var(--ov-furn) 0 0),
+    linear-gradient(var(--ov-furn) 0 0), linear-gradient(var(--ov-furn) 0 0),
+    linear-gradient(var(--ov-furn) 0 0), linear-gradient(var(--ov-furn) 0 0),
+    linear-gradient(var(--ov-furn) 0 0), linear-gradient(var(--ov-furn) 0 0),
+    var(--ov-cut-img);
+  /* ⭐ --ov-ctl-over PUSHES EACH MARK OFF ITS OWN EDGE, and that one number is
+     the difference between a crop mark and an overshoot. At 0 the horizontal
+     bar lies along the top edge and the vertical bar down the left edge, and
+     they meet at the corner: crop marks, which is `ticks`. Above 0 each bar
+     steps inward across the OTHER axis, so the pair crosses at (over, over)
+     and each stroke runs past the join by (tick - over). That is what an X-Y
+     display actually draws - it has no corner primitive, only two lines that
+     meet, and a beam with mass overruns the meeting every time.
+     Same eight layers, same sizes, same per-corner suppression. */
+  background-position:
+    0 var(--ov-ctl-over), var(--ov-ctl-over) 0,
+    100% var(--ov-ctl-over), calc(100% - var(--ov-ctl-over)) 0,
+    0 calc(100% - var(--ov-ctl-over)), var(--ov-ctl-over) 100%,
+    100% calc(100% - var(--ov-ctl-over)), calc(100% - var(--ov-ctl-over)) 100%,
+    var(--ov-cut-pos);
+  /* One tick size per corner, defaulting to the theme's. A control that is
+     part of a larger shape suppresses the corners that are on the inside of
+     it - see "one shape, several controls" in control.css. */
+  --ov-tick-tl: var(--ov-ctl-tick);
+  --ov-tick-tr: var(--ov-ctl-tick);
+  --ov-tick-bl: var(--ov-ctl-tick);
+  --ov-tick-br: var(--ov-ctl-tick);
+  background-size:
+    var(--ov-tick-tl) var(--ov-rule), var(--ov-rule) var(--ov-tick-tl),
+    var(--ov-tick-tr) var(--ov-rule), var(--ov-rule) var(--ov-tick-tr),
+    var(--ov-tick-bl) var(--ov-rule), var(--ov-rule) var(--ov-tick-bl),
+    var(--ov-tick-br) var(--ov-rule), var(--ov-rule) var(--ov-tick-br),
+    var(--ov-cut-size);
+  --ov-cut-w: var(--ov-btn-border);
+  --ov-cut-br: calc(var(--ov-ctl-corner) + var(--ov-ctl-chamfer));
+  --ov-cut-tl: var(--ov-ctl-chamfer);
+  --ov-cut-tr: var(--ov-ctl-chamfer);
+  --ov-cut-bl: var(--ov-ctl-chamfer);
+  /* The leading bar and the contact line. Both are inset shadows, so neither
+     changes the box and neither needs a pseudo-element - which matters,
+     because ::before and ::after are already the brackets. */
+  box-shadow:
+    inset var(--ov-ctl-edge) 0 0 0 var(--ov-furn),
+    inset 0 calc(var(--ov-ctl-base) * -1) 0 0 var(--ov-furn);
+  border: var(--ov-btn-border) solid var(--ov-line-strong);
+  border-radius: 0;
+  /* Same rule as the panel: reserve interior padding equal to the clip on the
+     sides the clip takes, or the cut eats whatever is nearest it. */
+  padding: 9px calc(16px + var(--ov-ctl-corner) + var(--ov-ctl-chamfer))
+           9px calc(16px + var(--ov-ctl-edge) + var(--ov-ctl-chamfer));
+  cursor: pointer;
+  transform: skewX(calc(var(--ov-shear) * -1));
+  clip-path: var(--ov-ctl-clip);
+  transition: background-color var(--ov-dur-fast) var(--ov-ease),
+              border-color var(--ov-dur-fast) var(--ov-ease);
+}
+
+/* The box leans, the label does not. A lean has a measured cost to a
+ * hit-test and a label; keeping the text upright keeps the reading cost at
+ * zero while the slab still reads as sheared. */
+.ov-btn > span,
+.ov-btn::before,
+.ov-btn::after { display: inline-block; transform: skewX(var(--ov-shear)); }
+
+.ov-btn::before { content: var(--ov-bracket-o); }
+.ov-btn::after { content: var(--ov-bracket-c); }
+
+/* ⭐ State rides --ov-furn, not the border. A theme that traded its box for
+ * corner ticks or a contact line still has to be able to say hovered, pressed
+ * and refused, and the edge treatment is where it says it. Setting the border
+ * colour as well costs nothing in a theme with no border. */
+.ov-btn:hover {
+  background-color: var(--ov-raised);
+  border-color: var(--ov-accent);
+  --ov-furn: var(--ov-accent);
+}
+
+/* Lit comes from the tokens, so a monochrome theme swaps fore and back instead
+ * of reaching for a brighter colour it does not have. */
+.ov-btn[aria-pressed="true"] {
+  background-color: var(--ov-lit-bg);
+  color: var(--ov-lit-fg);
+  border-color: var(--ov-accent);
+  --ov-furn: var(--ov-accent);
+}
+
+/* aria-disabled, never the native attribute. Native removes the control from
+ * the tab order and announces nothing: 3 of 6 reachable against 6 of 6. The
+ * handler still has to refuse, or this ships a button that looks refused and
+ * is not. */
+.ov-btn[aria-disabled="true"] {
+  color: var(--ov-faint);
+  border-color: var(--ov-line);
+  cursor: not-allowed;
+  --ov-furn: var(--ov-line);
+}
+
+.ov-btn[aria-disabled="true"]:hover {
+  background-color: var(--ov-panel);
+  border-color: var(--ov-line);
+  --ov-furn: var(--ov-line);
+}
+
+/* ---- focus ------------------------------------------------------------- */
+
+/* Inset, always. An outline paints OUTSIDE the border box and a corner cut is
+ * strictly inside it, so a default ring on a clipped element is absent rather
+ * than faint: 0% of it survives. */
+.ov :focus-visible {
+  outline: 2px solid var(--ov-accent);
+  outline-offset: -2px;
+}
+
+/* ---- tabs -------------------------------------------------------------- */
+
+.ov-tabs { display: flex; align-items: flex-end; }
+
+.ov-tab {
+  font: inherit;
+  letter-spacing: inherit;
+  text-transform: var(--ov-case);
+  background: none;
+  border: 0;
+  padding: 8px var(--ov-pad) 6px;
+  color: var(--ov-dim);
+  cursor: pointer;
+  border-bottom: 2px solid var(--ov-line);
+}
+
+.ov-tab[aria-selected="true"] {
+  color: var(--ov-accent);
+  border-bottom-color: var(--ov-accent);
+}
+
+/* ---- input ------------------------------------------------------------- */
+
+.ov-input {
+  font: inherit;
+  letter-spacing: 0;
+  color: var(--ov-ink);
+  background-color: var(--ov-panel);
+  border: var(--ov-bezel) solid var(--ov-line-strong);
+  --ov-cut-w: var(--ov-bezel);
+  --ov-cut-br: calc(var(--ov-ctl-corner) + var(--ov-ctl-chamfer));
+  --ov-cut-tl: var(--ov-ctl-chamfer);
+  --ov-cut-tr: var(--ov-ctl-chamfer);
+  --ov-cut-bl: var(--ov-ctl-chamfer);
+  background-image: var(--ov-cut-img);
+  background-size: var(--ov-cut-size);
+  background-position: var(--ov-cut-pos);
+  padding: 9px calc(12px + var(--ov-ctl-corner) + var(--ov-ctl-chamfer))
+           9px calc(12px + var(--ov-ctl-chamfer));
+  min-inline-size: 0;
+  /* The same shape the button takes, so a theme's control form is one
+     decision rather than one per control. */
+  clip-path: var(--ov-ctl-clip);
+}
+
+.ov-input::placeholder { color: var(--ov-faint); }
+
+/* ---- toggle ------------------------------------------------------------ */
+
+.ov-toggle {
+  /* It is a <button>, so it arrives with a UA background and border. Without
+   * this reset the track sits on a light grey slab in every theme and the
+   * label is unreadable against it. */
+  font: inherit;
+  letter-spacing: inherit;
+  background: none;
+  border: 0;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  color: var(--ov-dim);
+  text-transform: var(--ov-case);
+}
+
+.ov-toggle__track {
+  inline-size: 34px;
+  block-size: 16px;
+  background: var(--ov-panel);
+  border: var(--ov-bezel) solid var(--ov-line-strong);
+  display: flex;
+  align-items: center;
+  padding: 2px;
+  flex: 0 0 auto;
+}
+
+.ov-toggle__knob {
+  inline-size: 12px;
+  block-size: 12px;
+  background: var(--ov-line-strong);
+  transition: transform var(--ov-dur-fast) var(--ov-ease),
+              background var(--ov-dur-fast) var(--ov-ease);
+}
+
+.ov-toggle[aria-pressed="true"] .ov-toggle__track { background: var(--ov-accent); }
+.ov-toggle[aria-pressed="true"] .ov-toggle__knob {
+  transform: translateX(14px);
+  background: var(--ov-field);
+}
+
+/* ---- badge ------------------------------------------------------------- */
+
+/* ---- HOW MUCH CHROME AN INSTRUMENT SHOWS --------------------------------
+ *
+ * 🔴 AN INSTRUMENT SHOWS ITS VISUAL CONTENT AND NOTHING ELSE, BY DEFAULT.
+ * What that means is the instrument face, the reading, the unit that reading
+ * is in, and anything the instrument is refusing or qualifying. What it does
+ * NOT mean is the supporting prose: the element's own name, the declared-rules
+ * footnote, the hint line, the per-row restatement of what a mark already
+ * shows. A wall writes the name and the rules once above twenty tiles, and
+ * twenty instruments repeating them is noise rather than rigour.
+ *
+ * `data-ov-chrome="full"` opts back in, on the element or on any container
+ * above it, for a single instrument on a page of its own where there is no
+ * wall to carry the name.
+ *
+ *     <ov-balance label="TANK 912">                    name hidden
+ *     <ov-balance label="TANK 912" data-ov-chrome="full">   name shown
+ *     <div data-ov-chrome="full"> … twenty elements …  </div>
+ *
+ * `data-ov-chrome="bare"` is the default said out loud, and it is worth having
+ * a word for because it can be nested INSIDE a `full` container to put one
+ * instrument back to dense.
+ *
+ * 🔴 A REFUSAL IS NEVER CHROME. None of this may hide a refusal, a qualifier,
+ * a READING or the unit that reading is in: it is a density control, not a way
+ * to make an instrument look calmer than it is. Anything an element marks
+ * `.ov-aside` is prose the reading does not depend on, and nothing else may
+ * carry the class.
+ *
+ * ⚠️ THE LINE IS MEASURED VERSUS DECLARED, NOT NUMBER VERSUS WORD, and it is
+ * worth stating because the declared rules are full of numbers. `±1.5`,
+ * `RED AT 3`, `MARGIN 0.50 nm` and `EXPIRES 30m 00s` are all hidden, and every
+ * one of them is an AUTHOR-SET ATTRIBUTE - what this instrument was told to
+ * do. What is never hidden is what the instrument MEASURED, what it is
+ * refusing to measure, and what it has to say about how a measurement was
+ * arrived at.
+ *
+ * ⚠️ AND IT CHANGES NOTHING THAT IS READ ALOUD. Every element in the kit opens
+ * its accessible name with its label, and none of this touches that, so a
+ * screen reader is given the identical sentence either way. A hidden name is
+ * still a spoken name. That is the condition under which a name - the one
+ * piece of prose that is also an identity - is allowed to leave the screen at
+ * all, and tools/bare-test holds all seven elements to it.
+ *
+ * ⚠️ THE SELECTORS LOOK ODD ON PURPOSE, both halves of them.
+ *
+ * The class is DOUBLED because these rules have to win against an element's
+ * own stylesheet without !important: `.ov-aside` and `.ov-mosaic__probe` are
+ * both one class, so which one won would come down to the order the sheets
+ * happened to load. `.ov-aside.ov-aside` is (0,2,0) and settles it.
+ *
+ * And `full` is written as an EXEMPTION from the hiding rather than as a rule
+ * that sets `display` back, because there is no one value to set it back TO.
+ * `.ov-position__cap` is `display: none` in position.css for its own reasons,
+ * and a rule here saying `display: block` would overrule that and force a
+ * footnote back on screen that the element had decided not to draw. Under
+ * `full` this file contributes no display at all, and each element's own rules
+ * govern, which is the only correct answer.
+ */
+.ov-aside.ov-aside:not(:where([data-ov-chrome="full"], [data-ov-chrome="full"] *)),
+.ov-head.ov-head:not(:where([data-ov-chrome="full"], [data-ov-chrome="full"] *)) {
+  display: none;
+}
+
+/* The default, said out loud, and able to sit inside a `full` container. */
+[data-ov-chrome="bare"] .ov-aside.ov-aside,
+[data-ov-chrome="bare"] .ov-head.ov-head {
+  display: none;
+}
+
+/* ---- THE STATUS BOX IS A WORD, NOT A HEADER ------------------------------
+ *
+ * With the name and the explanation gone, what was left on top of every
+ * instrument was the BOX: a bordered panel, a bar, a badge, holding one word.
+ * It still read as a header, because it was built as one.
+ *
+ * So by default the box gives up its frame - no padding, border, background
+ * or shear - and an ORDINARY reading (`data-ov-tone="ok"`: agrees, fix,
+ * complete, fresh) does not draw it at all. The instrument face below already
+ * shows an ordinary reading, and a box announcing that nothing is wrong is
+ * the header this rule exists to remove.
+ *
+ * 🔴 A REFUSAL OR A QUALIFIER STILL DRAWS ITS WORD. `note` and `bad` keep the
+ * word, in its tone colour, at its size: DISPUTED, DEAD RECKONED, NOT
+ * QUALIFIED, NO MAJORITY, the composite's age. On five of these seven
+ * instruments that word is the ONLY place the refusal is drawn - nothing in
+ * the face changes when it refuses - so it is the one thing on top that may
+ * not go. What goes is the frame around it and the sentence after it.
+ *
+ * ⭐ `.ov-state--reading` IS A BOX THAT HOLDS THE READING ITSELF. ov-quorum's
+ * voted value and ov-score's total are printed nowhere else, so for those two
+ * an ordinary tone keeps the box too, frameless: hiding it would hide the
+ * number, which is the one thing a density control may never do.
+ *
+ * The inverted badge (position, when derived) paints its word in the field
+ * colour on a filled ground. With the ground gone that word would be dark on
+ * dark and simply vanish, so the word takes the tone colour back.
+ *
+ * ⚠️ THE FRAME RULE CARRIES THREE CLASSES, and two was measured not to be
+ * enough. `.ov-state--panel[data-ov-tone="bad"]` and
+ * `.ov-state--badge[data-ov-tone="note"]` are each (0,2,0), the same as a
+ * doubled class, so which won came down to source order - and on a refusing
+ * quorum panel the 3px double border stayed while the gate's badge kept its
+ * filled ground. Three classes is (0,3,0) and outranks every tone rule.
+ */
+.ov-state.ov-state.ov-state:not(:where([data-ov-chrome="full"], [data-ov-chrome="full"] *)),
+[data-ov-chrome="bare"] .ov-state.ov-state.ov-state {
+  padding: 0;
+  border: 0;
+  background: none;
+  transform: none;
+}
+.ov-state.ov-state.ov-state:not(:where([data-ov-chrome="full"], [data-ov-chrome="full"] *)) .ov-state__word,
+[data-ov-chrome="bare"] .ov-state.ov-state.ov-state .ov-state__word {
+  color: inherit;
+}
+.ov-state.ov-state[data-ov-tone="ok"]:not(.ov-state--reading):not(:where([data-ov-chrome="full"], [data-ov-chrome="full"] *)),
+[data-ov-chrome="bare"] .ov-state.ov-state[data-ov-tone="ok"]:not(.ov-state--reading) {
+  display: none;
+}
+
+/* ---- THE STATE BLOCK ----------------------------------------------------
+ *
+ * Every instrument that reaches a VERDICT needs somewhere to put it, and six
+ * of them had independently arrived at the same bordered rectangle: one pixel
+ * of accent, six by ten of padding, and a three-pixel double alarm border when
+ * refusing. Identical, so the set read as one component wearing seven labels.
+ *
+ * 🔴 SO THE SHAPE IS SHARED AND THE FORM IS NOT. The tone is what every
+ * instrument has in common - is this a reading, a reading with something to
+ * say about it, or a refusal - and that is what lives here, in three values of
+ * `data-ov-tone`. The FORM is chosen per instrument from what it is announcing,
+ * because a mode is a stamp, a verdict is a sentence, a total is a number, and
+ * drawing all three as the same rectangle says they are the same kind of fact.
+ *
+ *   ok      a reading, and nothing to add
+ *   note    a reading, qualified: dashed, in the ink rather than the accent
+ *   bad     a refusal: heavier, alarm, and different in FORM as well as colour
+ */
+.ov-state {
+  display: grid;
+  gap: 2px;
+  color: var(--ov-accent);
+}
+.ov-state__word {
+  font-size: calc(var(--ov-size-2, 12px) * 1.5);
+  letter-spacing: .1em;
+  text-shadow: 0 0 calc(var(--ov-bloom, .2) * 10px) currentColor;
+}
+.ov-state__why { color: var(--ov-ink); letter-spacing: .06em; line-height: 1.45; overflow-wrap: anywhere; }
+.ov-state__why:empty { display: none; }
+.ov-state[data-ov-tone="bad"], .ov-state[data-ov-tone="bad"] .ov-state__why { color: var(--ov-alarm); }
+
+/* PANEL. The full box, for an instrument whose verdict really is a readout
+   with its own instrument face under it. */
+.ov-state--panel {
+  padding: 6px 10px;
+  border: var(--ov-rule, 1px) solid currentColor;
+}
+.ov-state--panel[data-ov-tone="note"] { border-style: dashed; }
+.ov-state--panel[data-ov-tone="bad"] { border-width: 3px; border-style: double; }
+
+/* BADGE. A stamp, for a MODE: the thing a receiver says it is doing. Short,
+   inline, and inverted when it is not a measurement, so a derived position
+   does not merely change colour - it changes from printed to stamped. */
+.ov-state--badge {
+  justify-self: start;
+  padding: 3px 10px;
+  border: 2px solid currentColor;
+  transform: skewX(calc(var(--ov-shear, 0deg) * -1));
+}
+.ov-state--badge .ov-state__word { font-size: var(--ov-size-2, 12px); }
+.ov-state--badge[data-ov-tone="note"],
+.ov-state--badge[data-ov-tone="bad"] {
+  background: currentColor;
+  border-style: solid;
+}
+.ov-state--badge[data-ov-tone="note"] .ov-state__word,
+.ov-state--badge[data-ov-tone="bad"] .ov-state__word {
+  color: var(--ov-field);
+  text-shadow: none;
+}
+
+/* BAR. A sentence, for a verdict that is one: no box, a heavy rule down the
+   side, the way a quotation is marked rather than boxed. */
+.ov-state--bar {
+  padding: 2px 0 2px 10px;
+  border-inline-start: 3px solid currentColor;
+}
+.ov-state--bar[data-ov-tone="note"] { border-inline-start-style: dashed; }
+.ov-state--bar[data-ov-tone="bad"] { border-inline-start-width: 6px; }
+
+/* BARE. A number, for a total. No border at all: the figure is large enough to
+   be its own frame, with a rule under it only when there is something to say. */
+.ov-state--bare { padding-block-end: 4px; }
+.ov-state--bare .ov-state__word { font-size: calc(var(--ov-size-2, 12px) * 2.4); letter-spacing: .06em; }
+.ov-state--bare[data-ov-tone="note"] { border-block-end: var(--ov-rule, 1px) dashed var(--ov-ink); }
+.ov-state--bare[data-ov-tone="bad"] { border-block-end: 2px solid currentColor; }
+
+/* EDGE. A heavy rule ABOVE the figure rather than beside it, for a reading
+   that is a measured distance: the line reads as the datum the figure is
+   measured from. Distinct from BAR, which marks a sentence down its side. */
+.ov-state--edge {
+  padding-block: 5px 2px;
+  border-block-start: 3px solid currentColor;
+}
+.ov-state--edge[data-ov-tone="note"] { border-block-start-style: dashed; }
+.ov-state--edge[data-ov-tone="bad"] { border-block-start-width: 6px; }
+
+/* TAG. For a fact that belongs ON the picture it describes: a filled strip
+   with the word knocked out, sitting tight against the image below it. */
+.ov-state--tag {
+  justify-self: start;
+  padding: 3px 9px;
+  background: color-mix(in srgb, currentColor 16%, transparent);
+  border-inline-start: 3px solid currentColor;
+}
+.ov-state--tag[data-ov-tone="note"] { border-inline-start-style: dashed; }
+.ov-state--tag[data-ov-tone="bad"] { background: color-mix(in srgb, currentColor 26%, transparent); }
+
+/* ---- THE INSTRUMENT HEAD ------------------------------------------------
+ *
+ * A name on the left, and on the right the RULES THE INSTRUMENT IS JUDGING BY:
+ * the window it averages over, the tolerance it allows, the threshold it
+ * triggers at. Those belong together because they are one sentence - "this is
+ * what I am, and this is what I was told to do" - and because a reading whose
+ * rule is off screen is a reading you cannot check.
+ *
+ * 🔴 IT LIVES HERE BECAUSE SIX ELEMENTS HAD WRITTEN IT OUT SEPARATELY, byte for
+ * byte identical, which is the drift tools/specimens.py exists to end: one
+ * source per use, not six copies of one. Anything in the kit can now open with
+ * `<div class="ov-head"><span class="ov-head__name">…</span>
+ * <span class="ov-head__note">…</span></div>`.
+ *
+ * ⚠️ AND MOST INSTRUMENTS SHOULD NOT USE IT. A kit where every element opens
+ * with the same bar reads as a template rather than as a set of instruments,
+ * and the head is only right where the name and the declared rule genuinely
+ * are the first thing to say. Where an element has a loud primary readout of
+ * its own - a verdict, a mode badge, an age - the name belongs IN that block
+ * and the rules belong under it, which is what ov-mosaic, ov-balance,
+ * ov-position and ov-clearance do.
+ */
+.ov-head {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 4px 2ch;
+  padding-block-end: 6px;
+  border-block-end: var(--ov-rule, 1px) solid var(--ov-line);
+}
+/* Some heads put the name beside a badge rather than at opposite ends of the
+   row, so the spread is a modifier rather than two definitions. */
+.ov-head--tight { justify-content: flex-start; }
+
+.ov-head__name {
+  font-size: var(--ov-size-2, 12px);
+  letter-spacing: .14em;
+  text-transform: uppercase;
+}
+.ov-head__note {
+  color: var(--ov-faint);
+  letter-spacing: .08em;
+  font-variant-numeric: tabular-nums;
+}
+
+.ov-badge {
+  display: inline-block;
+  transform: skewX(calc(var(--ov-shear) * -1));
+  padding: 3px 8px;
+  font-size: var(--ov-size-1);
+  letter-spacing: calc(var(--ov-track) + 0.8px);
+  text-transform: uppercase;
+  color: var(--ov-accent);
+  border: var(--ov-rule) solid currentColor;
+}
+
+.ov-badge--aux { color: var(--ov-accent-2); }
+.ov-badge--fault { color: var(--ov-alarm); }
+
+/* ---- status: a badge that knows it can be silent ----------------------- */
+
+/* ⭐ A STATUS WITH NO DECLARED STATE IS NOT OK. `.ov-badge` is a label and is
+ * drawn in the accent, which on most themes is the colour of "good"; a status
+ * light that looked like that by default would report every unwired channel
+ * as healthy. So the bare `.ov-status` is UNKNOWN: a "?" marker, a hatched
+ * ground and the words NO STATE. Only `data-ov-state="ok"` is ever drawn as
+ * ok. Silence cannot pass for green by forgetting an attribute.
+ *
+ * Every state has its own marker SHAPE as well as colour (filled dot, triangle,
+ * square, hollow ring, dash), and the two states that are about the channel
+ * rather than the thing, unknown and nosignal, write their own words, so none
+ * of this rests on colour alone. `data-ov-age` adds STALE and the age. */
+.ov-status {
+  --ov-status-c: var(--ov-dim);
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 3px 9px 3px 7px;
+  font-size: var(--ov-size-1);
+  letter-spacing: calc(var(--ov-track) + 0.8px);
+  text-transform: uppercase;
+  color: var(--ov-ink);
+  border: var(--ov-rule) dashed var(--ov-status-c);
+  background: repeating-linear-gradient(135deg, transparent 0 4px,
+    color-mix(in srgb, var(--ov-status-c) 22%, transparent) 4px 5px);
+}
+.ov-status::before {
+  content: '?';
+  display: inline-grid;
+  place-items: center;
+  inline-size: 9px;
+  block-size: 9px;
+  font-size: 9px;
+  line-height: 1;
+  color: var(--ov-status-c);
+  flex: 0 0 auto;
+}
+.ov-status::after { content: 'NO STATE'; color: var(--ov-status-c); }
+
+/* Declared states: solid border, no hatch, their own shape. */
+.ov-status[data-ov-state] { border-style: solid; background: none; }
+.ov-status[data-ov-state]::before { content: ''; background: var(--ov-status-c); }
+.ov-status[data-ov-state]::after { content: none; }
+
+.ov-status[data-ov-state="ok"] { --ov-status-c: var(--ov-accent); }
+.ov-status[data-ov-state="ok"]::before { border-radius: 50%; }
+
+.ov-status[data-ov-state="caution"] { --ov-status-c: var(--ov-accent-2); }
+.ov-status[data-ov-state="caution"]::before { clip-path: polygon(50% 0, 100% 100%, 0 100%); }
+
+.ov-status[data-ov-state="alarm"] { --ov-status-c: var(--ov-alarm); }
+.ov-status[data-ov-state="alarm"]::before { border-radius: 0; }
+
+.ov-status[data-ov-state="off"] { --ov-status-c: var(--ov-dim); }
+.ov-status[data-ov-state="off"]::before { background: none; border: 1.5px solid var(--ov-status-c); border-radius: 50%; }
+
+/* NO SIGNAL: the channel is silent. Hatched like unknown, because it is a
+ * statement about the wire, and it says so in words. */
+.ov-status[data-ov-state="nosignal"] {
+  --ov-status-c: var(--ov-alarm);
+  border-style: dashed;
+  background: repeating-linear-gradient(135deg, transparent 0 4px,
+    color-mix(in srgb, var(--ov-status-c) 22%, transparent) 4px 5px);
+}
+.ov-status[data-ov-state="nosignal"]::before { block-size: 2px; }
+.ov-status[data-ov-state="nosignal"]::after { content: 'NO SIGNAL'; color: var(--ov-status-c); }
+
+/* An old reading keeps its state and says how old it is. */
+.ov-status[data-ov-age]::after { content: 'STALE ' attr(data-ov-age); color: var(--ov-faint); }
+.ov-status[data-ov-age] { opacity: 0.75; }
+
+/* ---- warning strip ----------------------------------------------------- */
+
+.ov-strip {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  color: var(--ov-alarm);
+  border: var(--ov-rule) solid var(--ov-alarm);
+  text-transform: var(--ov-case);
+}
+
+/* ---- title bar --------------------------------------------------------- */
+
+.ov-titlebar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 6px 10px;
+  background: var(--ov-raised);
+  border-bottom: var(--ov-rule) solid var(--ov-line-strong);
+  color: var(--ov-dim);
+  text-transform: var(--ov-case);
+  font-size: var(--ov-size-1);
+}
+
+/* ---- rule -------------------------------------------------------------- */
+
+.ov-rule {
+  block-size: var(--ov-rule);
+  background: var(--ov-line);
+  border: 0;
+  margin: 0;
+}
+
+.ov-rule--strong { background: var(--ov-line-strong); }
+}

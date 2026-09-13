@@ -1,0 +1,98 @@
+@layer overscan {
+/* The trajectory plot. See ov-orbit.js for the refusal.
+ *
+ * Strokes are non-scaling, so the plot reads the same at any `extent`: a
+ * path's weight is a screen fact, not a unit of the plot. The unbanded tail
+ * is DASHED and the horizon is a hard bar, so neither rests on colour.
+ */
+
+ov-orbit {
+  --ov-orbit-size: 320px;
+  display: inline-grid;
+  gap: 6px;
+  inline-size: min(var(--ov-orbit-size), 100%);
+  font-family: var(--ov-font-mono);
+  font-size: var(--ov-size-1, 10px);
+  color: var(--ov-ink);
+}
+
+.ov-orbit__label {
+  font-size: var(--ov-size-2, 12px);
+  letter-spacing: .14em;
+  text-transform: uppercase;
+}
+.ov-orbit__label:empty { display: none; }
+
+.ov-orbit__svg {
+  display: block;
+  inline-size: 100%;
+  aspect-ratio: 1;
+  block-size: auto;
+  border: var(--ov-rule, 1px) solid var(--ov-line);
+  background: var(--ov-field);
+}
+
+.ov-orbit__body {
+  fill: color-mix(in srgb, var(--ov-line) 40%, transparent);
+  stroke: var(--ov-line-strong);
+  stroke-width: 1;
+  vector-effect: non-scaling-stroke;
+}
+.ov-orbit__band {
+  fill: color-mix(in srgb, var(--ov-accent) 16%, transparent);
+  stroke: none;
+}
+/* The cone: circles and their joins, filled opaque inside a translucent group
+   so overlaps stay one tone. Late times are stippled instead, as the NHC
+   stipples days 4 and 5. No outline: an edge would read as a wall. */
+.ov-orbit__cone { fill: var(--ov-accent); opacity: .2; }
+.ov-orbit__cone .ov-orbit__circle, .ov-orbit__cone .ov-orbit__join { stroke: none; }
+.ov-orbit__cone--late { opacity: .55; }
+.ov-orbit__cone--late .ov-orbit__circle, .ov-orbit__cone--late .ov-orbit__join { fill: inherit; }
+.ov-orbit__stipple-dot { fill: var(--ov-accent); }
+ov-orbit[data-ov-qualified] .ov-orbit__cone { opacity: .1; }
+
+.ov-orbit__path {
+  fill: none;
+  stroke: var(--ov-accent);
+  stroke-width: 1.4;
+  stroke-linejoin: round;
+  vector-effect: non-scaling-stroke;
+}
+.ov-orbit__path--unbanded { stroke-dasharray: 5 4; }
+.ov-orbit__horizon {
+  stroke: var(--ov-ink);
+  stroke-width: 2.4;
+  vector-effect: non-scaling-stroke;
+}
+.ov-orbit__craft { fill: var(--ov-ink); }
+.ov-orbit__burn {
+  fill: none;
+  stroke: var(--ov-accent);
+  stroke-width: 1.4;
+  vector-effect: non-scaling-stroke;
+}
+.ov-orbit__target {
+  fill: none;
+  stroke: var(--ov-alarm);
+  stroke-width: 1.4;
+  vector-effect: non-scaling-stroke;
+}
+.ov-orbit__tag {
+  fill: var(--ov-faint);
+  font-family: var(--ov-font-mono);
+  letter-spacing: .08em;
+}
+
+.ov-orbit__notes {
+  letter-spacing: .1em;
+  line-height: 1.5;
+  color: var(--ov-faint);
+}
+
+/* Stale: shown, dimmed, labelled; the kit's `stale` qualifier. */
+ov-orbit[data-ov-qualified] .ov-orbit__path,
+ov-orbit[data-ov-qualified] .ov-orbit__band { opacity: .45; }
+ov-orbit[data-ov-qualified] .ov-orbit__notes,
+ov-orbit[data-ov-refusal] .ov-orbit__notes { color: var(--ov-alarm); }
+}

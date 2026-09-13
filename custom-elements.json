@@ -1,0 +1,3216 @@
+{
+  "globalEvents": [
+    {
+      "module": "src/ov-flip.js",
+      "name": "ov:flip",
+      "target": "element"
+    },
+    {
+      "module": "src/ov-keys.js",
+      "name": "ov:chord",
+      "target": "document"
+    },
+    {
+      "module": "src/ov-keys.js",
+      "name": "ov:key",
+      "target": "document"
+    },
+    {
+      "module": "src/ov-reveal.js",
+      "name": "ov:arrived",
+      "target": "element"
+    },
+    {
+      "module": "src/ov-sound.js",
+      "name": "ov:sound",
+      "target": "window"
+    },
+    {
+      "module": "src/ov-tabs.js",
+      "name": "ov:tab",
+      "target": "element"
+    }
+  ],
+  "imports": {
+    "element": [
+      "import 'overscan'",
+      "import 'overscan/overscan.css'"
+    ],
+    "note": "The CSS is a separate import in every framework. A single element can be imported on its own instead of the whole kit: import 'overscan/src/ov-chart.js'",
+    "react": "import { {component} } from 'overscan/react'",
+    "svelte": "import {component} from 'overscan/svelte/{component}.svelte'",
+    "vue": "import { {component} } from 'overscan/vue'"
+  },
+  "modules": [
+    {
+      "declarations": [
+        {
+          "attributeCollisions": [],
+          "attributes": [
+            "capacity",
+            "commanded",
+            "consumers",
+            "damaged",
+            "label",
+            "readback",
+            "timeout"
+          ],
+          "attributesComplete": true,
+          "class": "OvAllocator",
+          "events": [
+            "ov:allocate",
+            "ov:refuse"
+          ],
+          "gettersOnly": [],
+          "marksStale": false,
+          "members": [
+            {
+              "kind": "structured",
+              "name": "readback",
+              "type": "Structured"
+            }
+          ],
+          "module": "src/ov-allocator.js",
+          "name": "ov-allocator",
+          "wrappers": {
+            "component": "OvAllocator",
+            "react": {
+              "onAllocate": "ov:allocate",
+              "onRefuse": "ov:refuse"
+            },
+            "svelte": {
+              "onallocate": "ov:allocate",
+              "onrefuse": "ov:refuse"
+            },
+            "vue": {
+              "allocate": "ov:allocate",
+              "refuse": "ov:refuse"
+            }
+          }
+        }
+      ],
+      "kind": "javascript-module",
+      "path": "src/ov-allocator.js"
+    },
+    {
+      "declarations": [
+        {
+          "attributeCollisions": [],
+          "attributes": [
+            "conditions",
+            "label",
+            "master",
+            "max-age",
+            "max-shelve",
+            "shelvable",
+            "shelve-for",
+            "source",
+            "tiles",
+            "unshelvable"
+          ],
+          "attributesComplete": true,
+          "class": "OvAnnunciator",
+          "events": [
+            "ov:acknowledge",
+            "ov:annunciate",
+            "ov:shelve"
+          ],
+          "gettersOnly": [],
+          "marksStale": false,
+          "members": [
+            {
+              "kind": "structured",
+              "name": "conditions",
+              "type": "Structured"
+            }
+          ],
+          "module": "src/ov-annunciator.js",
+          "name": "ov-annunciator",
+          "wrappers": {
+            "component": "OvAnnunciator",
+            "react": {
+              "onAcknowledge": "ov:acknowledge",
+              "onAnnunciate": "ov:annunciate",
+              "onShelve": "ov:shelve"
+            },
+            "svelte": {
+              "onacknowledge": "ov:acknowledge",
+              "onannunciate": "ov:annunciate",
+              "onshelve": "ov:shelve"
+            },
+            "vue": {
+              "acknowledge": "ov:acknowledge",
+              "annunciate": "ov:annunciate",
+              "shelve": "ov:shelve"
+            }
+          }
+        }
+      ],
+      "kind": "javascript-module",
+      "path": "src/ov-annunciator.js"
+    },
+    {
+      "declarations": [
+        {
+          "attributeCollisions": [],
+          "attributes": [
+            "text"
+          ],
+          "attributesComplete": true,
+          "class": "OvAnsi",
+          "events": [],
+          "gettersOnly": [],
+          "marksStale": false,
+          "members": [],
+          "module": "src/ov-ansi.js",
+          "name": "ov-ansi",
+          "wrappers": {
+            "component": "OvAnsi",
+            "react": {},
+            "svelte": {},
+            "vue": {}
+          }
+        }
+      ],
+      "kind": "javascript-module",
+      "path": "src/ov-ansi.js"
+    },
+    {
+      "declarations": [
+        {
+          "attributeCollisions": [],
+          "attributes": [
+            "age",
+            "cells",
+            "max",
+            "max-age",
+            "min",
+            "source",
+            "values",
+            "window"
+          ],
+          "attributesComplete": true,
+          "class": "OvSpark",
+          "events": [],
+          "gettersOnly": [],
+          "marksStale": false,
+          "members": [
+            {
+              "kind": "reading",
+              "marksStale": false,
+              "name": "values",
+              "series": true,
+              "type": "Reading[] | null"
+            }
+          ],
+          "module": "src/ov-ascii.js",
+          "name": "ov-spark",
+          "wrappers": {
+            "component": "OvSpark",
+            "react": {},
+            "svelte": {},
+            "vue": {}
+          }
+        }
+      ],
+      "kind": "javascript-module",
+      "path": "src/ov-ascii.js"
+    },
+    {
+      "declarations": [
+        {
+          "attributeCollisions": [],
+          "attributes": [
+            "cells",
+            "max",
+            "min",
+            "source",
+            "unit",
+            "value"
+          ],
+          "attributesComplete": true,
+          "class": "OvCellbar",
+          "events": [],
+          "gettersOnly": [],
+          "marksStale": false,
+          "members": [
+            {
+              "kind": "reading",
+              "marksStale": false,
+              "name": "value",
+              "series": false,
+              "type": "Reading"
+            }
+          ],
+          "module": "src/ov-ascii.js",
+          "name": "ov-cellbar",
+          "wrappers": {
+            "component": "OvCellbar",
+            "react": {},
+            "svelte": {},
+            "vue": {}
+          }
+        }
+      ],
+      "kind": "javascript-module",
+      "path": "src/ov-ascii.js"
+    },
+    {
+      "declarations": [
+        {
+          "attributeCollisions": [],
+          "attributes": [
+            "kind",
+            "name",
+            "status",
+            "task",
+            "variant"
+          ],
+          "attributesComplete": true,
+          "class": "OvAvatar",
+          "events": [],
+          "gettersOnly": [
+            "report"
+          ],
+          "marksStale": false,
+          "members": [],
+          "module": "src/ov-avatar.js",
+          "name": "ov-avatar",
+          "wrappers": {
+            "component": "OvAvatar",
+            "react": {},
+            "svelte": {},
+            "vue": {}
+          }
+        }
+      ],
+      "kind": "javascript-module",
+      "path": "src/ov-avatar.js"
+    },
+    {
+      "declarations": [
+        {
+          "attributeCollisions": [],
+          "attributes": [
+            "capacity",
+            "height",
+            "label",
+            "level-error",
+            "level-unit",
+            "meter-error",
+            "persist",
+            "places",
+            "source",
+            "span-max",
+            "span-min",
+            "src",
+            "unit",
+            "window"
+          ],
+          "attributesComplete": true,
+          "class": "OvBalance",
+          "events": [],
+          "gettersOnly": [
+            "report"
+          ],
+          "marksStale": false,
+          "members": [
+            {
+              "kind": "structured",
+              "name": "reading",
+              "type": "Structured"
+            }
+          ],
+          "module": "src/ov-balance.js",
+          "name": "ov-balance",
+          "wrappers": {
+            "component": "OvBalance",
+            "react": {},
+            "svelte": {},
+            "vue": {}
+          }
+        }
+      ],
+      "kind": "javascript-module",
+      "path": "src/ov-balance.js"
+    },
+    {
+      "declarations": [
+        {
+          "attributeCollisions": [],
+          "attributes": [
+            "age",
+            "baseline",
+            "baseline-at",
+            "baseline-by",
+            "baseline-method",
+            "label",
+            "max-age",
+            "max-baseline-age",
+            "scale",
+            "substituted",
+            "trend-rate",
+            "trend-window",
+            "unit",
+            "value"
+          ],
+          "attributesComplete": true,
+          "class": "OvBaseline",
+          "events": [
+            "ov:baseline",
+            "ov:refuse"
+          ],
+          "gettersOnly": [],
+          "marksStale": true,
+          "members": [
+            {
+              "kind": "structured",
+              "name": "samples",
+              "type": "Structured"
+            }
+          ],
+          "module": "src/ov-baseline.js",
+          "name": "ov-baseline",
+          "wrappers": {
+            "component": "OvBaseline",
+            "react": {
+              "onBaseline": "ov:baseline",
+              "onRefuse": "ov:refuse"
+            },
+            "svelte": {
+              "onbaseline": "ov:baseline",
+              "onrefuse": "ov:refuse"
+            },
+            "vue": {
+              "baseline": "ov:baseline",
+              "refuse": "ov:refuse"
+            }
+          }
+        }
+      ],
+      "kind": "javascript-module",
+      "path": "src/ov-baseline.js"
+    },
+    {
+      "declarations": [
+        {
+          "attributeCollisions": [],
+          "attributes": [
+            "age",
+            "max",
+            "max-age",
+            "min",
+            "mode",
+            "source",
+            "values",
+            "window"
+          ],
+          "attributesComplete": true,
+          "class": "OvChart",
+          "events": [],
+          "gettersOnly": [],
+          "marksStale": false,
+          "members": [
+            {
+              "kind": "reading",
+              "marksStale": false,
+              "name": "values",
+              "series": true,
+              "type": "Reading[] | null"
+            }
+          ],
+          "module": "src/ov-chart.js",
+          "name": "ov-chart",
+          "wrappers": {
+            "component": "OvChart",
+            "react": {},
+            "svelte": {},
+            "vue": {}
+          }
+        }
+      ],
+      "kind": "javascript-module",
+      "path": "src/ov-chart.js"
+    },
+    {
+      "declarations": [
+        {
+          "attributeCollisions": [],
+          "attributes": [
+            "label",
+            "margin",
+            "places",
+            "source",
+            "src",
+            "unit"
+          ],
+          "attributesComplete": true,
+          "class": "OvClearance",
+          "events": [],
+          "gettersOnly": [
+            "report"
+          ],
+          "marksStale": false,
+          "members": [
+            {
+              "kind": "structured",
+              "name": "pick",
+              "type": "Structured"
+            }
+          ],
+          "module": "src/ov-clearance.js",
+          "name": "ov-clearance",
+          "wrappers": {
+            "component": "OvClearance",
+            "react": {},
+            "svelte": {},
+            "vue": {}
+          }
+        }
+      ],
+      "kind": "javascript-module",
+      "path": "src/ov-clearance.js"
+    },
+    {
+      "declarations": [
+        {
+          "attributeCollisions": [],
+          "attributes": [
+            "banner",
+            "banner-step",
+            "commands",
+            "label",
+            "prompt"
+          ],
+          "attributesComplete": true,
+          "class": "OvCli",
+          "events": [
+            "ov:command"
+          ],
+          "gettersOnly": [],
+          "marksStale": false,
+          "members": [],
+          "module": "src/ov-cli.js",
+          "name": "ov-cli",
+          "wrappers": {
+            "component": "OvCli",
+            "react": {
+              "onCommand": "ov:command"
+            },
+            "svelte": {
+              "oncommand": "ov:command"
+            },
+            "vue": {
+              "command": "ov:command"
+            }
+          }
+        }
+      ],
+      "kind": "javascript-module",
+      "path": "src/ov-cli.js"
+    },
+    {
+      "declarations": [
+        {
+          "attributeCollisions": [],
+          "attributes": [
+            "label",
+            "max-age",
+            "src"
+          ],
+          "attributesComplete": true,
+          "class": "OvConsistency",
+          "events": [],
+          "gettersOnly": [],
+          "marksStale": false,
+          "members": [
+            {
+              "kind": "structured",
+              "name": "watch",
+              "type": "Structured"
+            }
+          ],
+          "module": "src/ov-consistency.js",
+          "name": "ov-consistency",
+          "wrappers": {
+            "component": "OvConsistency",
+            "react": {},
+            "svelte": {},
+            "vue": {}
+          }
+        }
+      ],
+      "kind": "javascript-module",
+      "path": "src/ov-consistency.js"
+    },
+    {
+      "declarations": [
+        {
+          "attributeCollisions": [],
+          "attributes": [
+            "src",
+            "window"
+          ],
+          "attributesComplete": true,
+          "class": "OvContinuity",
+          "events": [],
+          "gettersOnly": [],
+          "marksStale": false,
+          "members": [
+            {
+              "kind": "structured",
+              "name": "streams",
+              "type": "Structured"
+            }
+          ],
+          "module": "src/ov-continuity.js",
+          "name": "ov-continuity",
+          "wrappers": {
+            "component": "OvContinuity",
+            "react": {},
+            "svelte": {},
+            "vue": {}
+          }
+        }
+      ],
+      "kind": "javascript-module",
+      "path": "src/ov-continuity.js"
+    },
+    {
+      "declarations": [
+        {
+          "attributeCollisions": [],
+          "attributes": [
+            "clock",
+            "holding",
+            "holdover",
+            "places",
+            "source",
+            "target"
+          ],
+          "attributesComplete": true,
+          "class": "OvCountdown",
+          "events": [
+            "ov:clock"
+          ],
+          "gettersOnly": [
+            "report"
+          ],
+          "marksStale": false,
+          "members": [
+            {
+              "kind": "reading",
+              "marksStale": false,
+              "name": "clock",
+              "series": false,
+              "type": "Reading"
+            }
+          ],
+          "module": "src/ov-countdown.js",
+          "name": "ov-countdown",
+          "wrappers": {
+            "component": "OvCountdown",
+            "react": {
+              "onClock": "ov:clock"
+            },
+            "svelte": {
+              "onclock": "ov:clock"
+            },
+            "vue": {
+              "clock": "ov:clock"
+            }
+          }
+        }
+      ],
+      "kind": "javascript-module",
+      "path": "src/ov-countdown.js"
+    },
+    {
+      "declarations": [
+        {
+          "attributeCollisions": [],
+          "attributes": [
+            "label",
+            "max-age",
+            "src"
+          ],
+          "attributesComplete": true,
+          "class": "OvCoverage",
+          "events": [],
+          "gettersOnly": [],
+          "marksStale": false,
+          "members": [
+            {
+              "kind": "structured",
+              "name": "coverage",
+              "type": "Structured"
+            }
+          ],
+          "module": "src/ov-coverage.js",
+          "name": "ov-coverage",
+          "wrappers": {
+            "component": "OvCoverage",
+            "react": {},
+            "svelte": {},
+            "vue": {}
+          }
+        }
+      ],
+      "kind": "javascript-module",
+      "path": "src/ov-coverage.js"
+    },
+    {
+      "declarations": [
+        {
+          "attributeCollisions": [
+            "value"
+          ],
+          "attributes": [
+            "detents",
+            "label",
+            "max",
+            "min",
+            "value"
+          ],
+          "attributesComplete": true,
+          "class": "OvDial",
+          "events": [
+            "ov:change"
+          ],
+          "gettersOnly": [
+            "hi",
+            "lo",
+            "steps",
+            "value"
+          ],
+          "marksStale": false,
+          "members": [],
+          "module": "src/ov-dial.js",
+          "name": "ov-dial",
+          "wrappers": {
+            "component": "OvDial",
+            "react": {
+              "onChange": "ov:change"
+            },
+            "svelte": {
+              "onchange": "ov:change"
+            },
+            "vue": {
+              "change": "ov:change"
+            }
+          }
+        }
+      ],
+      "kind": "javascript-module",
+      "path": "src/ov-dial.js"
+    },
+    {
+      "declarations": [
+        {
+          "attributeCollisions": [],
+          "attributes": [
+            "label",
+            "parts",
+            "unit",
+            "whole"
+          ],
+          "attributesComplete": true,
+          "class": "OvDonut",
+          "events": [],
+          "gettersOnly": [],
+          "marksStale": false,
+          "members": [
+            {
+              "kind": "structured",
+              "name": "parts",
+              "type": "Structured"
+            }
+          ],
+          "module": "src/ov-donut.js",
+          "name": "ov-donut",
+          "wrappers": {
+            "component": "OvDonut",
+            "react": {},
+            "svelte": {},
+            "vue": {}
+          }
+        }
+      ],
+      "kind": "javascript-module",
+      "path": "src/ov-donut.js"
+    },
+    {
+      "declarations": [
+        {
+          "attributeCollisions": [],
+          "attributes": [
+            "src"
+          ],
+          "attributesComplete": true,
+          "class": "OvDose",
+          "events": [],
+          "gettersOnly": [
+            "report"
+          ],
+          "marksStale": false,
+          "members": [
+            {
+              "kind": "structured",
+              "name": "order",
+              "type": "Structured"
+            }
+          ],
+          "module": "src/ov-dose.js",
+          "name": "ov-dose",
+          "wrappers": {
+            "component": "OvDose",
+            "react": {},
+            "svelte": {},
+            "vue": {}
+          }
+        }
+      ],
+      "kind": "javascript-module",
+      "path": "src/ov-dose.js"
+    },
+    {
+      "declarations": [
+        {
+          "attributeCollisions": [],
+          "attributes": [
+            "label",
+            "lines",
+            "source",
+            "timeout"
+          ],
+          "attributesComplete": true,
+          "class": "OvDownlink",
+          "events": [
+            "ov:signal"
+          ],
+          "gettersOnly": [
+            "report"
+          ],
+          "marksStale": false,
+          "members": [],
+          "module": "src/ov-downlink.js",
+          "name": "ov-downlink",
+          "wrappers": {
+            "component": "OvDownlink",
+            "react": {
+              "onSignal": "ov:signal"
+            },
+            "svelte": {
+              "onsignal": "ov:signal"
+            },
+            "vue": {
+              "signal": "ov:signal"
+            }
+          }
+        }
+      ],
+      "kind": "javascript-module",
+      "path": "src/ov-downlink.js"
+    },
+    {
+      "declarations": [
+        {
+          "attributeCollisions": [],
+          "attributes": [
+            "artifact",
+            "confirmed",
+            "demo",
+            "gain",
+            "high",
+            "hz",
+            "label",
+            "lead",
+            "leads-off",
+            "low",
+            "max-age",
+            "paced",
+            "paused",
+            "rate",
+            "rhythm",
+            "source",
+            "window"
+          ],
+          "attributesComplete": true,
+          "class": "OvEcg",
+          "events": [
+            "ov:ecg"
+          ],
+          "gettersOnly": [
+            "report"
+          ],
+          "marksStale": false,
+          "members": [
+            {
+              "kind": "structured",
+              "name": "samples",
+              "type": "Structured"
+            }
+          ],
+          "module": "src/ov-ecg.js",
+          "name": "ov-ecg",
+          "wrappers": {
+            "component": "OvEcg",
+            "react": {
+              "onEcg": "ov:ecg"
+            },
+            "svelte": {
+              "onecg": "ov:ecg"
+            },
+            "vue": {
+              "ecg": "ov:ecg"
+            }
+          }
+        }
+      ],
+      "kind": "javascript-module",
+      "path": "src/ov-ecg.js"
+    },
+    {
+      "declarations": [
+        {
+          "attributeCollisions": [],
+          "attributes": [
+            "max-age",
+            "min-samples",
+            "src"
+          ],
+          "attributesComplete": true,
+          "class": "OvEndurance",
+          "events": [],
+          "gettersOnly": [],
+          "marksStale": false,
+          "members": [
+            {
+              "kind": "structured",
+              "name": "supply",
+              "type": "Structured"
+            }
+          ],
+          "module": "src/ov-endurance.js",
+          "name": "ov-endurance",
+          "wrappers": {
+            "component": "OvEndurance",
+            "react": {},
+            "svelte": {},
+            "vue": {}
+          }
+        }
+      ],
+      "kind": "javascript-module",
+      "path": "src/ov-endurance.js"
+    },
+    {
+      "declarations": [
+        {
+          "attributeCollisions": [],
+          "attributes": [
+            "label",
+            "max",
+            "max-age",
+            "min",
+            "min-draws",
+            "src",
+            "unit"
+          ],
+          "attributesComplete": true,
+          "class": "OvFan",
+          "events": [],
+          "gettersOnly": [],
+          "marksStale": false,
+          "members": [
+            {
+              "kind": "structured",
+              "name": "forecast",
+              "type": "Structured"
+            }
+          ],
+          "module": "src/ov-fan.js",
+          "name": "ov-fan",
+          "wrappers": {
+            "component": "OvFan",
+            "react": {},
+            "svelte": {},
+            "vue": {}
+          }
+        }
+      ],
+      "kind": "javascript-module",
+      "path": "src/ov-fan.js"
+    },
+    {
+      "declarations": [
+        {
+          "attributeCollisions": [],
+          "attributes": [
+            "burn",
+            "column",
+            "column-at",
+            "dead",
+            "stuck"
+          ],
+          "attributesComplete": true,
+          "class": "OvFault",
+          "events": [],
+          "gettersOnly": [
+            "fps",
+            "shaderName"
+          ],
+          "marksStale": false,
+          "members": [],
+          "module": "src/ov-fault.js",
+          "name": "ov-fault",
+          "wrappers": {
+            "component": "OvFault",
+            "react": {},
+            "svelte": {},
+            "vue": {}
+          }
+        }
+      ],
+      "kind": "javascript-module",
+      "path": "src/ov-fault.js"
+    },
+    {
+      "declarations": [
+        {
+          "attributeCollisions": [],
+          "attributes": [
+            "shader"
+          ],
+          "attributesComplete": true,
+          "class": "OvField",
+          "events": [],
+          "gettersOnly": [
+            "fps",
+            "shaderName"
+          ],
+          "marksStale": false,
+          "members": [],
+          "module": "src/ov-field.js",
+          "name": "ov-field",
+          "wrappers": {
+            "component": "OvField",
+            "react": {},
+            "svelte": {},
+            "vue": {}
+          }
+        }
+      ],
+      "kind": "javascript-module",
+      "path": "src/ov-field.js"
+    },
+    {
+      "declarations": [
+        {
+          "attributeCollisions": [
+            "digits",
+            "step"
+          ],
+          "attributes": [
+            "deadband",
+            "digits",
+            "frozen-after",
+            "places",
+            "source",
+            "step",
+            "substituted",
+            "unit",
+            "value"
+          ],
+          "attributesComplete": true,
+          "class": "OvFlap",
+          "events": [],
+          "gettersOnly": [
+            "digits",
+            "step"
+          ],
+          "marksStale": true,
+          "members": [
+            {
+              "kind": "reading",
+              "marksStale": true,
+              "name": "value",
+              "series": false,
+              "type": "Reading"
+            }
+          ],
+          "module": "src/ov-flap.js",
+          "name": "ov-flap",
+          "wrappers": {
+            "component": "OvFlap",
+            "react": {},
+            "svelte": {},
+            "vue": {}
+          }
+        }
+      ],
+      "kind": "javascript-module",
+      "path": "src/ov-flap.js"
+    },
+    {
+      "declarations": [
+        {
+          "attributeCollisions": [
+            "sweep"
+          ],
+          "attributes": [
+            "deadband",
+            "frozen-after",
+            "max",
+            "min",
+            "source",
+            "substituted",
+            "sweep",
+            "ticks",
+            "unit",
+            "value"
+          ],
+          "attributesComplete": true,
+          "class": "OvGauge",
+          "events": [],
+          "gettersOnly": [
+            "hi",
+            "lo",
+            "sweep"
+          ],
+          "marksStale": true,
+          "members": [
+            {
+              "kind": "reading",
+              "marksStale": true,
+              "name": "value",
+              "series": false,
+              "type": "Reading"
+            }
+          ],
+          "module": "src/ov-gauge.js",
+          "name": "ov-gauge",
+          "wrappers": {
+            "component": "OvGauge",
+            "react": {},
+            "svelte": {},
+            "vue": {}
+          }
+        }
+      ],
+      "kind": "javascript-module",
+      "path": "src/ov-gauge.js"
+    },
+    {
+      "declarations": [
+        {
+          "attributeCollisions": [
+            "fresh"
+          ],
+          "attributes": [
+            "countries",
+            "fresh",
+            "naive",
+            "source",
+            "src",
+            "view"
+          ],
+          "attributesComplete": true,
+          "class": "OvGeomap",
+          "events": [],
+          "gettersOnly": [
+            "fresh"
+          ],
+          "marksStale": false,
+          "members": [
+            {
+              "kind": "structured",
+              "name": "countriesData",
+              "type": "Structured"
+            },
+            {
+              "kind": "structured",
+              "name": "routes",
+              "type": "Structured"
+            }
+          ],
+          "module": "src/ov-geomap.js",
+          "name": "ov-geomap",
+          "wrappers": {
+            "component": "OvGeomap",
+            "react": {},
+            "svelte": {},
+            "vue": {}
+          }
+        }
+      ],
+      "kind": "javascript-module",
+      "path": "src/ov-geomap.js"
+    },
+    {
+      "declarations": [
+        {
+          "attributeCollisions": [],
+          "attributes": [],
+          "attributesComplete": true,
+          "class": "OvGraph",
+          "events": [],
+          "gettersOnly": [
+            "links"
+          ],
+          "marksStale": false,
+          "members": [],
+          "module": "src/ov-graph.js",
+          "name": "ov-graph",
+          "wrappers": {
+            "component": "OvGraph",
+            "react": {},
+            "svelte": {},
+            "vue": {}
+          }
+        }
+      ],
+      "kind": "javascript-module",
+      "path": "src/ov-graph.js"
+    },
+    {
+      "declarations": [
+        {
+          "attributeCollisions": [],
+          "attributes": [
+            "label",
+            "x",
+            "y"
+          ],
+          "attributesComplete": false,
+          "class": "OvNode",
+          "events": [],
+          "gettersOnly": [],
+          "marksStale": false,
+          "members": [],
+          "module": "src/ov-graph.js",
+          "name": "ov-node",
+          "wrappers": {
+            "component": "OvNode",
+            "react": {},
+            "svelte": {},
+            "vue": {}
+          }
+        }
+      ],
+      "kind": "javascript-module",
+      "path": "src/ov-graph.js"
+    },
+    {
+      "declarations": [
+        {
+          "attributeCollisions": [],
+          "attributes": [
+            "dir",
+            "name",
+            "required",
+            "type"
+          ],
+          "attributesComplete": false,
+          "class": "OvSocket",
+          "events": [],
+          "gettersOnly": [
+            "key"
+          ],
+          "marksStale": false,
+          "members": [],
+          "module": "src/ov-graph.js",
+          "name": "ov-socket",
+          "wrappers": {
+            "component": "OvSocket",
+            "react": {},
+            "svelte": {},
+            "vue": {}
+          }
+        }
+      ],
+      "kind": "javascript-module",
+      "path": "src/ov-graph.js"
+    },
+    {
+      "declarations": [
+        {
+          "attributeCollisions": [],
+          "attributes": [],
+          "attributesComplete": false,
+          "class": "OvLink",
+          "events": [],
+          "gettersOnly": [],
+          "marksStale": false,
+          "members": [],
+          "module": "src/ov-graph.js",
+          "name": "ov-link",
+          "wrappers": {
+            "component": "OvLink",
+            "react": {},
+            "svelte": {},
+            "vue": {}
+          }
+        }
+      ],
+      "kind": "javascript-module",
+      "path": "src/ov-graph.js"
+    },
+    {
+      "declarations": [
+        {
+          "attributeCollisions": [],
+          "attributes": [
+            "text"
+          ],
+          "attributesComplete": true,
+          "class": "OvGrid",
+          "events": [],
+          "gettersOnly": [],
+          "marksStale": false,
+          "members": [],
+          "module": "src/ov-grid.js",
+          "name": "ov-grid",
+          "wrappers": {
+            "component": "OvGrid",
+            "react": {},
+            "svelte": {},
+            "vue": {}
+          }
+        }
+      ],
+      "kind": "javascript-module",
+      "path": "src/ov-grid.js"
+    },
+    {
+      "declarations": [
+        {
+          "attributeCollisions": [],
+          "attributes": [
+            "bins",
+            "max",
+            "min",
+            "min-count",
+            "src",
+            "unit"
+          ],
+          "attributesComplete": true,
+          "class": "OvHistogram",
+          "events": [],
+          "gettersOnly": [],
+          "marksStale": false,
+          "members": [
+            {
+              "kind": "structured",
+              "name": "histogram",
+              "type": "Structured"
+            }
+          ],
+          "module": "src/ov-histogram.js",
+          "name": "ov-histogram",
+          "wrappers": {
+            "component": "OvHistogram",
+            "react": {},
+            "svelte": {},
+            "vue": {}
+          }
+        }
+      ],
+      "kind": "javascript-module",
+      "path": "src/ov-histogram.js"
+    },
+    {
+      "declarations": [
+        {
+          "attributeCollisions": [],
+          "attributes": [
+            "hold",
+            "label",
+            "price"
+          ],
+          "attributesComplete": true,
+          "class": "OvHold",
+          "events": [
+            "ov:cancel",
+            "ov:commit"
+          ],
+          "gettersOnly": [],
+          "marksStale": false,
+          "members": [],
+          "module": "src/ov-hold.js",
+          "name": "ov-hold",
+          "wrappers": {
+            "component": "OvHold",
+            "react": {
+              "onCancel": "ov:cancel",
+              "onCommit": "ov:commit"
+            },
+            "svelte": {
+              "oncancel": "ov:cancel",
+              "oncommit": "ov:commit"
+            },
+            "vue": {
+              "cancel": "ov:cancel",
+              "commit": "ov:commit"
+            }
+          }
+        }
+      ],
+      "kind": "javascript-module",
+      "path": "src/ov-hold.js"
+    },
+    {
+      "declarations": [
+        {
+          "attributeCollisions": [],
+          "attributes": [
+            "check",
+            "max-age",
+            "source"
+          ],
+          "attributesComplete": true,
+          "class": "OvHorizon",
+          "events": [],
+          "gettersOnly": [],
+          "marksStale": false,
+          "members": [
+            {
+              "kind": "structured",
+              "name": "air",
+              "type": "Structured"
+            }
+          ],
+          "module": "src/ov-horizon.js",
+          "name": "ov-horizon",
+          "wrappers": {
+            "component": "OvHorizon",
+            "react": {},
+            "svelte": {},
+            "vue": {}
+          }
+        }
+      ],
+      "kind": "javascript-module",
+      "path": "src/ov-horizon.js"
+    },
+    {
+      "declarations": [
+        {
+          "attributeCollisions": [],
+          "attributes": [
+            "label",
+            "name"
+          ],
+          "attributesComplete": true,
+          "class": "OvIcon",
+          "events": [],
+          "gettersOnly": [],
+          "marksStale": false,
+          "members": [],
+          "module": "src/ov-icons.js",
+          "name": "ov-icon",
+          "wrappers": {
+            "component": "OvIcon",
+            "react": {},
+            "svelte": {},
+            "vue": {}
+          }
+        }
+      ],
+      "kind": "javascript-module",
+      "path": "src/ov-icons.js"
+    },
+    {
+      "declarations": [
+        {
+          "attributeCollisions": [],
+          "attributes": [
+            "src"
+          ],
+          "attributesComplete": true,
+          "class": "OvLadder",
+          "events": [],
+          "gettersOnly": [],
+          "marksStale": false,
+          "members": [
+            {
+              "kind": "structured",
+              "name": "chain",
+              "type": "Structured"
+            }
+          ],
+          "module": "src/ov-ladder.js",
+          "name": "ov-ladder",
+          "wrappers": {
+            "component": "OvLadder",
+            "react": {},
+            "svelte": {},
+            "vue": {}
+          }
+        }
+      ],
+      "kind": "javascript-module",
+      "path": "src/ov-ladder.js"
+    },
+    {
+      "declarations": [
+        {
+          "attributeCollisions": [],
+          "attributes": [
+            "label",
+            "src"
+          ],
+          "attributesComplete": true,
+          "class": "OvLikelihood",
+          "events": [],
+          "gettersOnly": [],
+          "marksStale": false,
+          "members": [
+            {
+              "kind": "structured",
+              "name": "finding",
+              "type": "Structured"
+            }
+          ],
+          "module": "src/ov-likelihood.js",
+          "name": "ov-likelihood",
+          "wrappers": {
+            "component": "OvLikelihood",
+            "react": {},
+            "svelte": {},
+            "vue": {}
+          }
+        }
+      ],
+      "kind": "javascript-module",
+      "path": "src/ov-likelihood.js"
+    },
+    {
+      "declarations": [
+        {
+          "attributeCollisions": [],
+          "attributes": [
+            "extent",
+            "fix",
+            "max-age",
+            "src"
+          ],
+          "attributesComplete": true,
+          "class": "OvLocator",
+          "events": [],
+          "gettersOnly": [],
+          "marksStale": false,
+          "members": [
+            {
+              "kind": "structured",
+              "name": "fixes",
+              "type": "Structured"
+            }
+          ],
+          "module": "src/ov-locator.js",
+          "name": "ov-locator",
+          "wrappers": {
+            "component": "OvLocator",
+            "react": {},
+            "svelte": {},
+            "vue": {}
+          }
+        }
+      ],
+      "kind": "javascript-module",
+      "path": "src/ov-locator.js"
+    },
+    {
+      "declarations": [
+        {
+          "attributeCollisions": [],
+          "attributes": [
+            "first-out",
+            "lines",
+            "source"
+          ],
+          "attributesComplete": true,
+          "class": "OvLog",
+          "events": [],
+          "gettersOnly": [
+            "cap"
+          ],
+          "marksStale": false,
+          "members": [],
+          "module": "src/ov-log.js",
+          "name": "ov-log",
+          "wrappers": {
+            "component": "OvLog",
+            "react": {},
+            "svelte": {},
+            "vue": {}
+          }
+        }
+      ],
+      "kind": "javascript-module",
+      "path": "src/ov-log.js"
+    },
+    {
+      "declarations": [
+        {
+          "attributeCollisions": [
+            "lat",
+            "lon",
+            "range",
+            "span"
+          ],
+          "attributes": [
+            "lat",
+            "lon",
+            "range",
+            "source",
+            "span",
+            "symbols"
+          ],
+          "attributesComplete": true,
+          "class": "OvMap",
+          "events": [],
+          "gettersOnly": [
+            "lat",
+            "lon",
+            "range",
+            "span"
+          ],
+          "marksStale": false,
+          "members": [],
+          "module": "src/ov-map.js",
+          "name": "ov-map",
+          "wrappers": {
+            "component": "OvMap",
+            "react": {},
+            "svelte": {},
+            "vue": {}
+          }
+        }
+      ],
+      "kind": "javascript-module",
+      "path": "src/ov-map.js"
+    },
+    {
+      "declarations": [
+        {
+          "attributeCollisions": [],
+          "attributes": [
+            "margin",
+            "reveal",
+            "signature",
+            "src",
+            "threshold",
+            "top"
+          ],
+          "attributesComplete": true,
+          "class": "OvMatch",
+          "events": [],
+          "gettersOnly": [],
+          "marksStale": false,
+          "members": [
+            {
+              "kind": "structured",
+              "name": "result",
+              "type": "Structured"
+            }
+          ],
+          "module": "src/ov-match.js",
+          "name": "ov-match",
+          "wrappers": {
+            "component": "OvMatch",
+            "react": {},
+            "svelte": {},
+            "vue": {}
+          }
+        }
+      ],
+      "kind": "javascript-module",
+      "path": "src/ov-match.js"
+    },
+    {
+      "declarations": [
+        {
+          "attributeCollisions": [],
+          "attributes": [],
+          "attributesComplete": true,
+          "class": "OvMenu",
+          "events": [],
+          "gettersOnly": [
+            "bar",
+            "items"
+          ],
+          "marksStale": false,
+          "members": [],
+          "module": "src/ov-menu.js",
+          "name": "ov-menu",
+          "wrappers": {
+            "component": "OvMenu",
+            "react": {},
+            "svelte": {},
+            "vue": {}
+          }
+        }
+      ],
+      "kind": "javascript-module",
+      "path": "src/ov-menu.js"
+    },
+    {
+      "declarations": [
+        {
+          "attributeCollisions": [],
+          "attributes": [],
+          "attributesComplete": true,
+          "class": "OvModal",
+          "events": [],
+          "gettersOnly": [],
+          "marksStale": false,
+          "members": [],
+          "module": "src/ov-modal.js",
+          "name": "ov-modal",
+          "wrappers": {
+            "component": "OvModal",
+            "react": {},
+            "svelte": {},
+            "vue": {}
+          }
+        }
+      ],
+      "kind": "javascript-module",
+      "path": "src/ov-modal.js"
+    },
+    {
+      "declarations": [
+        {
+          "attributeCollisions": [],
+          "attributes": [
+            "expire-after",
+            "label",
+            "source",
+            "src",
+            "stale-after"
+          ],
+          "attributesComplete": true,
+          "class": "OvMosaic",
+          "events": [],
+          "gettersOnly": [
+            "report"
+          ],
+          "marksStale": false,
+          "members": [
+            {
+              "kind": "structured",
+              "name": "picture",
+              "type": "Structured"
+            }
+          ],
+          "module": "src/ov-mosaic.js",
+          "name": "ov-mosaic",
+          "wrappers": {
+            "component": "OvMosaic",
+            "react": {},
+            "svelte": {},
+            "vue": {}
+          }
+        }
+      ],
+      "kind": "javascript-module",
+      "path": "src/ov-mosaic.js"
+    },
+    {
+      "declarations": [
+        {
+          "attributeCollisions": [],
+          "attributes": [
+            "body",
+            "extent",
+            "label",
+            "max-age",
+            "source"
+          ],
+          "attributesComplete": true,
+          "class": "OvOrbit",
+          "events": [],
+          "gettersOnly": [
+            "report"
+          ],
+          "marksStale": false,
+          "members": [
+            {
+              "kind": "structured",
+              "name": "prediction",
+              "type": "Structured"
+            }
+          ],
+          "module": "src/ov-orbit.js",
+          "name": "ov-orbit",
+          "wrappers": {
+            "component": "OvOrbit",
+            "react": {},
+            "svelte": {},
+            "vue": {}
+          }
+        }
+      ],
+      "kind": "javascript-module",
+      "path": "src/ov-orbit.js"
+    },
+    {
+      "declarations": [
+        {
+          "attributeCollisions": [],
+          "attributes": [
+            "mode"
+          ],
+          "attributesComplete": true,
+          "class": "OvOrnament",
+          "events": [],
+          "gettersOnly": [
+            "fps",
+            "maxDpr",
+            "shaderName"
+          ],
+          "marksStale": false,
+          "members": [],
+          "module": "src/ov-ornament.js",
+          "name": "ov-ornament",
+          "wrappers": {
+            "component": "OvOrnament",
+            "react": {},
+            "svelte": {},
+            "vue": {}
+          }
+        }
+      ],
+      "kind": "javascript-module",
+      "path": "src/ov-ornament.js"
+    },
+    {
+      "declarations": [
+        {
+          "attributeCollisions": [],
+          "attributes": [
+            "frame-time",
+            "source",
+            "src",
+            "tolerance"
+          ],
+          "attributesComplete": true,
+          "class": "OvPlate",
+          "events": [
+            "ov:view"
+          ],
+          "gettersOnly": [],
+          "marksStale": false,
+          "members": [
+            {
+              "kind": "structured",
+              "name": "detections",
+              "type": "Structured"
+            }
+          ],
+          "module": "src/ov-plate.js",
+          "name": "ov-plate",
+          "wrappers": {
+            "component": "OvPlate",
+            "react": {
+              "onView": "ov:view"
+            },
+            "svelte": {
+              "onview": "ov:view"
+            },
+            "vue": {
+              "view": "ov:view"
+            }
+          }
+        }
+      ],
+      "kind": "javascript-module",
+      "path": "src/ov-plate.js"
+    },
+    {
+      "declarations": [
+        {
+          "attributeCollisions": [],
+          "attributes": [
+            "controls",
+            "demo",
+            "for",
+            "freeze",
+            "label",
+            "live",
+            "live-tolerance",
+            "target-duration",
+            "waveform"
+          ],
+          "attributesComplete": true,
+          "class": "OvPlayer",
+          "events": [
+            "ov:player"
+          ],
+          "gettersOnly": [
+            "report"
+          ],
+          "marksStale": false,
+          "members": [
+            {
+              "kind": "structured",
+              "name": "media",
+              "type": "Structured"
+            }
+          ],
+          "module": "src/ov-player.js",
+          "name": "ov-player",
+          "wrappers": {
+            "component": "OvPlayer",
+            "react": {
+              "onPlayer": "ov:player"
+            },
+            "svelte": {
+              "onplayer": "ov:player"
+            },
+            "vue": {
+              "player": "ov:player"
+            }
+          }
+        }
+      ],
+      "kind": "javascript-module",
+      "path": "src/ov-player.js"
+    },
+    {
+      "declarations": [
+        {
+          "attributeCollisions": [],
+          "attributes": [
+            "max-age",
+            "src"
+          ],
+          "attributesComplete": true,
+          "class": "OvPolygon",
+          "events": [],
+          "gettersOnly": [],
+          "marksStale": false,
+          "members": [
+            {
+              "kind": "structured",
+              "name": "axes",
+              "type": "Structured"
+            }
+          ],
+          "module": "src/ov-polygon.js",
+          "name": "ov-polygon",
+          "wrappers": {
+            "component": "OvPolygon",
+            "react": {},
+            "svelte": {},
+            "vue": {}
+          }
+        }
+      ],
+      "kind": "javascript-module",
+      "path": "src/ov-polygon.js"
+    },
+    {
+      "declarations": [
+        {
+          "attributeCollisions": [],
+          "attributes": [
+            "label",
+            "requirement",
+            "requirement-for",
+            "source",
+            "src"
+          ],
+          "attributesComplete": true,
+          "class": "OvPosition",
+          "events": [],
+          "gettersOnly": [
+            "report"
+          ],
+          "marksStale": false,
+          "members": [
+            {
+              "kind": "structured",
+              "name": "fix",
+              "type": "Structured"
+            }
+          ],
+          "module": "src/ov-position.js",
+          "name": "ov-position",
+          "wrappers": {
+            "component": "OvPosition",
+            "react": {},
+            "svelte": {},
+            "vue": {}
+          }
+        }
+      ],
+      "kind": "javascript-module",
+      "path": "src/ov-position.js"
+    },
+    {
+      "declarations": [
+        {
+          "attributeCollisions": [],
+          "attributes": [
+            "armed",
+            "claimed",
+            "label",
+            "sensed",
+            "steps",
+            "unsensed"
+          ],
+          "attributesComplete": true,
+          "class": "OvProcedure",
+          "events": [
+            "ov:claim",
+            "ov:complete",
+            "ov:refuse"
+          ],
+          "gettersOnly": [],
+          "marksStale": false,
+          "members": [
+            {
+              "kind": "structured",
+              "name": "sensed",
+              "type": "Structured"
+            }
+          ],
+          "module": "src/ov-procedure.js",
+          "name": "ov-procedure",
+          "wrappers": {
+            "component": "OvProcedure",
+            "react": {
+              "onClaim": "ov:claim",
+              "onComplete": "ov:complete",
+              "onRefuse": "ov:refuse"
+            },
+            "svelte": {
+              "onclaim": "ov:claim",
+              "oncomplete": "ov:complete",
+              "onrefuse": "ov:refuse"
+            },
+            "vue": {
+              "claim": "ov:claim",
+              "complete": "ov:complete",
+              "refuse": "ov:refuse"
+            }
+          }
+        }
+      ],
+      "kind": "javascript-module",
+      "path": "src/ov-procedure.js"
+    },
+    {
+      "declarations": [
+        {
+          "attributeCollisions": [],
+          "attributes": [
+            "channels",
+            "deadband",
+            "fail-after",
+            "frozen-after",
+            "label",
+            "max-age",
+            "persist",
+            "places",
+            "rule",
+            "source",
+            "src",
+            "tolerance",
+            "unit"
+          ],
+          "attributesComplete": true,
+          "class": "OvQuorum",
+          "events": [
+            "ov:quorum"
+          ],
+          "gettersOnly": [
+            "report"
+          ],
+          "marksStale": false,
+          "members": [
+            {
+              "kind": "structured",
+              "name": "readings",
+              "type": "Structured"
+            }
+          ],
+          "module": "src/ov-quorum.js",
+          "name": "ov-quorum",
+          "wrappers": {
+            "component": "OvQuorum",
+            "react": {
+              "onQuorum": "ov:quorum"
+            },
+            "svelte": {
+              "onquorum": "ov:quorum"
+            },
+            "vue": {
+              "quorum": "ov:quorum"
+            }
+          }
+        }
+      ],
+      "kind": "javascript-module",
+      "path": "src/ov-quorum.js"
+    },
+    {
+      "declarations": [
+        {
+          "attributeCollisions": [
+            "period",
+            "range",
+            "rings"
+          ],
+          "attributes": [
+            "glow",
+            "motion-only",
+            "period",
+            "range",
+            "rings",
+            "source",
+            "stalks",
+            "symbols",
+            "trail"
+          ],
+          "attributesComplete": true,
+          "class": "OvRadar",
+          "events": [],
+          "gettersOnly": [
+            "period",
+            "range",
+            "rings"
+          ],
+          "marksStale": false,
+          "members": [],
+          "module": "src/ov-radar.js",
+          "name": "ov-radar",
+          "wrappers": {
+            "component": "OvRadar",
+            "react": {},
+            "svelte": {},
+            "vue": {}
+          }
+        }
+      ],
+      "kind": "javascript-module",
+      "path": "src/ov-radar.js"
+    },
+    {
+      "declarations": [
+        {
+          "attributeCollisions": [],
+          "attributes": [
+            "channels",
+            "label",
+            "max-age",
+            "source"
+          ],
+          "attributesComplete": true,
+          "class": "OvRangebar",
+          "events": [],
+          "gettersOnly": [],
+          "marksStale": false,
+          "members": [
+            {
+              "kind": "structured",
+              "name": "channels",
+              "type": "Structured"
+            }
+          ],
+          "module": "src/ov-rangebar.js",
+          "name": "ov-rangebar",
+          "wrappers": {
+            "component": "OvRangebar",
+            "react": {},
+            "svelte": {},
+            "vue": {}
+          }
+        }
+      ],
+      "kind": "javascript-module",
+      "path": "src/ov-rangebar.js"
+    },
+    {
+      "declarations": [
+        {
+          "attributeCollisions": [
+            "hold"
+          ],
+          "attributes": [
+            "hold",
+            "source"
+          ],
+          "attributesComplete": true,
+          "class": "OvReticle",
+          "events": [],
+          "gettersOnly": [
+            "hold"
+          ],
+          "marksStale": false,
+          "members": [],
+          "module": "src/ov-reticle.js",
+          "name": "ov-reticle",
+          "wrappers": {
+            "component": "OvReticle",
+            "react": {},
+            "svelte": {},
+            "vue": {}
+          }
+        }
+      ],
+      "kind": "javascript-module",
+      "path": "src/ov-reticle.js"
+    },
+    {
+      "declarations": [
+        {
+          "attributeCollisions": [],
+          "attributes": [
+            "max-age",
+            "source",
+            "src"
+          ],
+          "attributesComplete": true,
+          "class": "OvSchematic",
+          "events": [],
+          "gettersOnly": [],
+          "marksStale": false,
+          "members": [
+            {
+              "kind": "structured",
+              "name": "plan",
+              "type": "Structured"
+            },
+            {
+              "kind": "structured",
+              "name": "states",
+              "type": "Structured"
+            }
+          ],
+          "module": "src/ov-schematic.js",
+          "name": "ov-schematic",
+          "wrappers": {
+            "component": "OvSchematic",
+            "react": {},
+            "svelte": {},
+            "vue": {}
+          }
+        }
+      ],
+      "kind": "javascript-module",
+      "path": "src/ov-schematic.js"
+    },
+    {
+      "declarations": [
+        {
+          "attributeCollisions": [
+            "sweeps"
+          ],
+          "attributes": [
+            "source",
+            "sweeps",
+            "window"
+          ],
+          "attributesComplete": true,
+          "class": "OvScope",
+          "events": [],
+          "gettersOnly": [
+            "cap",
+            "shaderName",
+            "sweeps"
+          ],
+          "marksStale": false,
+          "members": [],
+          "module": "src/ov-scope.js",
+          "name": "ov-scope",
+          "wrappers": {
+            "component": "OvScope",
+            "react": {},
+            "svelte": {},
+            "vue": {}
+          }
+        }
+      ],
+      "kind": "javascript-module",
+      "path": "src/ov-scope.js"
+    },
+    {
+      "declarations": [
+        {
+          "attributeCollisions": [],
+          "attributes": [
+            "label",
+            "single-red",
+            "source",
+            "src",
+            "thresholds"
+          ],
+          "attributesComplete": true,
+          "class": "OvScore",
+          "events": [],
+          "gettersOnly": [
+            "report"
+          ],
+          "marksStale": false,
+          "members": [
+            {
+              "kind": "structured",
+              "name": "reading",
+              "type": "Structured"
+            }
+          ],
+          "module": "src/ov-score.js",
+          "name": "ov-score",
+          "wrappers": {
+            "component": "OvScore",
+            "react": {},
+            "svelte": {},
+            "vue": {}
+          }
+        }
+      ],
+      "kind": "javascript-module",
+      "path": "src/ov-score.js"
+    },
+    {
+      "declarations": [
+        {
+          "attributeCollisions": [
+            "digits"
+          ],
+          "attributes": [
+            "deadband",
+            "digits",
+            "frozen-after",
+            "max",
+            "max-age",
+            "min",
+            "places",
+            "segments",
+            "source",
+            "substituted",
+            "unit",
+            "value"
+          ],
+          "attributesComplete": true,
+          "class": "OvSegment",
+          "events": [],
+          "gettersOnly": [
+            "digits",
+            "glyphs",
+            "mode"
+          ],
+          "marksStale": true,
+          "members": [
+            {
+              "kind": "reading",
+              "marksStale": true,
+              "name": "value",
+              "series": false,
+              "type": "Reading"
+            }
+          ],
+          "module": "src/ov-segment.js",
+          "name": "ov-segment",
+          "wrappers": {
+            "component": "OvSegment",
+            "react": {},
+            "svelte": {},
+            "vue": {}
+          }
+        }
+      ],
+      "kind": "javascript-module",
+      "path": "src/ov-segment.js"
+    },
+    {
+      "declarations": [
+        {
+          "attributeCollisions": [],
+          "attributes": [
+            "min-quality",
+            "src",
+            "width"
+          ],
+          "attributesComplete": true,
+          "class": "OvSequence",
+          "events": [],
+          "gettersOnly": [],
+          "marksStale": false,
+          "members": [
+            {
+              "kind": "structured",
+              "name": "sequence",
+              "type": "Structured"
+            }
+          ],
+          "module": "src/ov-sequence.js",
+          "name": "ov-sequence",
+          "wrappers": {
+            "component": "OvSequence",
+            "react": {},
+            "svelte": {},
+            "vue": {}
+          }
+        }
+      ],
+      "kind": "javascript-module",
+      "path": "src/ov-sequence.js"
+    },
+    {
+      "declarations": [
+        {
+          "attributeCollisions": [],
+          "attributes": [
+            "categories"
+          ],
+          "attributesComplete": true,
+          "class": "OvSoundSwitch",
+          "events": [],
+          "gettersOnly": [],
+          "marksStale": false,
+          "members": [],
+          "module": "src/ov-sound-switch.js",
+          "name": "ov-sound-switch",
+          "wrappers": {
+            "component": "OvSoundSwitch",
+            "react": {},
+            "svelte": {},
+            "vue": {}
+          }
+        }
+      ],
+      "kind": "javascript-module",
+      "path": "src/ov-sound-switch.js"
+    },
+    {
+      "declarations": [
+        {
+          "attributeCollisions": [],
+          "attributes": [
+            "at",
+            "direction"
+          ],
+          "attributesComplete": true,
+          "class": "OvSplit",
+          "events": [],
+          "gettersOnly": [],
+          "marksStale": false,
+          "members": [],
+          "module": "src/ov-split.js",
+          "name": "ov-split",
+          "wrappers": {
+            "component": "OvSplit",
+            "react": {},
+            "svelte": {},
+            "vue": {}
+          }
+        }
+      ],
+      "kind": "javascript-module",
+      "path": "src/ov-split.js"
+    },
+    {
+      "declarations": [
+        {
+          "attributeCollisions": [],
+          "attributes": [
+            "elements",
+            "label",
+            "max-age",
+            "method",
+            "source",
+            "src"
+          ],
+          "attributesComplete": true,
+          "class": "OvStation",
+          "events": [
+            "ov:station"
+          ],
+          "gettersOnly": [
+            "report"
+          ],
+          "marksStale": false,
+          "members": [
+            {
+              "kind": "structured",
+              "name": "observation",
+              "type": "Structured"
+            }
+          ],
+          "module": "src/ov-station.js",
+          "name": "ov-station",
+          "wrappers": {
+            "component": "OvStation",
+            "react": {
+              "onStation": "ov:station"
+            },
+            "svelte": {
+              "onstation": "ov:station"
+            },
+            "vue": {
+              "station": "ov:station"
+            }
+          }
+        }
+      ],
+      "kind": "javascript-module",
+      "path": "src/ov-station.js"
+    },
+    {
+      "declarations": [
+        {
+          "attributeCollisions": [],
+          "attributes": [
+            "arm-hold",
+            "guard",
+            "kind",
+            "label",
+            "lamp",
+            "look",
+            "positions",
+            "set",
+            "source",
+            "src",
+            "transit"
+          ],
+          "attributesComplete": true,
+          "class": "OvSwitch",
+          "events": [
+            "ov:arm",
+            "ov:command",
+            "ov:safe"
+          ],
+          "gettersOnly": [
+            "armed",
+            "report",
+            "set"
+          ],
+          "marksStale": false,
+          "members": [
+            {
+              "kind": "structured",
+              "name": "reading",
+              "type": "Structured"
+            },
+            {
+              "kind": "structured",
+              "name": "talkback",
+              "type": "Structured"
+            }
+          ],
+          "module": "src/ov-switch.js",
+          "name": "ov-switch",
+          "wrappers": {
+            "component": "OvSwitch",
+            "react": {
+              "onArm": "ov:arm",
+              "onCommand": "ov:command",
+              "onSafe": "ov:safe"
+            },
+            "svelte": {
+              "onarm": "ov:arm",
+              "oncommand": "ov:command",
+              "onsafe": "ov:safe"
+            },
+            "vue": {
+              "arm": "ov:arm",
+              "command": "ov:command",
+              "safe": "ov:safe"
+            }
+          }
+        }
+      ],
+      "kind": "javascript-module",
+      "path": "src/ov-switch.js"
+    },
+    {
+      "declarations": [
+        {
+          "attributeCollisions": [],
+          "attributes": [
+            "row-height",
+            "sort"
+          ],
+          "attributesComplete": true,
+          "class": "OvTable",
+          "events": [
+            "ov:reorder"
+          ],
+          "gettersOnly": [
+            "rowH"
+          ],
+          "marksStale": false,
+          "members": [
+            {
+              "kind": "structured",
+              "name": "cols",
+              "type": "Structured"
+            },
+            {
+              "kind": "structured",
+              "name": "rows",
+              "type": "Structured"
+            }
+          ],
+          "module": "src/ov-table.js",
+          "name": "ov-table",
+          "wrappers": {
+            "component": "OvTable",
+            "react": {
+              "onReorder": "ov:reorder"
+            },
+            "svelte": {
+              "onreorder": "ov:reorder"
+            },
+            "vue": {
+              "reorder": "ov:reorder"
+            }
+          }
+        }
+      ],
+      "kind": "javascript-module",
+      "path": "src/ov-table.js"
+    },
+    {
+      "declarations": [
+        {
+          "attributeCollisions": [
+            "bearing",
+            "fov",
+            "fresh",
+            "lat",
+            "lon",
+            "pitch",
+            "range",
+            "ring"
+          ],
+          "attributes": [
+            "bearing",
+            "countries",
+            "fov",
+            "fresh",
+            "lat",
+            "lon",
+            "orbit",
+            "pitch",
+            "range",
+            "ring",
+            "source",
+            "src"
+          ],
+          "attributesComplete": true,
+          "class": "OvTactical",
+          "events": [
+            "ov:view"
+          ],
+          "gettersOnly": [
+            "bearing",
+            "fov",
+            "fresh",
+            "lat",
+            "lon",
+            "pitch",
+            "range",
+            "ring"
+          ],
+          "marksStale": false,
+          "members": [
+            {
+              "kind": "structured",
+              "name": "countriesData",
+              "type": "Structured"
+            },
+            {
+              "kind": "structured",
+              "name": "data",
+              "type": "Structured"
+            }
+          ],
+          "module": "src/ov-tactical.js",
+          "name": "ov-tactical",
+          "wrappers": {
+            "component": "OvTactical",
+            "react": {
+              "onView": "ov:view"
+            },
+            "svelte": {
+              "onview": "ov:view"
+            },
+            "vue": {
+              "view": "ov:view"
+            }
+          }
+        }
+      ],
+      "kind": "javascript-module",
+      "path": "src/ov-tactical.js"
+    },
+    {
+      "declarations": [
+        {
+          "attributeCollisions": [],
+          "attributes": [
+            "baud",
+            "cols",
+            "rows",
+            "source",
+            "src"
+          ],
+          "attributesComplete": true,
+          "class": "OvTerm",
+          "events": [],
+          "gettersOnly": [],
+          "marksStale": false,
+          "members": [],
+          "module": "src/ov-term.js",
+          "name": "ov-term",
+          "wrappers": {
+            "component": "OvTerm",
+            "react": {},
+            "svelte": {},
+            "vue": {}
+          }
+        }
+      ],
+      "kind": "javascript-module",
+      "path": "src/ov-term.js"
+    },
+    {
+      "declarations": [
+        {
+          "attributeCollisions": [],
+          "attributes": [
+            "effect",
+            "hold",
+            "step",
+            "text"
+          ],
+          "attributesComplete": true,
+          "class": "OvText",
+          "events": [],
+          "gettersOnly": [],
+          "marksStale": false,
+          "members": [
+            {
+              "kind": "structured",
+              "name": "source",
+              "type": "Structured"
+            }
+          ],
+          "module": "src/ov-text.js",
+          "name": "ov-text",
+          "wrappers": {
+            "component": "OvText",
+            "react": {},
+            "svelte": {},
+            "vue": {}
+          }
+        }
+      ],
+      "kind": "javascript-module",
+      "path": "src/ov-text.js"
+    },
+    {
+      "declarations": [
+        {
+          "attributeCollisions": [],
+          "attributes": [
+            "at",
+            "duration",
+            "fill",
+            "label",
+            "layers",
+            "solo",
+            "spans"
+          ],
+          "attributesComplete": true,
+          "class": "OvTimeline",
+          "events": [
+            "ov:seek",
+            "ov:solo"
+          ],
+          "gettersOnly": [],
+          "marksStale": false,
+          "members": [
+            {
+              "kind": "structured",
+              "name": "spans",
+              "type": "Structured"
+            }
+          ],
+          "module": "src/ov-timeline.js",
+          "name": "ov-timeline",
+          "wrappers": {
+            "component": "OvTimeline",
+            "react": {
+              "onSeek": "ov:seek",
+              "onSolo": "ov:solo"
+            },
+            "svelte": {
+              "onseek": "ov:seek",
+              "onsolo": "ov:solo"
+            },
+            "vue": {
+              "seek": "ov:seek",
+              "solo": "ov:solo"
+            }
+          }
+        }
+      ],
+      "kind": "javascript-module",
+      "path": "src/ov-timeline.js"
+    },
+    {
+      "declarations": [
+        {
+          "attributeCollisions": [],
+          "attributes": [
+            "src",
+            "tolerance"
+          ],
+          "attributesComplete": true,
+          "class": "OvTimestack",
+          "events": [],
+          "gettersOnly": [],
+          "marksStale": false,
+          "members": [
+            {
+              "kind": "structured",
+              "name": "stamp",
+              "type": "Structured"
+            }
+          ],
+          "module": "src/ov-timestack.js",
+          "name": "ov-timestack",
+          "wrappers": {
+            "component": "OvTimestack",
+            "react": {},
+            "svelte": {},
+            "vue": {}
+          }
+        }
+      ],
+      "kind": "javascript-module",
+      "path": "src/ov-timestack.js"
+    },
+    {
+      "declarations": [
+        {
+          "attributeCollisions": [],
+          "attributes": [
+            "max-age",
+            "src",
+            "vantage"
+          ],
+          "attributesComplete": true,
+          "class": "OvTopology",
+          "events": [],
+          "gettersOnly": [],
+          "marksStale": false,
+          "members": [
+            {
+              "kind": "structured",
+              "name": "topology",
+              "type": "Structured"
+            }
+          ],
+          "module": "src/ov-topology.js",
+          "name": "ov-topology",
+          "wrappers": {
+            "component": "OvTopology",
+            "react": {},
+            "svelte": {},
+            "vue": {}
+          }
+        }
+      ],
+      "kind": "javascript-module",
+      "path": "src/ov-topology.js"
+    },
+    {
+      "declarations": [
+        {
+          "attributeCollisions": [],
+          "attributes": [
+            "course",
+            "dimension",
+            "identity",
+            "label",
+            "speed",
+            "speed-max"
+          ],
+          "attributesComplete": true,
+          "class": "OvTrack",
+          "events": [],
+          "gettersOnly": [
+            "report"
+          ],
+          "marksStale": false,
+          "members": [],
+          "module": "src/ov-track.js",
+          "name": "ov-track",
+          "wrappers": {
+            "component": "OvTrack",
+            "react": {},
+            "svelte": {},
+            "vue": {}
+          }
+        }
+      ],
+      "kind": "javascript-module",
+      "path": "src/ov-track.js"
+    },
+    {
+      "declarations": [
+        {
+          "attributeCollisions": [
+            "at",
+            "duration"
+          ],
+          "attributes": [
+            "at",
+            "duration",
+            "playing"
+          ],
+          "attributesComplete": true,
+          "class": "OvTransport",
+          "events": [
+            "ov:pause",
+            "ov:play",
+            "ov:seek"
+          ],
+          "gettersOnly": [
+            "at",
+            "duration"
+          ],
+          "marksStale": false,
+          "members": [],
+          "module": "src/ov-transport.js",
+          "name": "ov-transport",
+          "wrappers": {
+            "component": "OvTransport",
+            "react": {
+              "onPause": "ov:pause",
+              "onPlay": "ov:play",
+              "onSeek": "ov:seek"
+            },
+            "svelte": {
+              "onpause": "ov:pause",
+              "onplay": "ov:play",
+              "onseek": "ov:seek"
+            },
+            "vue": {
+              "pause": "ov:pause",
+              "play": "ov:play",
+              "seek": "ov:seek"
+            }
+          }
+        }
+      ],
+      "kind": "javascript-module",
+      "path": "src/ov-transport.js"
+    },
+    {
+      "declarations": [
+        {
+          "attributeCollisions": [],
+          "attributes": [],
+          "attributesComplete": true,
+          "class": "OvTree",
+          "events": [
+            "ov:reorder"
+          ],
+          "gettersOnly": [],
+          "marksStale": false,
+          "members": [],
+          "module": "src/ov-tree.js",
+          "name": "ov-tree",
+          "wrappers": {
+            "component": "OvTree",
+            "react": {
+              "onReorder": "ov:reorder"
+            },
+            "svelte": {
+              "onreorder": "ov:reorder"
+            },
+            "vue": {
+              "reorder": "ov:reorder"
+            }
+          }
+        }
+      ],
+      "kind": "javascript-module",
+      "path": "src/ov-tree.js"
+    },
+    {
+      "declarations": [
+        {
+          "attributeCollisions": [],
+          "attributes": [
+            "commands",
+            "history",
+            "label",
+            "reports",
+            "stages",
+            "timeout"
+          ],
+          "attributesComplete": true,
+          "class": "OvVerifier",
+          "events": [
+            "ov:verify"
+          ],
+          "gettersOnly": [],
+          "marksStale": false,
+          "members": [
+            {
+              "kind": "structured",
+              "name": "commands",
+              "type": "Structured"
+            }
+          ],
+          "module": "src/ov-verifier.js",
+          "name": "ov-verifier",
+          "wrappers": {
+            "component": "OvVerifier",
+            "react": {
+              "onVerify": "ov:verify"
+            },
+            "svelte": {
+              "onverify": "ov:verify"
+            },
+            "vue": {
+              "verify": "ov:verify"
+            }
+          }
+        }
+      ],
+      "kind": "javascript-module",
+      "path": "src/ov-verifier.js"
+    },
+    {
+      "declarations": [
+        {
+          "attributeCollisions": [],
+          "attributes": [
+            "avatar",
+            "demo",
+            "label",
+            "nibp-aged",
+            "params",
+            "source",
+            "src",
+            "stale",
+            "trend-window"
+          ],
+          "attributesComplete": true,
+          "class": "OvVitals",
+          "events": [
+            "ov:vitals"
+          ],
+          "gettersOnly": [
+            "report"
+          ],
+          "marksStale": false,
+          "members": [
+            {
+              "kind": "structured",
+              "name": "vitals",
+              "type": "Structured"
+            }
+          ],
+          "module": "src/ov-vitals.js",
+          "name": "ov-vitals",
+          "wrappers": {
+            "component": "OvVitals",
+            "react": {
+              "onVitals": "ov:vitals"
+            },
+            "svelte": {
+              "onvitals": "ov:vitals"
+            },
+            "vue": {
+              "vitals": "ov:vitals"
+            }
+          }
+        }
+      ],
+      "kind": "javascript-module",
+      "path": "src/ov-vitals.js"
+    },
+    {
+      "declarations": [
+        {
+          "attributeCollisions": [
+            "floor"
+          ],
+          "attributes": [
+            "floor",
+            "map",
+            "source"
+          ],
+          "attributesComplete": true,
+          "class": "OvWaterfall",
+          "events": [],
+          "gettersOnly": [
+            "floor",
+            "shaderName"
+          ],
+          "marksStale": false,
+          "members": [],
+          "module": "src/ov-waterfall.js",
+          "name": "ov-waterfall",
+          "wrappers": {
+            "component": "OvWaterfall",
+            "react": {},
+            "svelte": {},
+            "vue": {}
+          }
+        }
+      ],
+      "kind": "javascript-module",
+      "path": "src/ov-waterfall.js"
+    },
+    {
+      "declarations": [
+        {
+          "attributeCollisions": [
+            "traces"
+          ],
+          "attributes": [
+            "source",
+            "traces",
+            "window"
+          ],
+          "attributesComplete": true,
+          "class": "OvWave",
+          "events": [],
+          "gettersOnly": [
+            "cap",
+            "traces"
+          ],
+          "marksStale": false,
+          "members": [],
+          "module": "src/ov-wave.js",
+          "name": "ov-wave",
+          "wrappers": {
+            "component": "OvWave",
+            "react": {},
+            "svelte": {},
+            "vue": {}
+          }
+        }
+      ],
+      "kind": "javascript-module",
+      "path": "src/ov-wave.js"
+    },
+    {
+      "declarations": [
+        {
+          "attributeCollisions": [],
+          "attributes": [
+            "h",
+            "snap",
+            "title",
+            "w",
+            "x",
+            "y"
+          ],
+          "attributesComplete": true,
+          "class": "OvWindow",
+          "events": [
+            "ov:resize"
+          ],
+          "gettersOnly": [
+            "grid",
+            "snapping"
+          ],
+          "marksStale": false,
+          "members": [],
+          "module": "src/ov-window.js",
+          "name": "ov-window",
+          "wrappers": {
+            "component": "OvWindow",
+            "react": {
+              "onResize": "ov:resize"
+            },
+            "svelte": {
+              "onresize": "ov:resize"
+            },
+            "vue": {
+              "resize": "ov:resize"
+            }
+          }
+        }
+      ],
+      "kind": "javascript-module",
+      "path": "src/ov-window.js"
+    },
+    {
+      "declarations": [
+        {
+          "attributeCollisions": [],
+          "attributes": [
+            "fov",
+            "period",
+            "pitch",
+            "spin",
+            "src",
+            "yaw"
+          ],
+          "attributesComplete": true,
+          "class": "OvWireframe",
+          "events": [],
+          "gettersOnly": [],
+          "marksStale": false,
+          "members": [
+            {
+              "kind": "structured",
+              "name": "figures",
+              "type": "Structured"
+            },
+            {
+              "kind": "structured",
+              "name": "survey",
+              "type": "Structured"
+            }
+          ],
+          "module": "src/ov-wireframe.js",
+          "name": "ov-wireframe",
+          "wrappers": {
+            "component": "OvWireframe",
+            "react": {},
+            "svelte": {},
+            "vue": {}
+          }
+        }
+      ],
+      "kind": "javascript-module",
+      "path": "src/ov-wireframe.js"
+    }
+  ],
+  "readingProtocol": {
+    "note": "A reading property never coerces null to 0 and never drops it from an array. Strings are passed through unnormalised, so \"01.50\" stays \"01.50\".",
+    "null": "set deliberately to nothing. A dropout, renders a refusal",
+    "number": "drawn",
+    "undefined": "property never set; falls through to source, then attribute",
+    "{value, age}": "drawn, and marked stale when age exceeds max-age"
+  },
+  "readme": "FRAMEWORKS.md",
+  "schemaVersion": "2.1.0",
+  "seriesProtocol": {
+    "Reading[]": "drawn in order",
+    "note": "Neither series property marks staleness, so a per-sample age is not read. Staleness is a whole-readout claim here.",
+    "null": "the whole property set to nothing. Renders a refusal and draws nothing at all",
+    "null inside the array": "a DROPOUT AT THAT SAMPLE, and the line is BROKEN across it rather than interpolated. Measured: [10, null, 30] draws isolated points and reports \"1 missing\", where [10, 30] draws a polyline joining them. A line drawn across a gap would be the chart asserting readings nobody took",
+    "undefined": "property never set; falls through to source, then attribute"
+  },
+  "wrapperNotes": [
+    "A reading is set as a PROPERTY, never an attribute. An attribute is a string, so an array cannot survive one and a null arrives as the word \"null\", which the protocol would read as a value rather than a dropout.",
+    "Every ov: event is bound with addEventListener. The colon has no declarative spelling in Svelte 5, where the on: directive is gone and \"onov:commit\" is not an identifier, nor in JSX. Vue can bind it.",
+    "The wrapper applies attributes ITSELF and hands the framework nothing but a ref. All three frameworks set a prop as a property when the name exists on the element, and this kit has 72 getter-only properties across 39 elements. Assigning one throws, and in React it does not degrade: the whole tree fails to render. 13 elements have a getter-only name that is also a real attribute (at, bearing, digits, duration, floor, fov, fresh, hold, lat, lon, period, pitch, range, ring, rings, span, step, sweep, sweeps, traces, value), which are the ones a reader would naturally pass in markup."
+  ]
+}

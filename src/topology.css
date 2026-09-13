@@ -1,0 +1,67 @@
+/* ---- CASCADE LAYER ------------------------------------------------------
+ *
+ * Everything the kit ships sits in ONE layer named `overscan`, so a consumer's
+ * own CSS beats it without a specificity fight and without !important. That is
+ * close to mandatory for a distributed kit: an app should be able to restyle a
+ * panel by writing a plain rule.
+ *
+ * ⚠️ ONE layer, deliberately, NOT a sub-layer per file. Sub-layers look tidier
+ * and would silently reorder the kit against itself: layer order beats
+ * specificity, so a high-specificity rule in an early file that currently wins
+ * would start losing to a low-specificity rule in a later one. A single layer
+ * preserves source order exactly, so nothing inside the kit changes.
+ *
+ * Unlayered author CSS wins over all of it. That is the point.
+ */
+
+@layer overscan {
+/* Hosts and the path to them, and nothing past a break. */
+
+ov-topology {
+  display: grid;
+  gap: 6px;
+  font-family: var(--ov-font-mono);
+  font-size: var(--ov-size-1);
+  letter-spacing: 1px;
+  color: var(--ov-dim);
+}
+
+.ov-topology__svg {
+  display: block;
+  inline-size: 100%;
+  background: var(--ov-field);
+  border: var(--ov-bezel) solid var(--ov-line-strong);
+}
+
+.ov-topology__link { fill: none; stroke: var(--ov-line); stroke-width: 1; stroke-dasharray: 3 3; }
+/* Lit only when a poll came back through it. */
+.ov-topology__link.is-lit { stroke: var(--ov-accent); stroke-dasharray: none; stroke-width: 1.4; }
+.ov-topology__link.is-broken { stroke: var(--ov-alarm); stroke-dasharray: 5 3; }
+/* Behind the break: the path exists on paper and nothing has come back over it. */
+.ov-topology__link.is-unreachable { stroke: var(--ov-accent-2); stroke-dasharray: 2 3; opacity: 0.75; }
+
+.ov-topology__host rect { fill: var(--ov-field); stroke: var(--ov-line-strong); stroke-width: 1; }
+.ov-topology__label { font: 9px var(--ov-font-mono); fill: var(--ov-ink); letter-spacing: 0.8px; text-transform: uppercase; }
+.ov-topology__state { font: 8px var(--ov-font-mono); letter-spacing: 1px; fill: var(--ov-dim); }
+.ov-topology__sub { font: 8px var(--ov-font-mono); fill: var(--ov-faint); letter-spacing: 0.4px; }
+.ov-topology__host.is-vantage rect { stroke: var(--ov-ink); stroke-width: 1.4; }
+.ov-topology__host.is-up rect { stroke: var(--ov-accent); }
+.ov-topology__host.is-up .ov-topology__state { fill: var(--ov-accent); }
+.ov-topology__host.is-down rect { stroke: var(--ov-alarm); stroke-width: 1.6; fill: color-mix(in srgb, var(--ov-alarm) 14%, var(--ov-field)); }
+.ov-topology__host.is-down .ov-topology__state { fill: var(--ov-alarm); }
+/* Undetermined: not the alarm colour (it is not down) and not the accent
+   (it is not up). Dashed, dim, and it says so in words. */
+.ov-topology__host.is-unreachable rect { stroke-dasharray: 3 2; stroke: var(--ov-accent-2); }
+.ov-topology__host.is-unreachable .ov-topology__label { fill: var(--ov-dim); }
+.ov-topology__host.is-unreachable .ov-topology__state { fill: var(--ov-accent-2); }
+.ov-topology__host.is-unpolled rect { stroke-dasharray: 1 3; stroke: var(--ov-line-strong); }
+.ov-topology__host.is-unpolled .ov-topology__label { fill: var(--ov-dim); }
+
+.ov-topology__void {
+  display: grid; place-items: center; min-block-size: 110px; max-inline-size: 460px; padding: 0 12px;
+  color: var(--ov-alarm); text-transform: uppercase; text-align: center;
+  border: 1px dashed var(--ov-line-strong);
+}
+.ov-topology__readout { display: flex; flex-wrap: wrap; gap: 4px 16px; }
+.ov-topology__readout .is-flag { color: var(--ov-accent-2); }
+}

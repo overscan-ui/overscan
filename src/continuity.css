@@ -1,0 +1,52 @@
+/* ---- CASCADE LAYER ------------------------------------------------------
+ *
+ * Everything the kit ships sits in ONE layer named `overscan`, so a consumer's
+ * own CSS beats it without a specificity fight and without !important. That is
+ * close to mandatory for a distributed kit: an app should be able to restyle a
+ * panel by writing a plain rule.
+ *
+ * ⚠️ ONE layer, deliberately, NOT a sub-layer per file. Sub-layers look tidier
+ * and would silently reorder the kit against itself: layer order beats
+ * specificity, so a high-specificity rule in an early file that currently wins
+ * would start losing to a low-specificity rule in a later one. A single layer
+ * preserves source order exactly, so nothing inside the kit changes.
+ *
+ * Unlayered author CSS wins over all of it. That is the point.
+ */
+
+@layer overscan {
+/* Which packets came, counted by their numbers, not the clock. */
+
+ov-continuity {
+  display: grid;
+  gap: 6px;
+  font-family: var(--ov-font-mono);
+  font-size: var(--ov-size-1);
+  letter-spacing: 1px;
+  color: var(--ov-dim);
+}
+.ov-continuity__rows { display: grid; gap: 10px; }
+.ov-continuity__row {
+  display: grid; grid-template-columns: max-content 14ch minmax(0, 1fr); gap: 4px 12px; align-items: center;
+  padding: 8px 10px; background: var(--ov-field); border: var(--ov-rule) solid var(--ov-line);
+}
+.ov-continuity__src { color: var(--ov-ink); text-transform: uppercase; }
+.ov-continuity__verdict { letter-spacing: 1.2px; }
+.ov-continuity__row.is-complete .ov-continuity__verdict { color: var(--ov-accent); }
+.ov-continuity__row.is-incomplete .ov-continuity__verdict { color: var(--ov-alarm); }
+/* Not the alarm (nothing is known to be lost) and not the accent (nothing is
+   known to be whole): the second accent, and it says so in words. */
+.ov-continuity__row.is-undetermined .ov-continuity__verdict { color: var(--ov-accent-2); }
+.ov-continuity__strip { display: block; inline-size: 100%; }
+.ov-continuity__words { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 2px 14px; }
+.ov-continuity__words .is-flag { color: var(--ov-accent-2); }
+.ov-continuity__seg { fill: color-mix(in srgb, var(--ov-accent) 45%, transparent); }
+.ov-continuity__miss { fill: var(--ov-alarm); }
+.ov-continuity__break line { stroke: var(--ov-accent-2); stroke-width: 1.2; }
+.ov-continuity__break text { font: 8px var(--ov-font-mono); fill: var(--ov-accent-2); }
+.ov-continuity__note { color: var(--ov-faint); font-size: var(--ov-size-1); }
+.ov-continuity__void {
+  display: grid; place-items: center; min-block-size: 80px; max-inline-size: 460px;
+  color: var(--ov-alarm); text-transform: uppercase; border: 1px dashed var(--ov-line-strong);
+}
+}

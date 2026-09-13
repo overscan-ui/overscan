@@ -1,0 +1,84 @@
+@layer overscan {
+/* A silhouette beside a name. See ov-avatar.js for the refusal.
+ *
+ * 🔴 NOTHING RESTS ON COLOUR. An occupied seat is a filled well with a
+ * silhouette; an empty one is a DASHED well with nothing in it; a seat whose
+ * kind was not stated is a DOTTED well with a question mark. Every figure is
+ * a filled silhouette with no inner detail. The status marks differ in shape:
+ * disc, ring, diamond, square.
+ */
+
+ov-avatar {
+  --ov-av-size: 36px;
+  /* The figure: darker than the theme's dim ink, lighter at the head and a
+     little darker toward the shoulders. Override either stop per page. */
+  --ov-av-top: color-mix(in srgb, var(--ov-dim) 52%, var(--ov-field));
+  --ov-av-bottom: color-mix(in srgb, var(--ov-dim) 30%, var(--ov-field));
+  display: inline-grid;
+  grid-template-columns: var(--ov-av-size) minmax(0, auto);
+  align-items: center;
+  column-gap: .9ch;
+  min-inline-size: 0;
+  max-inline-size: 100%;
+  font-family: var(--ov-font-mono);
+  font-size: var(--ov-size-1, 10px);
+  color: var(--ov-ink);
+  vertical-align: middle;
+}
+
+.ov-avatar__pic {
+  display: block;
+  inline-size: var(--ov-av-size);
+  block-size: var(--ov-av-size);
+  overflow: visible;
+}
+.ov-avatar__well { fill: var(--ov-raised); stroke: var(--ov-line); stroke-width: 2; }
+.ov-avatar__stop-top { stop-color: var(--ov-av-top); }
+.ov-avatar__stop-bottom { stop-color: var(--ov-av-bottom); }
+.ov-avatar__body { fill: var(--ov-av-paint, var(--ov-av-top)); }
+/* Thin parts of a silhouette (antennae, tentacles, legs): a heavy stroke in
+   the fill colour, so they read as edge at any size and never as line art. */
+.ov-avatar__limb {
+  fill: none;
+  stroke: var(--ov-av-paint, var(--ov-av-top));
+  stroke-width: 5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+/* The empty seat: an outline and nothing inside it. */
+.ov-avatar__slot {
+  fill: none;
+  stroke: var(--ov-faint);
+  stroke-width: 3.5;
+  stroke-dasharray: 11 8;
+}
+.ov-avatar__slot.is-unstated { stroke-dasharray: 1 8; stroke-linecap: round; stroke-width: 4.5; }
+.ov-avatar__q {
+  fill: var(--ov-faint);
+  font-family: var(--ov-font-mono);
+  font-size: 48px;
+  text-anchor: middle;
+}
+
+/* The supplied status. A field-coloured keyline lifts it off the silhouette. */
+.ov-avatar__mark { stroke: var(--ov-field); stroke-width: 4; paint-order: stroke; }
+ov-avatar[data-ov-status="ok"] .ov-avatar__mark { fill: var(--ov-accent); }
+ov-avatar[data-ov-status="note"] .ov-avatar__mark { fill: var(--ov-field); stroke: var(--ov-ink); stroke-width: 5; }
+ov-avatar[data-ov-status="bad"] .ov-avatar__mark { fill: var(--ov-alarm); }
+ov-avatar[data-ov-status="unknown"] .ov-avatar__mark { fill: var(--ov-field); stroke: var(--ov-faint); stroke-width: 4; stroke-dasharray: 4 4; }
+
+.ov-avatar__text { display: grid; min-inline-size: 0; line-height: 1.3; }
+/* A name is a value: it wraps, it is never clipped with an ellipsis. */
+.ov-avatar__name { letter-spacing: .12em; text-transform: uppercase; overflow-wrap: anywhere; }
+.ov-avatar__task { color: var(--ov-faint); letter-spacing: .1em; overflow-wrap: anywhere; }
+.ov-avatar__task:empty { display: none; }
+
+ov-avatar[data-ov-avatar="unassigned"] .ov-avatar__name { color: var(--ov-faint); letter-spacing: .16em; }
+ov-avatar:is([data-ov-avatar="unnamed"], [data-ov-avatar="unstated"], [data-ov-avatar="conflict"]) :is(.ov-avatar__name, .ov-avatar__task) {
+  color: var(--ov-alarm);
+}
+
+.ov-avatar__note { grid-column: 1 / -1; color: var(--ov-alarm); letter-spacing: .08em; line-height: 1.35; }
+.ov-avatar__note:empty { display: none; }
+}

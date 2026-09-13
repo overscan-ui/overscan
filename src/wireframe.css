@@ -1,0 +1,72 @@
+/* ---- CASCADE LAYER ------------------------------------------------------
+ *
+ * Everything the kit ships sits in ONE layer named `overscan`, so a consumer's
+ * own CSS beats it without a specificity fight and without !important. That is
+ * close to mandatory for a distributed kit: an app should be able to restyle a
+ * panel by writing a plain rule.
+ *
+ * ⚠️ ONE layer, deliberately, NOT a sub-layer per file. Sub-layers look tidier
+ * and would silently reorder the kit against itself: layer order beats
+ * specificity, so a high-specificity rule in an early file that currently wins
+ * would start losing to a low-specificity rule in a later one. A single layer
+ * preserves source order exactly, so nothing inside the kit changes.
+ *
+ * Unlayered author CSS wins over all of it. That is the point.
+ */
+
+@layer overscan {
+/* A model or a surveyed terrain, drawn as lines. */
+
+/* ⭐ WHICH KIND OF TUBE THE THEME IS. A raster lights the whole picture at once
+ * and depth-cues its lines; a stroke display draws a list in order and its
+ * brightness IS the order (beam.glsl). Only vector is a stroke display. Not
+ * derived from --ov-scan-opacity: antiseptic has no scanlines either, and it
+ * is a flat panel, not a vector tube. */
+ov-wireframe { --ov-wireframe-display: raster; }
+[data-ov-theme="vector"] ov-wireframe,
+ov-wireframe[data-ov-theme="vector"] { --ov-wireframe-display: list; }
+
+ov-wireframe {
+  display: grid;
+  gap: 8px;
+  font-family: var(--ov-font-mono);
+  font-size: var(--ov-size-1);
+  letter-spacing: 1px;
+  color: var(--ov-dim);
+}
+
+.ov-wireframe__stage {
+  position: relative;
+  block-size: var(--ov-wireframe-height, 300px);
+  overflow: hidden;
+  background: var(--ov-field);
+  border: var(--ov-bezel) solid var(--ov-line-strong);
+}
+
+.ov-wireframe__canvas {
+  position: absolute;
+  inset: 0;
+  inline-size: 100%;
+  block-size: 100%;
+  display: block;
+}
+
+.ov-wireframe__void {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  color: var(--ov-alarm);
+  text-transform: uppercase;
+}
+/* Author `display` beats the UA's [hidden]; without this the refusal would sit
+ * over every model that drew. */
+.ov-wireframe__void[hidden] { display: none; }
+
+.ov-wireframe__readout {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 20px;
+}
+.ov-wireframe__readout .is-open { color: var(--ov-alarm); }
+}

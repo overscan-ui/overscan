@@ -1,0 +1,128 @@
+/* ---- CASCADE LAYER ------------------------------------------------------
+ *
+ * Everything the kit ships sits in ONE layer named `overscan`, so a consumer's
+ * own CSS beats it without a specificity fight and without !important. That is
+ * close to mandatory for a distributed kit: an app should be able to restyle a
+ * panel by writing a plain rule.
+ *
+ * ⚠️ ONE layer, deliberately, NOT a sub-layer per file. Sub-layers look tidier
+ * and would silently reorder the kit against itself: layer order beats
+ * specificity, so a high-specificity rule in an early file that currently wins
+ * would start losing to a low-specificity rule in a later one. A single layer
+ * preserves source order exactly, so nothing inside the kit changes.
+ *
+ * Unlayered author CSS wins over all of it. That is the point.
+ */
+
+@layer overscan {
+/* Plots. SVG in the DOM, so the theme and both switches reach every mark from
+ * the one control surface. */
+
+ov-chart {
+  position: relative;
+  display: block;
+  block-size: var(--ov-chart-height, 84px);
+  border-inline-start: var(--ov-rule) solid var(--ov-line-strong);
+  border-block-end: var(--ov-rule) solid var(--ov-line-strong);
+}
+
+/* No overflow:visible. An SVG that paints outside its box escapes the cell it
+ * was given, and at a dense size that means one plot drawn over another. The
+ * over-range ticks live inside the viewBox instead. */
+.ov-chart__svg {
+  inline-size: 100%;
+  block-size: 100%;
+  display: block;
+}
+
+.ov-chart__line {
+  fill: none;
+  stroke: var(--ov-accent);
+  stroke-width: 1.5;
+  stroke-linejoin: miter;
+  stroke-linecap: butt;
+}
+
+.ov-chart__point { fill: var(--ov-accent); }
+
+/* What decimation threw away, drawn rather than hidden. */
+.ov-chart__band { fill: var(--ov-accent); opacity: 0.22; }
+
+/* A value past the axis gets a tick at the boundary, so a clipped peak cannot
+ * be mistaken for a flat one. */
+.ov-chart__over { fill: var(--ov-alarm); }
+
+/* 🔴 A STOPPED FEED HAS TO LOOK STOPPED. The trace stays - the shape is what a
+   reader came for - but it goes faint and the element says, on itself, how
+   long since anything arrived. Without this the qualifier is an attribute in
+   the DOM and nothing on the screen, which is a refusal the reader never
+   receives. Same treatment as ov-flap's, so a stale chart and a stale board
+   read alike. */
+/* ov-chart is already position: relative, so ::after has its box. */
+ov-chart[data-ov-qualified="stale"] .ov-chart__line,
+ov-chart[data-ov-qualified="stale"] .ov-chart__point,
+ov-chart[data-ov-qualified="stale"] .ov-chart__band {
+  opacity: .4;
+}
+ov-chart[data-ov-qualified="stale"]::after {
+  content: attr(data-ov-qualifier-text);
+  position: absolute;
+  inset-block-end: 2px;
+  inset-inline-start: 4px;
+  font-size: 9px;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+  color: var(--ov-alarm);
+  pointer-events: none;
+}
+
+.ov-chart__lo,
+.ov-chart__hi {
+  position: absolute;
+  inset-inline-start: 4px;
+  font-size: var(--ov-size-1);
+  color: var(--ov-faint);
+}
+.ov-chart__hi { inset-block-start: 0; }
+.ov-chart__lo { inset-block-end: 2px; }
+
+/* Both of these are claims about the picture, so they are printed on it rather
+ * than left in the console. */
+ov-chart[data-ov-decimated]::after,
+ov-chart[data-ov-gaps]::before {
+  position: absolute;
+  inset-inline-end: 4px;
+  font-size: var(--ov-size-1);
+  letter-spacing: 1px;
+  text-transform: uppercase;
+}
+/* At a dense size the full phrase collides with the plot, so the mark is a
+ * short tag and the sentence lives in the accessible name, which is where a
+ * screen reader was going to get it anyway. */
+ov-chart[data-ov-decimated]::after {
+  content: "decimated";
+  inset-block-end: 2px;
+  color: var(--ov-dim);
+}
+ov-chart[data-ov-gaps]::before {
+  content: "gaps";
+  inset-block-start: 0;
+  color: var(--ov-alarm);
+}
+
+/* A refusal must not change the element's display. Switching to grid resized
+ * the SVG as a grid item and the plot rendered at its natural size outside the
+ * cell. The box stays exactly as it is; only what is drawn in it changes. */
+ov-chart[data-ov-refusal]::after {
+  content: attr(data-ov-refusal);
+  position: absolute;
+  inset-block-start: 50%;
+  inset-inline-start: 50%;
+  transform: translate(-50%, -50%);
+  color: var(--ov-alarm);
+  font-size: var(--ov-size-1);
+  letter-spacing: 1.4px;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+}

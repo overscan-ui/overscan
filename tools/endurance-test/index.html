@@ -1,0 +1,54 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>ov-endurance tests</title>
+<!-- Over tools/serve.py: /tools/endurance-test/ . The last case is a CONTROL that must fail. -->
+<link rel="stylesheet" href="../../src/tokens.css">
+<link rel="stylesheet" href="../../src/finish.css">
+<link rel="stylesheet" href="../../src/endurance.css">
+<style>
+  body { margin: 0; background: #08080a; color: #ccc; font: 12px ui-monospace, monospace; }
+  .row { display: grid; grid-template-columns: repeat(auto-fill, minmax(420px, 1fr)); gap: 22px; padding: 16px 24px; align-items: start; }
+  .cap { color: #888; margin-block-end: 6px; }
+  #tests { white-space: pre; color: #9f9; padding: 16px 24px; }
+  #tests.fail { color: #f77; }
+</style>
+<section class="ov ov-finish row" data-ov-theme="aegis" id="a"></section>
+<div id="tests">running…</div>
+<script type="module">
+  import '../../src/ov-endurance.js';
+  await customElements.whenDefined('ov-endurance');
+  const mk = (cap, data, attrs = {}) => { const d = document.createElement('div'); d.innerHTML = `<div class="cap">${cap}</div>`; const el = document.createElement('ov-endurance'); for (const [k, v] of Object.entries(attrs)) el.setAttribute(k, v); d.append(el); document.getElementById('a').append(d); el.supply = data; return el; };
+  const steady = mk('steady use', { resource: 'o2 bottle a', unit: 'L', remaining: 1800, capacity: 3400, age: 2,
+    rate: { source: 'measured', window: 'last 10 min', samples: [9.8, 10.1, 10.0, 9.9, 10.2, 10.0] } });
+  const unsteady = mk('unsteady use', { resource: 'o2 bottle b', unit: 'L', remaining: 1800, capacity: 3400, age: 2,
+    rate: { source: 'measured', window: 'last 10 min', samples: [6, 14, 9, 18, 7, 12] } });
+  const set = mk('only a set rate', { resource: 'infusion 2', unit: 'mL', remaining: 240, capacity: 500,
+    rate: { source: 'set', value: 2 } });
+  const few = mk('two samples', { resource: 'battery', unit: 'Wh', remaining: 88, rate: { source: 'measured', samples: [4, 4.2] } });
+  const idle = mk('nothing being used', { resource: 'n2 reserve', unit: 'kg', remaining: 40, rate: { source: 'measured', samples: [0, 0, 0] } });
+  const pause = mk('use that sometimes stops', { resource: 'coolant', unit: 'L', remaining: 60, rate: { source: 'measured', samples: [0.5, 0, 0.6, 0.4] } });
+  const stale = mk('an old reading', { resource: 'o2 bottle c', unit: 'L', remaining: 900, capacity: 3400, age: 400,
+    rate: { source: 'measured', samples: [10, 10, 10] } }, { 'max-age': 60 });
+  const nothing = mk('no remaining amount', { resource: 'h2o', unit: 'L', rate: { source: 'measured', samples: [1, 1, 1] } });
+  const none = mk('nothing', null);
+  const range = (el) => el.querySelector('.ov-endurance__range')?.textContent || '';
+  const cases = [
+    ['steady use gives a narrow range, lower bound from the fastest rate', () => range(steady) === '2h 56m to 3h 03m'],
+    ['unsteady use widens the range', () => range(unsteady) === '1h 40m to 5h 00m'],
+    ['⭐ a SET rate gives no estimate at all', () => set.getAttribute('data-ov-refusal') === 'unknown' && set.textContent.includes('NOT ESTIMATED: rate is SET, not measured') && !set.querySelector('.ov-endurance__range, .ov-endurance__band')],
+    ['a range is as wide as the spread: zero spread says so, and is not padded', () => [steady, unsteady].every((e) => / to /.test(range(e))) && range(stale) === '1h 30m every sample the same'],
+    ['nothing is drawn in the middle of the band', () => steady.querySelectorAll('.ov-endurance__band line.ov-endurance__edge').length === 1 && !steady.querySelector('.ov-endurance__band circle')],
+    ['too few samples is refused, with the count', () => few.textContent.includes('2 rate samples, below 3')],
+    ['no use is NOT DEPLETING, not forever', () => idle.textContent.includes('NOT DEPLETING')],
+    ['a slowest rate of zero leaves the band open, not infinite', () => range(pause) === '1h 40m to not before the rate changes' && pause.querySelector('.ov-endurance__spread.is-open')],
+    ['an old remaining reading is STALE', () => stale.textContent.includes('STALE 400s')],
+    ['no remaining amount is refused', () => nothing.textContent.includes('NO REMAINING AMOUNT')],
+    ['the rate source is always printed', () => steady.textContent.includes('rate MEASURED, last 10 min, 6 samples') && set.textContent.includes('rate SET at 2 mL/min')],
+    ['no supply is a refusal', () => none.getAttribute('data-ov-refusal') === 'unknown'],
+    ['CONTROL: a false claim is caught', () => !!set.querySelector('.ov-endurance__range')],
+  ];
+  let bad = 0;
+  const res = cases.map(([name, fn]) => { let r = false; try { r = !!fn(); } catch (e) { r = false; } const c = name.startsWith('CONTROL'); const pass = c ? !r : r; if (!pass) bad += 1; return `${pass ? 'ok  ' : 'FAIL'} ${name}${c ? ' (must fail)' : ''}`; });
+  const t = document.getElementById('tests'); t.textContent = `${cases.length - bad} of ${cases.length} pass\n` + res.join('\n'); t.classList.toggle('fail', bad > 0);
+  window.endResults = { total: cases.length, bad, out: res };
+</script>

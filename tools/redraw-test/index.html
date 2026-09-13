@@ -1,0 +1,104 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>redraw harness: reticle, radar, wave</title>
+<link rel="stylesheet" href="../../src/tokens.css">
+<link rel="stylesheet" href="../../src/reticle.css">
+<link rel="stylesheet" href="../../src/radar.css">
+<link rel="stylesheet" href="../../src/wave.css">
+<style>
+  body { background: #06060a; color: #cfe; font: 13px ui-monospace, monospace; padding: 20px; }
+  .box { position: relative; inline-size: 240px; block-size: 160px; border: 1px solid #345; display: inline-block; }
+  pre { white-space: pre-wrap; }
+</style>
+<div class="box" id="rbox"></div>
+<div class="box" id="dbox"></div>
+<div class="box" id="wbox"></div>
+<pre id="out">running...</pre>
+<script type="module">
+/* A frame that has nothing new to show writes
+ * nothing. These three elements redraw on animation frames, and each used to
+ * rebuild its markup and re-set its aria-label on every one of them, sixty
+ * times a second, whether or not anything had changed.
+ *
+ * Frames are driven by calling frame() directly, several inside one
+ * millisecond, so "nothing changed" is exact and the harness needs no
+ * rendering. What a frame wrote is read off a MutationObserver. */
+const q = new URLSearchParams(location.search);
+await import(q.get('reticle') || '../../src/ov-reticle.js');
+await import(q.get('radar') || '../../src/ov-radar.js');
+await import(q.get('wave') || '../../src/ov-wave.js');
+
+const results = [];
+const ok = (name, cond, got) => results.push({ name, pass: !!cond, got });
+
+// Mutation records produced by `n` frames after the first has drawn.
+const writes = (el, prime, n = 10) => {
+  prime();
+  el.frame();
+  const mo = new MutationObserver(() => {});
+  mo.observe(el, { attributes: true, childList: true, subtree: true, characterData: true });
+  for (let i = 0; i < n; i++) { prime(); el.frame(); }
+  const recs = mo.takeRecords();
+  mo.disconnect();
+  return {
+    total: recs.length,
+    aria: recs.filter((r) => r.attributeName === 'aria-label').length,
+    markup: recs.filter((r) => r.type === 'childList').length,
+  };
+};
+
+// Reticle: one held track, fixed age, so each frame is identical.
+const reticle = document.createElement('ov-reticle');
+document.getElementById('rbox').append(reticle);
+const at = performance.now();
+let w = writes(reticle, () => reticle.tracks.set('a', { id: 'a', x: 50, y: 50, w: 20, h: 20, confidence: 0.8, at }));
+ok('reticle: identical frames re-set aria-label zero times', w.aria === 0, w);
+ok('reticle: identical frames rebuild no markup', w.markup === 0, w);
+ok('reticle: it did draw the track (the case is real)', reticle.querySelectorAll('.ov-reticle__bracket').length === 4,
+   reticle.querySelectorAll('.ov-reticle__bracket').length);
+
+// Radar: one plotted contact, fixed time of fix.
+const radar = document.createElement('ov-radar');
+document.getElementById('dbox').append(radar);
+const fix = performance.now();
+w = writes(radar, () => {
+  radar.pending = [];
+  radar.plotted.set('c1', { bearing: 45, range: 400, at: fix, track: { id: 'c1' }, motion: null });
+});
+ok('radar: identical frames re-set aria-label zero times', w.aria === 0, w);
+ok('radar: identical frames rebuild no blips', w.markup === 0, w);
+ok('radar: it did draw the contact (the case is real)', radar.querySelectorAll('.ov-radar__blip').length === 1,
+   radar.querySelectorAll('.ov-radar__blip').length);
+
+// ...but a contact the beam re-plots DOES redraw: the gate is on change, not off.
+radar.plotted.set('c2', { bearing: 200, range: 300, at: performance.now(), track: { id: 'c2' }, motion: null });
+radar.frame();
+ok('radar: a new contact is drawn at once', radar.querySelectorAll('.ov-radar__blip').length === 2,
+   radar.querySelectorAll('.ov-radar__blip').length);
+
+// Wave: a buffer and no new samples.
+const wave = document.createElement('ov-wave');
+document.getElementById('wbox').append(wave);
+wave.buf = Array.from({ length: 40 }, (_, i) => 50 + 20 * Math.sin(i / 4));
+wave.seen = 40;
+for (let i = 0; i < 12; i++) wave.frame(); // let persistence fill with the one sweep
+w = writes(wave, () => {});
+ok('wave: frames with no new sample re-set aria-label zero times', w.aria === 0, w);
+ok('wave: frames with no new sample rebuild no traces', w.markup === 0, w);
+ok('wave: it did draw the trace (the case is real)', wave.querySelectorAll('.ov-wave__trace').length > 0,
+   wave.querySelectorAll('.ov-wave__trace').length);
+
+// ...and a new sample redraws.
+wave.buf.push(90); wave.buf.shift(); wave.seen += 1;
+const before = wave.querySelector('svg').innerHTML;
+wave.frame();
+ok('wave: a new sample is drawn at once', wave.querySelector('svg').innerHTML !== before, 'changed?');
+
+// 🔴 The gate has to be able to fail.
+const control = { name: 'CONTROL (must fail)', pass: w.total === 999, got: 'deliberate' };
+
+const passed = results.filter((x) => x.pass).length;
+const report = { total: results.length, passed, failed: results.filter((x) => !x.pass), controlDidFail: control.pass === false };
+document.getElementById('out').textContent = JSON.stringify(report, null, 1);
+window.__redraw = report;
+</script>

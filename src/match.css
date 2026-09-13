@@ -1,0 +1,74 @@
+/* ---- CASCADE LAYER ------------------------------------------------------
+ *
+ * Everything the kit ships sits in ONE layer named `overscan`, so a consumer's
+ * own CSS beats it without a specificity fight and without !important. That is
+ * close to mandatory for a distributed kit: an app should be able to restyle a
+ * panel by writing a plain rule.
+ *
+ * ⚠️ ONE layer, deliberately, NOT a sub-layer per file. Sub-layers look tidier
+ * and would silently reorder the kit against itself: layer order beats
+ * specificity, so a high-specificity rule in an early file that currently wins
+ * would start losing to a low-specificity rule in a later one. A single layer
+ * preserves source order exactly, so nothing inside the kit changes.
+ *
+ * Unlayered author CSS wins over all of it. That is the point.
+ */
+
+@layer overscan {
+/* A probe against a database, and what the search can honestly say. */
+
+ov-match {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  font-family: var(--ov-font-mono);
+  font-size: var(--ov-size-1);
+  letter-spacing: 1px;
+  color: var(--ov-dim);
+  background: var(--ov-field);
+  border: var(--ov-bezel) solid var(--ov-line-strong);
+  max-inline-size: var(--ov-match-size, 420px);
+}
+
+.ov-match__verdict { text-transform: uppercase; line-height: 1.5; }
+.ov-match__verdict.is-match { color: var(--ov-ink); }
+.ov-match__verdict.is-ambiguous { color: var(--ov-accent-2); }
+.ov-match__verdict.is-none { color: var(--ov-alarm); }
+
+.ov-match__pair { display: grid; grid-template-columns: repeat(var(--n, 2), 1fr); gap: 10px; align-items: center; }
+.ov-match__disc { inline-size: 100%; max-inline-size: 150px; justify-self: center; }
+.ov-match__ring { fill: none; stroke: var(--ov-line); }
+.ov-match__bar { stroke: var(--ov-accent); stroke-width: 2; stroke-linecap: round; }
+/* Where the candidate differs from the probe: drawn, not smoothed away. */
+.ov-match__bar.is-off { stroke: var(--ov-alarm); }
+.ov-match__trace { fill: none; stroke: var(--ov-accent); stroke-width: 1.6; stroke-linejoin: round; }
+.ov-match__dot { fill: var(--ov-accent); }
+.ov-match__dot.is-off { fill: var(--ov-alarm); }
+.ov-match__cell { fill: var(--ov-accent); stroke: none; }
+.ov-match__cell.is-off { fill: var(--ov-alarm); }
+/* A missing feature is a gap, never a zero: an outline cell, a pinprick. */
+.ov-match__cell.is-gap { fill: none; stroke: var(--ov-alarm); stroke-width: 0.6; stroke-dasharray: 1.5 1.5; }
+.ov-match__gapdot { fill: var(--ov-alarm); }
+.ov-match__gap { stroke: var(--ov-alarm); stroke-width: 2; }
+.ov-match__disclabel { font: 9px var(--ov-font-mono); letter-spacing: 1px; fill: var(--ov-dim); text-transform: uppercase; }
+.ov-match__nocand, .ov-match__nocard, .ov-match__void {
+  display: grid; place-items: center; min-block-size: 60px;
+  color: var(--ov-alarm); text-transform: uppercase; text-align: center;
+  border: 1px dashed var(--ov-line-strong);
+}
+
+.ov-match__list { margin: 0; padding: 0; list-style: none; display: grid; gap: 4px; }
+.ov-match__list li { display: grid; grid-template-columns: 12ch 1fr 4ch; gap: 8px; align-items: center; }
+.ov-match__name { color: var(--ov-ink); text-transform: uppercase; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ov-match__bar-track { position: relative; block-size: 6px; background: color-mix(in srgb, var(--ov-line) 60%, transparent); }
+.ov-match__fill { position: absolute; inset-block: 0; inset-inline-start: 0; background: var(--ov-accent); }
+/* The threshold is on every bar, so "close to it" is visible, not implied. */
+.ov-match__threshold { position: absolute; inset-block: -3px; inline-size: 1px; background: var(--ov-ink); }
+.ov-match__score { text-align: end; color: var(--ov-ink); }
+.ov-match__more { color: var(--ov-faint); }
+
+.ov-match__card { display: grid; grid-template-columns: max-content 1fr; gap: 3px 12px; margin: 0; }
+.ov-match__card dt { color: var(--ov-dim); text-transform: uppercase; }
+.ov-match__card dd { margin: 0; color: var(--ov-ink); }
+.ov-match__card dd.is-withheld { color: var(--ov-alarm); }
+}

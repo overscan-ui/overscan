@@ -1,0 +1,64 @@
+/* ---- CASCADE LAYER ------------------------------------------------------
+ *
+ * Everything the kit ships sits in ONE layer named `overscan`, so a consumer's
+ * own CSS beats it without a specificity fight and without !important. That is
+ * close to mandatory for a distributed kit: an app should be able to restyle a
+ * panel by writing a plain rule.
+ *
+ * ⚠️ ONE layer, deliberately, NOT a sub-layer per file. Sub-layers look tidier
+ * and would silently reorder the kit against itself: layer order beats
+ * specificity, so a high-specificity rule in an early file that currently wins
+ * would start losing to a low-specificity rule in a later one. A single layer
+ * preserves source order exactly, so nothing inside the kit changes.
+ *
+ * Unlayered author CSS wins over all of it. That is the point.
+ */
+
+@layer overscan {
+/* One event in every time it has, and how each was got. */
+
+ov-timestack {
+  display: grid;
+  /* 🔴 THE TRACK MAY SHRINK BELOW THE TABLE, and the table scrolls instead of
+   * the page. An `auto` track was the rows' full width, so in a narrow cell the
+   * head and the rows both ran past their container and the whole page scrolled
+   * sideways on an iPad. A time value is never wrapped or cut to fit. */
+  grid-template-columns: minmax(0, max-content);
+  gap: 8px;
+  font-family: var(--ov-font-mono);
+  font-size: var(--ov-size-1);
+  letter-spacing: 0.8px;
+  color: var(--ov-dim);
+}
+.ov-timestack__head { color: var(--ov-ink); text-transform: uppercase; letter-spacing: 1.2px; }
+.ov-timestack__at { color: var(--ov-accent); }
+.ov-timestack__rows {
+  /* ⚠️ THE EXPLANATION HAS A FLOOR. At minmax(0, 1fr) it was the one column
+   * allowed to give, so in a narrow cell it went to 0px and every word stood on
+   * its own line, printed over the dependency beside it. 16ch keeps it
+   * readable; the table is wider for it and scrolls inside itself instead. */
+  display: grid; grid-template-columns: max-content max-content minmax(16ch, 1fr) max-content;
+  gap: 0 14px; background: var(--ov-field); border: var(--ov-rule) solid var(--ov-line); padding: 6px 10px;
+  overflow-x: auto;
+}
+.ov-timestack__row { display: contents; }
+.ov-timestack__row > span { padding: 5px 0; border-block-end: var(--ov-rule) solid var(--ov-line); }
+.ov-timestack__row:last-child > span { border-block-end: 0; }
+.ov-timestack__sys { color: var(--ov-faint); letter-spacing: 1.2px; }
+.ov-timestack__value { color: var(--ov-ink); font-variant-numeric: tabular-nums; }
+.ov-timestack__dep { color: var(--ov-faint); }
+.ov-timestack__note { grid-column: 2 / -1; padding-block-start: 0 !important; color: var(--ov-faint); }
+.ov-timestack__row.is-event .ov-timestack__sys { color: var(--ov-accent); }
+/* The receipt is a receipt: dim, and it says so. */
+.ov-timestack__row.is-receipt .ov-timestack__value { color: var(--ov-dim); }
+.ov-timestack__row.is-computed .ov-timestack__value { font-style: italic; }
+.ov-timestack__mark { font-weight: 400; letter-spacing: 1.2px; }
+.ov-timestack__mark.is-provisional { color: var(--ov-accent-2); }
+.ov-timestack__mark.is-disputed { color: var(--ov-alarm); }
+.ov-timestack__mark.is-none { color: var(--ov-alarm); }
+.ov-timestack__how .is-flag { font-style: normal; color: var(--ov-accent-2); }
+.ov-timestack__void {
+  display: grid; place-items: center; min-block-size: 80px; max-inline-size: 460px;
+  color: var(--ov-alarm); text-transform: uppercase; border: 1px dashed var(--ov-line-strong);
+}
+}

@@ -1,0 +1,50 @@
+/* ---- CASCADE LAYER ------------------------------------------------------
+ *
+ * Everything the kit ships sits in ONE layer named `overscan`, so a consumer's
+ * own CSS beats it without a specificity fight and without !important. That is
+ * close to mandatory for a distributed kit: an app should be able to restyle a
+ * panel by writing a plain rule.
+ *
+ * ⚠️ ONE layer, deliberately, NOT a sub-layer per file. Sub-layers look tidier
+ * and would silently reorder the kit against itself: layer order beats
+ * specificity, so a high-specificity rule in an early file that currently wins
+ * would start losing to a low-specificity rule in a later one. A single layer
+ * preserves source order exactly, so nothing inside the kit changes.
+ *
+ * Unlayered author CSS wins over all of it. That is the point.
+ */
+
+@layer overscan {
+/* A read against its reference, and the positions nobody read. */
+
+ov-sequence {
+  display: grid;
+  gap: 8px;
+  padding: 10px 12px;
+  font-family: var(--ov-font-mono);
+  font-size: var(--ov-size-2);
+  color: var(--ov-dim);
+  background: var(--ov-field);
+  border: var(--ov-bezel) solid var(--ov-line-strong);
+  inline-size: max-content;
+  max-inline-size: 100%;
+  overflow-x: auto;
+}
+
+.ov-sequence__rows { display: grid; gap: 8px; }
+.ov-sequence__row { display: grid; grid-template-columns: 5ch max-content; column-gap: 8px; row-gap: 1px; }
+.ov-sequence__pos { font-size: var(--ov-size-1); color: var(--ov-faint); text-align: end; }
+.ov-sequence__line { display: flex; }
+.ov-sequence__line i { font-style: normal; inline-size: 1.1ch; text-align: center; }
+.ov-sequence__line.is-ref i { color: var(--ov-faint); }
+.ov-sequence__line.is-read i.is-match { color: var(--ov-accent); }
+.ov-sequence__line.is-read i.is-mismatch { color: var(--ov-field); background: var(--ov-accent-2); }
+/* Unread is the claim: it must look like nothing the reference could supply. */
+.ov-sequence__line.is-read i.is-gap { color: var(--ov-alarm); }
+.ov-sequence__line.is-read i.is-n { color: var(--ov-alarm); }
+.ov-sequence__line.is-read i.is-lowq { color: var(--ov-alarm); text-decoration: underline dotted; }
+
+.ov-sequence__void { color: var(--ov-alarm); text-transform: uppercase; letter-spacing: 1px; font-size: var(--ov-size-1); padding: 20px 8px; }
+.ov-sequence__readout { display: flex; flex-wrap: wrap; gap: 4px 16px; font-size: var(--ov-size-1); letter-spacing: 1px; }
+.ov-sequence__readout .is-flag { color: var(--ov-alarm); }
+}

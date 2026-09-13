@@ -1,0 +1,218 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>ov-switch harness</title>
+<!-- The refusal gate for ov-switch. Serve the repo root (tools/serve.py)
+     and open /tools/switch-test/. The last line must read GATE: PASS, and
+     every CONTROL must fail. ?src=mut/<name>.js runs it against a copy with
+     one refusal broken, which must turn it red. -->
+<link rel="stylesheet" href="../../src/tokens.css">
+<link rel="stylesheet" href="../../src/chrome.css">
+<link rel="stylesheet" href="../../src/control.css">
+<link rel="stylesheet" href="../../src/switch.css">
+<style>
+  body { background: #06060a; color: #cfe; font: 13px ui-monospace, monospace; padding: 20px; }
+  pre { white-space: pre-wrap; }
+  #stage { max-inline-size: 560px; }
+</style>
+<div id="stage" data-ov-theme="aegis"></div>
+<pre id="out" data-gate="pending">running...</pre>
+<script>
+  // 🔴 A THROW IS A RED GATE, NOT A HANG.
+  const fatal = (what) => {
+    const out = document.getElementById('out');
+    if (out) { out.textContent = `THREW: ${what}\n\nGATE: FAIL`; out.dataset.gate = 'fail'; }
+  };
+  addEventListener('error', (e) => fatal(e.error?.stack || e.message || e));
+  addEventListener('unhandledrejection', (e) => fatal(e.reason?.stack || e.reason));
+</script>
+<script type="module">
+const SRC = new URLSearchParams(location.search).get('src') || '../../src/ov-switch.js';
+await import(new URL(SRC, location.href).href);
+// Timers start only once the page has arrived; wait for that, as a page would.
+await new Promise((r) => window.Overscan.whenArrived(r));
+
+const stage = document.getElementById('stage');
+const results = [], controls = [];
+const ok = (n, c, g) => results.push({ name: n, pass: !!c, got: g });
+const control = (n, c, g) => controls.push({ name: n, pass: !!c, got: g });
+const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+
+const make = (attrs = {}) => {
+  const el = document.createElement('ov-switch');
+  for (const [k, v] of Object.entries(attrs)) el.setAttribute(k, v);
+  stage.replaceChildren(el);
+  return el;
+};
+const cs = (el) => getComputedStyle(el);
+const flag = (s) => s.querySelector('.ov-switch__flag');
+const flagText = (s) => flag(s).textContent;
+const pole = (s) => flag(s).dataset.ovFlag === 'barberpole' && /repeating-linear-gradient/.test(cs(flag(s)).backgroundImage);
+const word = (s) => s.querySelector('.ov-switch__word').textContent;
+const why = (s) => s.querySelector('.ov-switch__why').textContent;
+const outShown = (s) => cs(s.querySelector('.ov-switch__out')).display !== 'none';
+const state = (s) => s.report.state;
+const T = { positions: 'REL,OFF,LAT', transit: '0.3', label: 'MRL' };
+let s;
+
+// ---- 1. A set position with nothing reporting --------------------------
+s = make({ ...T, set: 'LAT' });
+ok('⭐ a set position with nothing reporting reads NO TALKBACK, not LAT', state(s) === 'unknown' && word(s) === 'NO TALKBACK', [state(s), word(s)]);
+ok('...and its flag is barberpole', pole(s), flag(s).dataset.ovFlag);
+ok('...and the refusal word is drawn in the dense default', outShown(s) && cs(s.querySelector('.ov-switch__word')).display !== 'none', cs(s.querySelector('.ov-switch__out')).display);
+ok('the name is hidden in the dense default', cs(s.querySelector('.ov-head')).display === 'none', cs(s.querySelector('.ov-head')).display);
+ok('the host is a group, and says barberpole to a screen reader', s.getAttribute('role') === 'group' && /talkback barberpole/.test(s.getAttribute('aria-label')), s.getAttribute('aria-label'));
+control('CONTROL: the flag shows the set position (must fail)', flagText(s) === 'LAT', flagText(s));
+
+// ---- 2. The sensor agrees -----------------------------------------------
+s.talkback = 'LAT';
+ok('when the sensor reports the set position, the flag shows its word', state(s) === 'agree' && flagText(s) === 'LAT' && !pole(s), [state(s), flagText(s)]);
+ok('...and an agreeing switch draws no status box', !outShown(s), cs(s.querySelector('.ov-switch__out')).display);
+ok('⭐ the set label is never drawn in the colour of the confirmation', cs(s.querySelector('[data-ov-pos="LAT"]')).color !== cs(flag(s)).color, [cs(s.querySelector('[data-ov-pos="LAT"]')).color, cs(flag(s)).color]);
+
+// ---- 3. A command is in transit, not done -------------------------------
+const heard = [];
+s.addEventListener('ov:command', (e) => heard.push(e.detail));
+const took = s.command('REL');
+ok('a command is taken and announced, from and to', took === true && heard.length === 1 && heard[0].from === 'LAT' && heard[0].to === 'REL', heard);
+ok('⭐ ...and it is IN TRANSIT, not done', state(s) === 'transit' && word(s) === 'IN TRANSIT', [state(s), word(s)]);
+ok('⭐ ...while the flag still shows only what the sensor says: LAT', flagText(s) === 'LAT', flagText(s));
+control('CONTROL: the flag shows the commanded REL before any sensor does (must fail)', flagText(s) === 'REL', flagText(s));
+control('CONTROL: a fresh command reads as agreed (must fail)', state(s) === 'agree', state(s));
+s.talkback = null;
+ok('⭐ between positions the flag is barberpole', pole(s) && state(s) === 'transit', [flag(s).dataset.ovFlag, state(s)]);
+s.talkback = 'REL';
+ok('...and when the sensor reaches REL the command is confirmed', state(s) === 'agree' && flagText(s) === 'REL', [state(s), flagText(s)]);
+
+// ---- 4. No talkback within the transit is UNKNOWN ------------------------
+s.command('LAT');
+s.talkback = null;
+await wait(450);
+ok('⭐ no position within the declared transit is UNKNOWN, never assumed', state(s) === 'unknown' && word(s) === 'UNKNOWN' && /WITHIN 0.3 S/.test(why(s)), [state(s), word(s), why(s)]);
+ok('...the flag stays barberpole', pole(s), flag(s).dataset.ovFlag);
+ok('...and it is a refusal, marked as one', s.getAttribute('data-ov-refusal') === 'unknown', s.getAttribute('data-ov-refusal'));
+control('CONTROL: an expired command still passes as in transit or done (must fail)', state(s) === 'transit' || state(s) === 'agree', state(s));
+s.talkback = 'LAT';
+ok('...and a late arrival still confirms it', state(s) === 'agree', state(s));
+
+// ---- 5. A sensor that never left is FAIL ---------------------------------
+s.command('REL');
+await wait(450);
+ok('⭐ a sensor that never left its position reads FAIL, and says what it reads', state(s) === 'fail' && /COMMANDED REL · TALKBACK READS LAT/.test(why(s)), [state(s), why(s)]);
+control('CONTROL: the failed command reads agreed (must fail)', state(s) === 'agree', state(s));
+
+// ---- 6. Changes nobody commanded -----------------------------------------
+s.talkback = 'REL';
+s.talkback = 'LAT';
+ok('⭐ a confirmed position that changes with no command is UNCOMMANDED', state(s) === 'uncommanded' && /SET REL · TALKBACK READS LAT/.test(why(s)), [state(s), why(s)]);
+s.talkback = null;
+ok('...and one that leaves its position is NOT IN POSITION, barberpole', state(s) === 'unknown' && word(s) === 'NOT IN POSITION' && pole(s), [state(s), word(s)]);
+s.talkback = 'BOGUS';
+ok('a talkback word that is not a position of this switch is not drawn', pole(s) && state(s) === 'unknown' && /NOT A POSITION/.test(why(s)), [flagText(s), why(s)]);
+
+// ---- 7. The guard: two independent actions -------------------------------
+s = make({ ...T, set: 'OFF', guard: 'IRREVERSIBLE' });
+s.talkback = 'OFF';
+const btns = () => [...s.querySelectorAll('.ov-switch__pos')];
+const armedWord = () => s.querySelector('.ov-switch__armed');
+ok('⭐ a guarded switch refuses a command until armed', s.command('LAT') === false && s.set === 'OFF' && state(s) === 'agree', [s.set, state(s)]);
+ok('...its positions are disabled, and the guard is drawn over them', btns().every((b) => b.disabled) && cs(s.querySelector('.ov-switch__guard')).display !== 'none', btns().map((b) => b.disabled));
+ok('...and ARMED is not shown while it is safe', cs(armedWord()).display === 'none', cs(armedWord()).display);
+control('CONTROL: an unarmed guarded switch took the command (must fail)', s.set === 'LAT', s.set);
+s.querySelector('ov-hold').dispatchEvent(new CustomEvent('ov:commit', { bubbles: true }));
+ok('the arm is an ov-hold, and only its completed hold arms the switch', s.armed === true && s.hasAttribute('data-ov-armed'), s.armed);
+ok('⭐ the armed state is itself shown, in the dense default', cs(armedWord()).display !== 'none', cs(armedWord()).display);
+control('CONTROL: an armed switch looks safe (must fail)', cs(armedWord()).display === 'none', cs(armedWord()).display);
+ok('...and an armed switch takes the command, into transit', s.command('LAT') === true && state(s) === 'transit', state(s));
+const armR = s.querySelector('ov-hold').getBoundingClientRect();
+const safeR = s.querySelector('.ov-switch__safe').getBoundingClientRect();
+ok('SAFE sits to the right of ARM or beneath it', safeR.left >= armR.right - 1 || safeR.top >= armR.bottom - 1, [armR.right, safeR.left, armR.bottom, safeR.top]);
+s.querySelector('.ov-switch__safe').click();
+ok('⭐ SAFE removes the armed condition, and the next command is refused', !s.armed && !s.hasAttribute('data-ov-armed') && s.command('OFF') === false, s.armed);
+control('CONTROL: still armed after SAFE (must fail)', s.armed, s.armed);
+
+// ---- 8. A flick switch springs back ---------------------------------------
+s = make({ positions: 'REL,OFF,LAT', kind: 'flick', transit: '0.3', label: 'MRL' });
+ok('with nothing set, no handle position is invented', s.getAttribute('data-ov-handle') === 'OFF' || s.getAttribute('data-ov-handle') === '', s.getAttribute('data-ov-handle'));
+s.talkback = 'OFF';
+s.command('LAT');
+ok('⭐ a flick switch rests at OFF after commanding LAT', s.getAttribute('data-ov-handle') === 'OFF' && state(s) === 'transit', [s.getAttribute('data-ov-handle'), state(s)]);
+ok('...so the command is written out, the only copy of it', s.querySelector('.ov-switch__cmd').textContent === 'LAST COMMAND LAT', s.querySelector('.ov-switch__cmd').textContent);
+control('CONTROL: the flick handle stays at LAT (must fail)', s.getAttribute('data-ov-handle') === 'LAT', s.getAttribute('data-ov-handle'));
+s.talkback = 'LAT';
+ok('...and only the talkback shows LAT', flagText(s) === 'LAT' && s.getAttribute('data-ov-handle') === 'OFF' && state(s) === 'agree', [flagText(s), s.getAttribute('data-ov-handle')]);
+
+// ---- 9. A lever, and a click ---------------------------------------------
+s = make({ ...T, kind: 'lever', set: 'OFF' });
+s.talkback = 'OFF';
+s.querySelector('[data-ov-pos="REL"]').click();
+ok('clicking a position commands it', s.set === 'REL' && state(s) === 'transit', [s.set, state(s)]);
+ok('a lever draws its handle at the set position', s.getAttribute('data-ov-handle') === 'REL', s.getAttribute('data-ov-handle'));
+
+// ---- 10. A whole state at once -------------------------------------------
+s = make({ ...T, set: 'OFF' });
+s.reading = { set: 'LAT', talkback: null, commandedAgo: 0.1 };
+ok('⭐ a reading commanded 0.1 s ago is IN TRANSIT', state(s) === 'transit', state(s));
+await wait(400);
+ok('⭐ ...and its age runs on: past the transit it is UNKNOWN', state(s) === 'unknown' && word(s) === 'UNKNOWN', [state(s), word(s)]);
+s.reading = { set: 'LAT', talkback: null, commandedAgo: 5 };
+ok('a reading commanded longer ago than its transit is UNKNOWN at once', state(s) === 'unknown' && word(s) === 'UNKNOWN', [state(s), word(s)]);
+s.reading = { set: 'LAT' };
+ok('a reading with no talkback reads NO TALKBACK, barberpole', word(s) === 'NO TALKBACK' && pole(s), word(s));
+control('CONTROL: a reading with no talkback shows its set position on the flag (must fail)', flagText(s) === 'LAT', flagText(s));
+s.reading = { set: 'LAT', talkback: 'REL', confirmed: true };
+ok('a reading that says LAT was confirmed, now reading REL, is UNCOMMANDED', state(s) === 'uncommanded', state(s));
+s.reading = { set: 'LAT', talkback: 'REL' };
+ok('...and without that history it is DISAGREE, never guessed', state(s) === 'disagree', state(s));
+s = make({ ...T, set: 'OFF', guard: 'IRREVERSIBLE' });
+s.reading = { set: 'OFF', talkback: 'OFF', armed: true };
+ok('a reading can say a guarded switch is armed, and it is shown', s.armed && cs(s.querySelector('.ov-switch__armed')).display !== 'none', s.armed);
+s = make({ ...T });
+s.reading = { set: 'OFF', talkback: 'OFF', armed: true };
+ok('...but cannot arm a switch that has no guard', !s.armed && !s.hasAttribute('data-ov-armed'), s.armed);
+s = make({ ...T, src: 'data:application/json,' + encodeURIComponent(JSON.stringify({ set: 'REL', talkback: 'REL' })) });
+await wait(150);
+ok('src loads a reading', state(s) === 'agree' && flagText(s) === 'REL', [state(s), flagText(s)]);
+
+// ---- 11. The rocker's lamp answers the talkback ---------------------------
+s = make({ kind: 'rocker', positions: 'I,O', lamp: 'I', transit: '0.3', label: 'PUMP' });
+s.reading = { set: 'O', talkback: 'O' };
+ok('a rocker confirmed at O is dark', !s.hasAttribute('data-ov-lit'), s.hasAttribute('data-ov-lit'));
+ok('a rocker draws no rod', cs(s.querySelector('.ov-switch__mech')).display === 'none', cs(s.querySelector('.ov-switch__mech')).display);
+s.reading = { set: 'I', talkback: null, commandedAgo: 0 };
+const darkBg = cs(s.querySelector('[data-ov-pos="O"]')).backgroundColor;
+ok('⭐ pressed to I and still in transit, the lamp is DARK', !s.hasAttribute('data-ov-lit') && state(s) === 'transit', [s.hasAttribute('data-ov-lit'), state(s)]);
+control('CONTROL: the lamp lights on the press (must fail)', s.hasAttribute('data-ov-lit'), s.hasAttribute('data-ov-lit'));
+s.talkback = 'I';
+ok('⭐ ...and lights only when the talkback confirms I, and is drawn lit', s.hasAttribute('data-ov-lit') && cs(s.querySelector('[data-ov-pos="O"]')).backgroundColor !== darkBg, [s.hasAttribute('data-ov-lit'), darkBg]);
+
+// ---- 12. The rod in perspective -------------------------------------------
+s = make({ ...T, set: 'REL' });
+s.talkback = 'REL';
+ok('a rod set to the top position leans up', s.getAttribute('data-ov-lean') === 'up', s.getAttribute('data-ov-lean'));
+s.reading = { set: 'OFF', talkback: 'OFF' };
+ok('...and at the centre it stands end-on', s.getAttribute('data-ov-lean') === 'mid', s.getAttribute('data-ov-lean'));
+s.setAttribute('look', 'triangle');
+const tip = s.querySelector('.ov-switch__tip');
+ok('look="triangle" draws a blade, wider than it is deep', s.getAttribute('data-ov-look') === 'triangle' && parseFloat(cs(tip).width) > parseFloat(cs(tip).height), [s.getAttribute('data-ov-look'), cs(tip).width, cs(tip).height]);
+
+// ---- 13. What the source may not do ---------------------------------------
+const srcText = await (await fetch(new URL(SRC, location.href).href)).text();
+ok('the element never asks for an animation frame', !/requestAnimationFrame/.test(srcText), true);
+ok('...and runs no repeating timer: it re-evaluates once, when a transit runs out', !/setInterval/.test(srcText), true);
+control('CONTROL: the element draws on a frame (must fail)', /requestAnimationFrame/.test(srcText), 'source');
+
+// ---- report ----
+const bad = results.filter((r) => !r.pass);
+const live = controls.filter((x) => x.pass);
+const lines = [];
+for (const r of results) lines.push(`${r.pass ? 'ok  ' : 'FAIL'} ${r.name}${r.pass ? '' : `\n       got: ${JSON.stringify(r.got)}`}`);
+lines.push('');
+for (const x of controls) lines.push(`${x.pass ? 'CONTROL DID NOT FAIL' : 'control failed as required'}  ${x.name}${x.pass ? `\n       got: ${JSON.stringify(x.got)}` : ''}`);
+lines.push('');
+lines.push(`${results.length - bad.length}/${results.length} checks, ${controls.length - live.length}/${controls.length} controls failed as required`);
+const pass = bad.length === 0 && live.length === 0;
+lines.push(pass ? 'GATE: PASS' : 'GATE: FAIL');
+const out = document.getElementById('out');
+out.textContent = lines.join('\n');
+out.dataset.gate = pass ? 'pass' : 'fail';
+</script>

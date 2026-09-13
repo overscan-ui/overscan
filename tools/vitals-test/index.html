@@ -1,0 +1,251 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>ov-vitals harness</title>
+<!-- The refusal gate for the ov-vitals Serve the repo root
+     (tools/serve.py) and open /tools/vitals-test/. The last line must read
+     GATE: PASS, and every CONTROL must fail. ?src=mut/<name>.js runs it
+     against a copy with one refusal broken. -->
+<link rel="stylesheet" href="../../src/tokens.css">
+<link rel="stylesheet" href="../../src/chrome.css">
+<link rel="stylesheet" href="../../src/vitals.css">
+<link rel="stylesheet" href="../../src/avatar.css">
+<style>
+  body { background: #06060a; color: #cfe; font: 13px ui-monospace, monospace; padding: 20px; }
+  pre { white-space: pre-wrap; }
+  #stage { max-inline-size: 640px; }
+</style>
+<div id="stage" data-ov-theme="antiseptic"></div>
+<pre id="out" data-gate="pending">running...</pre>
+<script>
+  const fatal = (what) => {
+    const out = document.getElementById('out');
+    if (out) { out.textContent = `THREW: ${what}\n\nGATE: FAIL`; out.dataset.gate = 'fail'; }
+  };
+  addEventListener('error', (e) => fatal(e.error?.stack || e.message || e));
+  addEventListener('unhandledrejection', (e) => fatal(e.reason?.stack || e.reason));
+</script>
+<script type="module">
+const SRC = new URLSearchParams(location.search).get('src') || '../../src/ov-vitals.js';
+const mod = await import(new URL(SRC, location.href).href);
+await import('../../src/ov-avatar.js');
+const { OvVitals } = mod;
+
+const stage = document.getElementById('stage');
+const results = [], controls = [];
+const ok = (n, c, g) => results.push({ name: n, pass: !!c, got: g });
+const control = (n, c, g) => controls.push({ name: n, pass: !!c, got: g });
+
+let NOW = 1_800_000_000_000;
+OvVitals.now = () => NOW;
+
+const make = (vitals, attrs = {}) => {
+  const el = document.createElement('ov-vitals');
+  for (const [k, v] of Object.entries(attrs)) el.setAttribute(k, v);
+  stage.replaceChildren(el);
+  if (vitals !== undefined) el.vitals = vitals;
+  return el;
+};
+const T = (el, k) => el.report.tiles.find((t) => t.key === k);
+const tileEl = (el, k) => el.querySelector(`[data-ov-param="${k}"]`);
+const cs = (e) => getComputedStyle(e);
+const GOOD = {
+  hr: { value: 72, source: 'ecg', lead: 'II', limits: [50, 120] },
+  spo2: { value: 97, perf: 1.4, limits: [90, 100] },
+  nibp: { sys: 118, dia: 76, mean: 90, ago: 120, mode: 'auto', interval: 900, limits: [90, 160] },
+  rr: { value: 16, source: 'impedance', limits: [8, 30] },
+  temp: { value: 36.8, unit: 'C', site: 'core' },
+};
+const clone = (o) => JSON.parse(JSON.stringify(o));
+let v, t;
+
+// ---- 1. A calm bed ------------------------------------------------------------
+v = make(clone(GOOD));
+ok('a calm bed is ok, every continuous tile live', v.report.status === 'ok' && ['hr', 'spo2', 'rr', 'temp'].every((k) => T(v, k).mark === 'live'), v.report.tiles.map((x) => x.mark));
+ok('...the heart rate names ECG and its lead', T(v, 'hr').label === 'HR' && T(v, 'hr').src === 'ECG II', T(v, 'hr').src);
+ok('...the temperature names its site and unit', T(v, 'temp').src === 'CORE' && T(v, 'temp').unit === '°C', T(v, 'temp'));
+
+// ---- 2. ⭐ A blood pressure is never live -------------------------------------
+t = T(v, 'nibp');
+ok('⭐ a fresh blood pressure is TAKEN, not live, and carries its age', t.mark === 'taken' && t.words === 'TAKEN 2 MIN AGO', [t.mark, t.words]);
+ok('⭐ ...and is drawn in a different form from a live numeric', cs(tileEl(v, 'nibp')).borderInlineStartStyle !== cs(tileEl(v, 'hr')).borderInlineStartStyle
+  && cs(tileEl(v, 'nibp').querySelector('.ov-vitals__num')).color !== cs(tileEl(v, 'hr').querySelector('.ov-vitals__num')).color, cs(tileEl(v, 'nibp')).borderInlineStartStyle);
+control('CONTROL: a blood pressure is drawn live (must fail)', t.mark === 'live', t.mark);
+NOW += 9 * 60_000; v.paint();
+t = T(v, 'nibp');
+ok('⭐ it ages with the clock, with no new reading handed in', t.mark === 'aged' && t.words === 'TAKEN 11 MIN AGO · AGED', t.words);
+NOW += 60 * 60_000; v.paint();
+t = T(v, 'nibp');
+ok('⭐ past an hour its numbers are withdrawn and the age said', t.mark === 'invalid' && t.text === '' && /^NO VALID NBP · LAST TAKEN 1 H 11 MIN AGO/.test(t.words), [t.text, t.words]);
+ok('...and an invalid blood pressure makes no alarm claim', t.alarm === false, t.alarm);
+control('CONTROL: an hour-old blood pressure still shows its numbers (must fail)', /118/.test(tileEl(v, 'nibp').textContent), tileEl(v, 'nibp').textContent);
+NOW = 1_800_000_000_000;
+const noTime = clone(GOOD); delete noTime.nibp.ago;
+v = make(noTime);
+ok('a blood pressure with no time is AGED and says so', T(v, 'nibp').mark === 'aged' && T(v, 'nibp').words === 'TIME OF MEASUREMENT NOT GIVEN', T(v, 'nibp').words);
+const cuff = clone(GOOD); cuff.nibp.measuring = { cuff: 142 };
+v = make(cuff);
+ok('while the cuff inflates, the cuff pressure is named as one', T(v, 'nibp').mark === 'measuring' && T(v, 'nibp').unit === 'mmHg CUFF' && T(v, 'nibp').text === '142', T(v, 'nibp'));
+const high = clone(GOOD); high.nibp.sys = 182;
+v = make(high);
+ok('a taken blood pressure outside its limits alarms, with its age beside it', T(v, 'nibp').alarm && /ALARM: OUTSIDE 90 TO 160 · TAKEN 2 MIN AGO/.test(tileEl(v, 'nibp').textContent), tileEl(v, 'nibp').textContent);
+
+// ---- 3. ⭐ SpO2 that cannot be read -------------------------------------------
+for (const [inop, word] of [['sensor-off', 'SENSOR OFF'], ['no-sensor', 'NO SENSOR'], ['noisy', 'NOISY SIGNAL']]) {
+  const x = clone(GOOD); x.spo2.inop = inop;
+  v = make(x);
+  ok(`⭐ SpO₂ ${inop}: the numeric is -?-, not the last value, and says ${word}`, T(v, 'spo2').text === '-?-' && T(v, 'spo2').words === word && !/97/.test(tileEl(v, 'spo2').textContent), T(v, 'spo2'));
+}
+control('CONTROL: a noisy SpO₂ keeps its number (must fail)', /97/.test(tileEl(v, 'spo2').textContent), tileEl(v, 'spo2').textContent);
+const lowp = clone(GOOD); lowp.spo2.inop = 'low-perf';
+v = make(lowp);
+ok('low perfusion keeps the number with a ? beside it', T(v, 'spo2').mark === 'questionable' && tileEl(v, 'spo2').querySelector('.ov-vitals__q')?.textContent === '?' && T(v, 'spo2').text === '97', T(v, 'spo2'));
+const marg = clone(GOOD); marg.spo2.perf = 0.2;
+v = make(marg);
+ok('perfusion under 0.3 takes the ? with no INOP handed in', T(v, 'spo2').mark === 'questionable' && /MARGINAL/.test(T(v, 'spo2').words), T(v, 'spo2').words);
+ok('a questionable number makes no alarm claim and turns the status to note', !T(v, 'spo2').alarm && v.report.status === 'note', v.report.status);
+
+// ---- 4. ⭐ A heart rate names its source ----------------------------------------
+const nosrc = clone(GOOD); delete nosrc.hr.source;
+v = make(nosrc);
+ok('⭐ a rate with no source is RATE · SOURCE NOT STATED, with a ?', T(v, 'hr').label === 'RATE' && T(v, 'hr').mark === 'questionable' && T(v, 'hr').src === 'SOURCE NOT STATED', T(v, 'hr'));
+ok('...and claims no alarm, even outside the limits it was given', (() => { const y = clone(nosrc); y.hr.value = 170; const e = make(y); return !T(e, 'hr').alarm; })(), null);
+control('CONTROL: a sourceless rate is labelled HR (must fail)', T(make(clone(nosrc)), 'hr').label === 'HR', null);
+const pleth = clone(GOOD); pleth.hr = { value: 74, source: 'pleth', fallback: true, limits: [50, 120] };
+v = make(pleth);
+ok('a pulse from the pleth is PULSE, SpO₂ PLETH', T(v, 'hr').label === 'PULSE' && T(v, 'hr').src === 'SpO₂ PLETH', T(v, 'hr'));
+ok('...standing in for a lost ECG, it says the ECG alarms are off', T(v, 'hr').words === 'ECG UNAVAILABLE · ECG AND ARRHYTHMIA ALARMS OFF' && v.report.status === 'note', [T(v, 'hr').words, v.report.status]);
+pleth.spo2.inop = 'sensor-off';
+v = make(pleth);
+ok('⭐ a pulse from the pleth is -?- while its SpO₂ sensor is off', T(v, 'hr').text === '-?-' && T(v, 'hr').words === 'ITS SOURCE, SpO₂, IS SENSOR OFF', T(v, 'hr'));
+control('CONTROL: the pleth pulse survives its sensor coming off (must fail)', T(v, 'hr').text === '74', T(v, 'hr').text);
+const leads = clone(GOOD); leads.hr.inop = 'leads-off';
+v = make(leads);
+ok('an ECG rate with a lead off is -?-, LEADS OFF', T(v, 'hr').text === '-?-' && T(v, 'hr').words === 'LEADS OFF' && v.report.status === 'bad', T(v, 'hr'));
+const cuffPulse = clone(GOOD); cuffPulse.hr = { value: 190, source: 'nbp', ago: 30, limits: [50, 120] };
+v = make(cuffPulse);
+ok('a pulse from the cuff is taken, not live, and never alarms', T(v, 'hr').mark === 'taken' && !T(v, 'hr').alarm && /NO ALARMS FROM A CUFF PULSE/.test(T(v, 'hr').words), T(v, 'hr'));
+
+// ---- 5. ⭐ A number that stopped arriving --------------------------------------
+v = make(clone(GOOD));
+NOW += 20_000; v.paint();
+ok('⭐ past the stale limit a continuous number is -?-, NO UPDATE', T(v, 'hr').text === '-?-' && T(v, 'hr').words === 'NO UPDATE FOR OVER 15 S' && T(v, 'spo2').text === '-?-', T(v, 'hr'));
+ok('...while the temperature, slower, is still shown at 20 s', T(v, 'temp').mark === 'live', T(v, 'temp').mark);
+control('CONTROL: a heart rate 20 s old still reads live (must fail)', T(v, 'hr').mark === 'live', T(v, 'hr').mark);
+v.vitals = clone(GOOD);
+ok('a fresh hand-over brings them back', T(v, 'hr').mark === 'live', T(v, 'hr').mark);
+NOW = 1_800_000_000_000;
+
+// ---- 6. HR = RR, a temperature with no site --------------------------------------
+const same = clone(GOOD); same.rr.hrEqualsRr = true;
+v = make(same);
+ok('HR = RR is said, with a ?', T(v, 'rr').mark === 'questionable' && T(v, 'rr').words === 'HR = RR · MAY BE COUNTING THE HEART', T(v, 'rr'));
+const nosite = clone(GOOD); delete nosite.temp.site;
+v = make(nosite);
+ok('a temperature with no site takes a ? and says SITE NOT STATED', T(v, 'temp').mark === 'questionable' && T(v, 'temp').src === 'SITE NOT STATED', T(v, 'temp'));
+const nounit = clone(GOOD); delete nounit.temp.unit;
+v = make(nounit);
+ok('...and one with no unit says UNIT NOT STATED', T(v, 'temp').words === 'UNIT NOT STATED', T(v, 'temp').words);
+
+// ---- 7. Limits, alarms off, not measured ----------------------------------------
+const tachy = clone(GOOD); tachy.hr.value = 148;
+v = make(tachy);
+ok('a live rate outside both limits alarms, naming them', T(v, 'hr').alarm && /ALARM: OUTSIDE 50 TO 120/.test(tileEl(v, 'hr').textContent) && v.report.status === 'bad', tileEl(v, 'hr').textContent);
+const one = clone(tachy); one.hr.limits = [50];
+v = make(one);
+ok('one limit is no limits: no alarm claim, NO LIMITS SET', !T(v, 'hr').alarm && /NO LIMITS SET/.test(tileEl(v, 'hr').textContent), T(v, 'hr').alarm);
+const off = clone(tachy); off.hr.alarms = false;
+v = make(off);
+ok('⭐ alarms off is drawn beside the number, and no alarm is claimed', T(v, 'hr').alarmsOff && !T(v, 'hr').alarm && tileEl(v, 'hr').querySelector('.ov-vitals__read .ov-vitals__off') && v.report.status === 'note', [T(v, 'hr').alarm, v.report.status]);
+control('CONTROL: an alarms-off parameter reads ok (must fail)', v.report.status === 'ok', v.report.status);
+const part = clone(GOOD); delete part.temp;
+v = make(part);
+ok('a listed parameter not handed in is NOT MEASURED, not left out', T(v, 'temp').mark === 'absent' && /NOT MEASURED/.test(tileEl(v, 'temp').textContent), T(v, 'temp'));
+v = make(part, { params: 'hr,spo2,nibp,rr' });
+ok('...unless the panel lists only what it measures', !tileEl(v, 'temp') && v.report.status === 'ok', v.report.status);
+v = make(undefined);
+ok('nothing handed in is unknown, says NOTHING HANDED IN, and every tile NOT MEASURED', v.report.status === 'unknown' && /NOTHING HANDED IN/.test(v.textContent) && v.report.tiles.every((x) => x.mark === 'absent'), v.report.status);
+
+// ---- 8. The avatar is told, not asked --------------------------------------------
+const av = document.createElement('ov-avatar');
+av.id = 'who'; av.setAttribute('kind', 'human'); av.setAttribute('name', 'BED 4');
+document.body.append(av);
+v = make(clone(tachy), { avatar: 'who' });
+ok('the vitals write their status to the avatar', av.getAttribute('status') === 'bad' && av.report.status === 'bad', av.getAttribute('status'));
+v.vitals = clone(GOOD);
+ok('...and change it when the vitals change', av.getAttribute('status') === 'ok', av.getAttribute('status'));
+av.remove();
+
+// ---- 8b. ⭐ The trend draws only what was handed in -------------------------------
+NOW = 1_800_000_000_000;
+const pathOf = (el, k) => tileEl(el, k).querySelector('.ov-vitals__line')?.getAttribute('d') || '';
+const moves = (d) => (d.match(/M/g) || []).length;
+v = make(clone(GOOD));
+for (let i = 0; i < 5; i++) { NOW += 1000; v.vitals = clone(GOOD); }
+ok('six hand-overs a second apart draw one unbroken line', moves(pathOf(v, 'hr')) === 1 && (pathOf(v, 'hr').match(/L/g) || []).length === 5, pathOf(v, 'hr'));
+ok('...inside a limit band, drawn because both limits are set', !!tileEl(v, 'hr').querySelector('.ov-vitals__band'), null);
+NOW += 40_000; v.vitals = clone(GOOD);
+ok('⭐ a 40 s silence breaks the line: two runs, not one', moves(pathOf(v, 'hr')) === 2, pathOf(v, 'hr'));
+control('CONTROL: the trend is joined across the silence (must fail)', moves(pathOf(v, 'hr')) === 1, pathOf(v, 'hr'));
+NOW += 60_000; v.paint();
+const lastX = Number(pathOf(v, 'hr').match(/([\d.]+) [\d.]+(?:h\.1)?$/)[1]);
+ok('⭐ the line ends at the last reading, short of now', lastX < 119, lastX);
+const probeOff = clone(GOOD); probeOff.spo2.inop = 'sensor-off';
+v.vitals = probeOff;
+NOW += 1000; v.vitals = clone(GOOD);
+NOW += 1000; v.vitals = clone(GOOD);
+ok('⭐ a sensor-off reading is a gap in the SpO₂ trend, not a value', /^M.*M[^M]*$/.test(pathOf(v, 'spo2')) && v._hist.spo2.some((e) => e.v === null), pathOf(v, 'spo2').slice(-40));
+const swap = clone(GOOD); swap.hr = { value: 74, source: 'pleth', fallback: true, limits: [50, 120] };
+NOW += 1000; v.vitals = swap;
+NOW += 1000; v.vitals = swap;
+ok('the heart-rate trend breaks where its source changes from ECG to pleth', moves(pathOf(v, 'hr')) >= 3, pathOf(v, 'hr').slice(-60));
+const noLim = clone(GOOD); delete noLim.rr.limits;
+v = make(noLim);
+ok('no limits, no band', !tileEl(v, 'rr').querySelector('.ov-vitals__band'), null);
+
+NOW = 1_800_000_000_000;
+const bp1 = clone(GOOD); bp1.nibp = { sys: 130, dia: 80, mean: 97, ago: 600, mode: 'auto', interval: 300 };
+v = make(bp1);
+NOW += 300_000;
+const bp2 = clone(GOOD); bp2.nibp = { sys: 124, dia: 78, ago: 0, mode: 'auto', interval: 300 };
+v.vitals = bp2;
+NOW += 5000;
+bp2.nibp.ago = 5; v.vitals = bp2;
+const bars = tileEl(v, 'nibp').querySelectorAll('.ov-vitals__bar');
+ok('⭐ two cuff readings are two separate bars, the same reading handed in twice is one', bars.length === 2, bars.length);
+ok('⭐ ...and no line joins them', !tileEl(v, 'nibp').querySelector('.ov-vitals__line'), null);
+control('CONTROL: blood pressures are joined by a line (must fail)', !!tileEl(v, 'nibp').querySelector('.ov-vitals__line'), null);
+const seeded = clone(GOOD); seeded.hr.trend = [[300, 70], [240, 71], [180, null], [120, 74], [60, 75]];
+v = make(seeded);
+ok('history handed in as trend is drawn, and its null is a gap', moves(pathOf(v, 'hr')) === 2, pathOf(v, 'hr'));
+ok('the trend window is said', /TRENDS: LAST 30 MIN, AS HANDED IN/.test(v.textContent), null);
+NOW = 1_800_000_000_000;
+
+// ---- 9. Mockups, events, the source ------------------------------------------------
+v = make(clone(GOOD), { demo: '' });
+ok('a demonstration panel says so on its face, not as an aside', /DEMONSTRATION VALUES · NOT A PATIENT/.test(v.textContent) && cs(v.querySelector('.ov-vitals__demo')).display !== 'none', null);
+v = make(clone(GOOD));
+const seen = [];
+v.addEventListener('ov:vitals', (e) => seen.push(`${e.detail.previous}>${e.detail.status}`));
+v.vitals = clone(tachy);
+v.vitals = clone(GOOD);
+ok('ov:vitals fires on each change of status', seen.join(',') === 'ok>bad,bad>ok', seen);
+ok('the source line is drawn in the dense default', cs(tileEl(v, 'hr').querySelector('.ov-vitals__src')).display !== 'none', null);
+const srcText = await (await fetch(new URL(SRC, location.href).href)).text();
+ok('the element never asks for an animation frame or repeats a timer', !/requestAnimationFrame|setInterval/.test(srcText), true);
+control('CONTROL: the element draws on a frame (must fail)', /requestAnimationFrame/.test(srcText), 'source');
+
+// ---- report ----
+const bad = results.filter((r) => !r.pass);
+const live = controls.filter((x) => x.pass);
+const lines = [];
+for (const r of results) lines.push(`${r.pass ? 'ok  ' : 'FAIL'} ${r.name}${r.pass ? '' : `\n       got: ${JSON.stringify(r.got)}`}`);
+lines.push('');
+for (const x of controls) lines.push(`${x.pass ? 'CONTROL DID NOT FAIL' : 'control failed as required'}  ${x.name}${x.pass ? `\n       got: ${JSON.stringify(x.got)}` : ''}`);
+lines.push('');
+lines.push(`${results.length - bad.length}/${results.length} checks, ${controls.length - live.length}/${controls.length} controls failed as required`);
+const pass = bad.length === 0 && live.length === 0;
+lines.push(pass ? 'GATE: PASS' : 'GATE: FAIL');
+const out = document.getElementById('out');
+out.textContent = lines.join('\n');
+out.dataset.gate = pass ? 'pass' : 'fail';
+</script>

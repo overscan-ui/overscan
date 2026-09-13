@@ -1,0 +1,193 @@
+@layer overscan {
+/* The name-and-rules row is `.ov-head` in chrome.css: one source, not six
+   copies. This element keeps it because its declared rule - the vote, the
+   thresholds - really is the first thing to say about it. */
+
+/* A redundant set that shows its vote. See ov-quorum.js for the refusal.
+ * PROTOTYPE.
+ *
+ * 🔴 NO MEMBERSHIP RESTS ON COLOUR. Every state is a word the element writes,
+ * and its box differs in form: IN SET solid, OUT-VOTED dashed, DECLARED FAILED
+ * double, FROZEN / STALE / NO DATA / NO VOTE dotted, REMOVED struck through.
+ * Channels in the plot are told apart by DASH, keyed in each row, not by hue.
+ * Glow scales with the theme's --ov-bloom, so a flat theme stays flat.
+ */
+
+ov-quorum {
+  --ov-q-glow: calc(var(--ov-bloom, .2) * 10px);
+  display: grid;
+  gap: 8px;
+  min-inline-size: 0;
+  font-family: var(--ov-font-mono);
+  font-size: var(--ov-size-1, 10px);
+  color: var(--ov-ink);
+}
+
+
+/* ---- the output: the vote, never a bare number ------------------------ */
+
+.ov-quorum__value {
+  font-size: calc(var(--ov-size-2, 12px) * 2.2);
+  letter-spacing: .06em;
+  font-variant-numeric: tabular-nums;
+  text-shadow: 0 0 var(--ov-q-glow) currentColor;
+}
+.ov-quorum__unit { color: var(--ov-faint); }
+.ov-quorum__tag,
+.ov-quorum__why { grid-column: 1 / -1; letter-spacing: .1em; overflow-wrap: anywhere; }
+.ov-quorum__tag:empty,
+.ov-quorum__why:empty,
+.ov-quorum__foot:empty { display: none; }
+ov-quorum:not([data-ov-state="voted"], [data-ov-state="single"]) .ov-quorum__value { font-size: calc(var(--ov-size-2, 12px) * 1.5); letter-spacing: .14em; }
+
+/* ---- the scale: who agrees with whom, and by how much ----------------
+ * One line across the value range, the tolerance band shaded around the vote,
+ * and every channel a labelled marker at its own value. A disagreement is a
+ * DISTANCE, visible without reading a number. Markers are HTML placed by
+ * percentage: SVG text under preserveAspectRatio="none" would stretch.
+ */
+
+.ov-quorum__scale {
+  position: relative;
+  block-size: 80px;              /* fixed: a wide tile must not grow tall */
+  margin-block: 2px 4px;
+  font-variant-numeric: tabular-nums;
+  border-block-end: var(--ov-rule, 1px) solid var(--ov-line);
+}
+.ov-quorum__scale[hidden] { display: none; }
+.ov-quorum__axis {
+  position: absolute;
+  inset-inline: 0;
+  inset-block-start: 20px;
+  border-block-start: var(--ov-rule, 1px) solid var(--ov-line);
+}
+/* The band the vote is allowed to disagree within. */
+.ov-quorum__zone {
+  position: absolute;
+  inset-block-start: 12px;
+  block-size: 17px;
+  background: color-mix(in srgb, var(--ov-accent) 16%, transparent);
+  border-inline: var(--ov-rule, 1px) dashed color-mix(in srgb, var(--ov-accent) 55%, transparent);
+}
+.ov-quorum__tick {
+  position: absolute;
+  inset-block-start: 8px;
+  block-size: 25px;
+  border-inline-start: 3px solid var(--ov-accent);
+  box-shadow: 0 0 var(--ov-q-glow) var(--ov-accent);
+}
+.ov-quorum__votelabel {
+  position: absolute;
+  inset-block-start: 0;
+  transform: translateX(-50%);
+  color: var(--ov-accent);
+  letter-spacing: .14em;
+  text-shadow: 0 0 var(--ov-q-glow) currentColor;
+}
+.ov-quorum__tolabel {
+  position: absolute;
+  inset-block-start: 10px;
+  margin-inline-start: 4px;
+  color: color-mix(in srgb, var(--ov-accent) 75%, var(--ov-faint));
+  letter-spacing: .1em;
+}
+.ov-quorum__mark {
+  position: absolute;
+  transform: translateX(-50%);
+  padding: 1px 4px 0;
+  white-space: nowrap;
+  color: var(--ov-accent);
+  background: color-mix(in srgb, var(--ov-field) 88%, transparent);
+  border-block-start: 2px solid currentColor;
+}
+.ov-quorum__mark b { font-weight: normal; letter-spacing: .12em; color: var(--ov-ink); }
+/* A leader from the axis down to the label, so a marker on the third row is
+   still traceable to its own place on the line. */
+.ov-quorum__mark::before {
+  content: '';
+  position: absolute;
+  inset-inline-start: 50%;
+  inset-block-end: 100%;
+  border-inline-start: var(--ov-rule, 1px) dashed currentColor;
+  opacity: .7;
+}
+.ov-quorum__mark[data-row="0"]::before { block-size: 6px; }
+.ov-quorum__mark[data-row="1"]::before { block-size: 21px; }
+.ov-quorum__mark[data-row="2"]::before { block-size: 36px; }
+.ov-quorum__mark[data-row="3"]::before { block-size: 51px; }
+.ov-quorum__mark[data-row="0"] { inset-block-start: 26px; }
+.ov-quorum__mark[data-row="1"] { inset-block-start: 41px; }
+.ov-quorum__mark[data-row="2"] { inset-block-start: 56px; }
+.ov-quorum__mark[data-row="3"] { inset-block-start: 71px; }
+.ov-quorum__mark:not([data-ov-member="in"]) { color: var(--ov-alarm); }
+.ov-quorum__mark[data-ov-member="frozen"] { border-block-start-style: dashed; }
+.ov-quorum__mark:is([data-ov-member="stale"], [data-ov-member="none"], [data-ov-member="unvoted"]) { border-block-start-style: dotted; }
+.ov-quorum__mark[data-ov-member="failed"] { border-block-start: 3px double currentColor; }
+.ov-quorum__end { position: absolute; inset-block-start: 4px; color: var(--ov-faint); }
+.ov-quorum__end--lo { inset-inline-start: 0; }
+.ov-quorum__end--hi { inset-inline-end: 0; }
+
+/* Each channel's own last minute, on its own row, on the SAME scale, with a
+   faint line at the vote to read it against. */
+.ov-quorum__spark { inline-size: 72px; block-size: 16px; overflow: visible; align-self: center; }
+.ov-quorum__sparkref { stroke: var(--ov-faint); stroke-width: 1; stroke-dasharray: 2 3; vector-effect: non-scaling-stroke; }
+.ov-quorum__spark path {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.2;
+  vector-effect: non-scaling-stroke;
+  stroke-dasharray: var(--ov-q-dash, none);
+}
+
+/* Channel dashes, the same in each row's key and its trend. */
+.ov-quorum__chan[data-i="1"] { --ov-q-dash: 7 3; }
+.ov-quorum__chan[data-i="2"] { --ov-q-dash: 2 3; }
+.ov-quorum__chan[data-i="3"] { --ov-q-dash: 9 3 2 3; }
+
+/* ---- the channels ------------------------------------------------------ */
+
+.ov-quorum__chans { display: grid; gap: 6px; margin: 0; padding: 0; list-style: none; }
+.ov-quorum__chan {
+  display: grid;
+  grid-template-columns: 24px minmax(6ch, auto) minmax(5ch, auto) auto minmax(0, 1fr) 60px;
+  align-items: baseline;
+  column-gap: 1.2ch;
+  row-gap: 1px;
+  color: var(--ov-accent);
+}
+.ov-quorum__chan:not([data-ov-member="in"]) { color: var(--ov-alarm); }
+.ov-quorum__chan[data-ov-member="removed"] { color: var(--ov-faint); }
+.ov-quorum__key { inline-size: 24px; block-size: 6px; overflow: visible; }
+.ov-quorum__key line { stroke: currentColor; stroke-width: 2; stroke-dasharray: var(--ov-q-dash, none); }
+.ov-quorum__name { color: var(--ov-ink); letter-spacing: .12em; }
+.ov-quorum__cval { font-variant-numeric: tabular-nums; text-align: end; }
+.ov-quorum__chan[data-ov-member="removed"] :is(.ov-quorum__name, .ov-quorum__cval) { text-decoration: line-through; color: var(--ov-faint); }
+.ov-quorum__word { padding: 0 5px; border: var(--ov-rule, 1px) solid currentColor; letter-spacing: .12em; white-space: nowrap; }
+.ov-quorum__chan[data-ov-member="out"] .ov-quorum__word { border-style: dashed; }
+.ov-quorum__chan[data-ov-member="failed"] .ov-quorum__word { border: 3px double currentColor; }
+.ov-quorum__chan:is([data-ov-member="frozen"], [data-ov-member="stale"], [data-ov-member="none"], [data-ov-member="unvoted"]) .ov-quorum__word { border-style: dotted; }
+.ov-quorum__pips { letter-spacing: .15em; white-space: nowrap; }
+.ov-quorum__cwhy { grid-column: 2 / -1; color: var(--ov-faint); line-height: 1.35; overflow-wrap: anywhere; }
+.ov-quorum__chan:not([data-ov-member="in"], [data-ov-member="removed"]) .ov-quorum__cwhy { color: var(--ov-alarm); }
+
+.ov-quorum__foot { color: var(--ov-alarm); letter-spacing: .08em; }
+.ov-quorum__say {
+  position: absolute;
+  inline-size: 1px;
+  block-size: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+/* Narrow: the why drops under the name, the pips under the word. */
+@container (max-width: 360px) {
+  /* Three columns here, so the trend needs an explicit place: left to wrap it
+     landed under the row's words and drew its reference line through them. */
+  .ov-quorum__chan { grid-template-columns: 24px minmax(0, 1fr) 72px; }
+  .ov-quorum__word { grid-column: 2 / 3; justify-self: start; }
+  .ov-quorum__pips { grid-column: 2 / 3; }
+  .ov-quorum__cwhy { grid-column: 2 / 3; }
+  .ov-quorum__spark { grid-column: 3; grid-row: 1 / span 4; align-self: center; }
+}
+}

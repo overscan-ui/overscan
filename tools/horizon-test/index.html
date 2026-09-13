@@ -1,0 +1,75 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>ov-horizon failure tests</title>
+<!-- Over tools/serve.py: /tools/horizon-test/ . The last case is a CONTROL that must fail. -->
+<link rel="stylesheet" href="../../src/tokens.css">
+<link rel="stylesheet" href="../../src/finish.css">
+<link rel="stylesheet" href="../../src/horizon.css">
+<style>
+  body { margin: 0; background: #08080a; color: #ccc; font: 12px ui-monospace, monospace; }
+  .row { display: flex; flex-wrap: wrap; gap: 18px; padding: 16px 24px; }
+  .row > div { inline-size: 300px; }
+  .cap { color: #888; margin-block-end: 6px; }
+  #tests { white-space: pre; color: #9f9; padding: 16px 24px; }
+  #tests.fail { color: #f77; }
+</style>
+<section class="ov ov-finish row" data-ov-theme="holo" id="live"><div><div class="cap">scripted flight (drops attitude 12-16 s, speed 20-23 s, sides disagree 28-32 s)</div><ov-horizon source="doc-air" max-age="2"></ov-horizon></div></section>
+<section class="ov ov-finish row" data-ov-theme="vector" id="fixed"></section>
+<div id="tests">running…</div>
+<script type="module">
+  import '../../src/ov-source.js';
+  import '../../src/ov-horizon.js';
+  await customElements.whenDefined('ov-horizon');
+  // A deterministic flight: gentle S-turns and a climb, with scripted failures.
+  window.Overscan.source('doc-air', (t) => {
+    const k = t % 36;
+    const pitch = 4 + 3 * Math.sin(t / 3), roll = 22 * Math.sin(t / 4);
+    return {
+      pitch: k >= 12 && k < 16 ? null : pitch,
+      roll: k >= 12 && k < 16 ? null : roll,
+      speed: k >= 20 && k < 23 ? null : 240 + 12 * Math.sin(t / 5),
+      altitude: 8200 + 900 * Math.sin(t / 9), vs: 1200 * Math.cos(t / 9) / 9 * 6,
+      age: 0.2,
+      cross: k >= 28 && k < 32 ? { pitch: pitch + 8, roll } : { pitch, roll },
+    };
+  }, { hz: 20 });
+
+  const host = document.getElementById('fixed');
+  const mk = (cap, air, attrs = {}) => {
+    const d = document.createElement('div'); d.innerHTML = `<div class="cap">${cap}</div>`;
+    const el = document.createElement('ov-horizon'); el.setAttribute('max-age', attrs['max-age'] ?? '2');
+    d.append(el); host.append(d); el.air = air; return el;
+  };
+  const good = { pitch: 5, roll: -15, speed: 250, altitude: 9000, vs: 800, age: 0.1, cross: { pitch: 5, roll: -15 } };
+  const ok = mk('all valid', good);
+  const noAtt = mk('attitude lost', { ...good, pitch: null });
+  const old = mk('attitude 6 s old', { ...good, age: 6 });
+  const noSpd = mk('speed source failed', { ...good, speed: null });
+  const chk = mk('sides disagree by 7°', { ...good, cross: { pitch: 12, roll: -15 } });
+  const near = mk('sides differ by 3°', { ...good, cross: { pitch: 8, roll: -15 } });
+  const noVs = mk('vertical speed failed', { ...good, vs: null });
+  const has = (el, sel) => !!el.querySelector(sel);
+  const flags = (el) => [...el.querySelectorAll('.ov-horizon__flag')].map((f) => f.textContent);
+  const cases = [
+    ['valid data draws the horizon and both tapes', () => has(ok, '.ov-horizon__line') && flags(ok).length === 0],
+    ['lost attitude blanks the sphere behind ATT, no horizon', () => !has(noAtt, '.ov-horizon__line') && flags(noAtt).includes('ATT')],
+    ['stale data is NOT frozen: every instrument flags', () => !has(old, '.ov-horizon__line') && ['ATT', 'SPD', 'ALT'].every((f) => flags(old).includes(f))],
+    ['a failed speed source withdraws the WHOLE tape', () => flags(noSpd).includes('SPD') && noSpd.querySelectorAll('.ov-horizon__value').length === 1],
+    ['sides that disagree past the limit say CHECK ATT', () => has(chk, '.ov-horizon__check') && chk.getAttribute('data-ov-qualified') === 'disputed'],
+    ['sides within the limit do not', () => !has(near, '.ov-horizon__check')],
+    ['no trend arrow from a dead rate source', () => has(ok, '.ov-horizon__trend') && !has(noVs, '.ov-horizon__trend')],
+    ['the readout says what is flagged', () => noAtt.querySelector('.ov-horizon__readout').textContent.includes('attitude flagged')],
+    ['CONTROL: a false claim is caught', () => has(noAtt, '.ov-horizon__line')],
+  ];
+  let bad = 0;
+  const out = cases.map(([name, fn]) => {
+    let r = false; try { r = !!fn(); } catch (e) { r = false; }
+    const control = name.startsWith('CONTROL'); const pass = control ? !r : r;
+    if (!pass) bad += 1;
+    return `${pass ? 'ok  ' : 'FAIL'} ${name}${control ? ' (must fail)' : ''}`;
+  });
+  const el = document.getElementById('tests');
+  el.textContent = `${cases.length - bad} of ${cases.length} pass\n` + out.join('\n');
+  el.classList.toggle('fail', bad > 0);
+  window.hzResults = { total: cases.length, bad, out };
+</script>

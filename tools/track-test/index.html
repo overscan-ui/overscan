@@ -1,0 +1,150 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>ov-track harness</title>
+<!-- The refusal gate for src/ov-track.js. Serve the repo root
+     (python3 tools/serve.py) and open tools/track-test/. The last line must
+     read GATE: PASS, and every CONTROL (an assertion false on purpose) must
+     fail. -->
+<link rel="stylesheet" href="../../src/tokens.css">
+<link rel="stylesheet" href="../../src/track.css">
+<style>
+  body { background: #06060a; color: #cfe; font: 13px ui-monospace, monospace; padding: 20px; }
+  pre { white-space: pre-wrap; }
+</style>
+<div id="stage" data-ov-theme="aegis"></div>
+<pre id="out">running...</pre>
+<script type="module">
+import { resolveTrack, trackSymbol, trackWords } from '../../src/ov-track.js';
+
+const stage = document.getElementById('stage');
+const results = [];
+const ok = (name, cond, got) => results.push({ name, pass: !!cond, got });
+const controls = [];
+const control = (name, cond, got) => controls.push({ name, pass: !!cond, got });
+
+const fresh = (attrs = {}) => {
+  const el = document.createElement('ov-track');
+  for (const [k, v] of Object.entries(attrs)) el.setAttribute(k, v);
+  stage.replaceChildren(el);
+  return el;
+};
+const sym = (el) => el.querySelector('.ov-track__sym');
+const frame = (el) => el.querySelector('.ov-track__frame');
+const tag = (el) => el.querySelector('.ov-track__tag').textContent;
+const dashed = (el) => getComputedStyle(frame(el)).strokeDasharray !== 'none';
+// Which bands of the frame the clip keeps, as [y0, y1] in symbol units.
+// Read from the clip, not from getBoundingClientRect(), which ignores
+// clip-path on SVG and would report the whole frame for every dimension.
+const bands = (el) => [...el.querySelectorAll('clipPath rect')].map((r) => {
+  const y = Number(r.getAttribute('y'));
+  return [y, y + Number(r.getAttribute('height'))];
+});
+let el, r;
+
+// 1. THE REFUSAL: no identity is pending, never friend or hostile.
+el = fresh({ dimension: 'surface' });
+ok('no identity is pending', el.report.identity === 'pending', el.report);
+ok('...drawn in the unknown family (quatrefoil)', sym(el).getAttribute('data-ov-family') === 'unknown', sym(el).getAttribute('data-ov-family'));
+ok('...with a dashed frame', dashed(el), getComputedStyle(frame(el)).strokeDasharray);
+ok('...and says PENDING', /^PENDING/.test(tag(el)), tag(el));
+control('CONTROL: no identity drawn as friend (must fail)', sym(el).getAttribute('data-ov-family') === 'friend', sym(el).getAttribute('data-ov-family'));
+
+// 2. An identity it does not know is pending too, and the report says what it got.
+el = fresh({ identity: 'friendly', dimension: 'air' });
+ok('"friendly" is not friend', el.report.identity === 'pending', el.report.identity);
+ok('...and is named as not an identity', el.report.unrecognised === 'friendly' && /"friendly" NOT AN IDENTITY/.test(tag(el)), tag(el));
+el = fresh({ identity: 'pending', dimension: 'air' });
+ok('an explicit pending is not flagged unrecognised', el.report.unrecognised === null, el.report.unrecognised);
+
+// 3. A hedged identity is never rounded up.
+el = fresh({ identity: 'assumed-friend', dimension: 'surface' });
+ok('assumed friend is the friend frame', sym(el).getAttribute('data-ov-family') === 'friend', sym(el).getAttribute('data-ov-family'));
+ok('...DASHED', dashed(el), getComputedStyle(frame(el)).strokeDasharray);
+ok('...and says ASSUMED FRIEND', /^ASSUMED FRIEND/.test(tag(el)), tag(el));
+el = fresh({ identity: 'friend', dimension: 'surface' });
+ok('a confirmed friend is solid', !dashed(el), getComputedStyle(frame(el)).strokeDasharray);
+el = fresh({ identity: 'suspect', dimension: 'surface' });
+ok('suspect is the hostile frame, dashed', sym(el).getAttribute('data-ov-family') === 'hostile' && dashed(el), tag(el));
+control('CONTROL: suspect drawn solid (must fail)', !dashed(el), getComputedStyle(frame(el)).strokeDasharray);
+
+// 4. Every identity reads differently by shape+dash alone, and again in words.
+const ids = ['pending', 'unknown', 'assumed-friend', 'friend', 'neutral', 'suspect', 'hostile'];
+const looks = new Set(), words = new Set();
+for (const id of ids) {
+  el = fresh({ identity: id, dimension: 'surface' });
+  looks.add(sym(el).getAttribute('data-ov-family') + (dashed(el) ? '/dashed' : '/solid'));
+  words.add(tag(el).split(' · ')[0]);
+}
+ok('seven identities, seven shape+dash combinations', looks.size === 7, [...looks]);
+ok('...and seven words', words.size === 7, [...words]);
+
+// 5. The dimension is which half is drawn; unreported is a gap, not surface.
+el = fresh({ identity: 'friend', dimension: 'air' });
+let b = bands(el);
+ok('air keeps only the band above the waterline', b.length === 1 && b[0][1] <= 0, b);
+el = fresh({ identity: 'friend', dimension: 'subsurface' });
+b = bands(el);
+ok('subsurface keeps only the band below it', b.length === 1 && b[0][0] >= 0, b);
+el = fresh({ identity: 'friend', dimension: 'surface' });
+b = bands(el);
+ok('surface keeps the whole frame', b.length === 1 && b[0][0] <= -10 && b[0][1] >= 10, b);
+el = fresh({ identity: 'friend' });
+ok('no dimension is marked unreported', sym(el).hasAttribute('data-ov-dim-unreported'), sym(el).outerHTML.slice(0, 120));
+ok('...and clips out the waterline band, both halves kept', el.querySelectorAll('clipPath rect').length === 2, el.querySelectorAll('clipPath rect').length);
+ok('...and says DIMENSION NOT REPORTED', /DIMENSION NOT REPORTED/.test(tag(el)), tag(el));
+control('CONTROL: no dimension drawn as surface, one band (must fail)', el.querySelectorAll('clipPath rect').length === 1, el.querySelectorAll('clipPath rect').length);
+
+// 6. The leader points along the course, and never by default.
+el = fresh({ identity: 'hostile', dimension: 'air', course: '90', speed: '300' });
+let ln = el.querySelector('.ov-track__leader');
+ok('course 90 points east', Number(ln.getAttribute('x2')) > 10 && Math.abs(Number(ln.getAttribute('y2'))) < 0.01, ln.outerHTML);
+el = fresh({ identity: 'hostile', dimension: 'air', course: '0', speed: '300' });
+ln = el.querySelector('.ov-track__leader');
+ok('course 0 points north (up)', Number(ln.getAttribute('y2')) < -10 && Math.abs(Number(ln.getAttribute('x2'))) < 0.01, ln.outerHTML);
+el = fresh({ identity: 'hostile', dimension: 'air', speed: '300' });
+ok('no course, no leader', !el.querySelector('.ov-track__leader'), el.innerHTML.slice(0, 80));
+ok('...and says NO COURSE', /NO COURSE/.test(tag(el)), tag(el));
+el = fresh({ identity: 'hostile', dimension: 'air', course: '45' });
+ok('no speed, no leader, NO SPEED', !el.querySelector('.ov-track__leader') && /NO SPEED/.test(tag(el)), tag(el));
+el = fresh({ identity: 'hostile', dimension: 'air', course: '45', speed: '0' });
+ok('speed 0 is STATIONARY, not missing', !el.querySelector('.ov-track__leader') && /STATIONARY/.test(tag(el)) && !/NO SPEED/.test(tag(el)), tag(el));
+
+// 7. A leader past speed-max is capped AND marked.
+el = fresh({ identity: 'friend', dimension: 'surface', course: '90', speed: '900', 'speed-max': '600' });
+ok('over speed-max carries the crossbar', !!el.querySelector('.ov-track__over'), el.innerHTML.slice(0, 200));
+el = fresh({ identity: 'friend', dimension: 'surface', course: '90', speed: '300', 'speed-max': '600' });
+ok('under speed-max has none', !el.querySelector('.ov-track__over'), '');
+const len = (s) => { const l = fresh({ identity: 'friend', dimension: 'surface', course: '90', speed: s }).querySelector('.ov-track__leader'); return Number(l.getAttribute('x2')); };
+ok('a faster track has a longer leader', len('500') > len('100'), [len('100'), len('500')]);
+
+// 8. Accessible name: identity and everything the symbol says or refused.
+el = fresh({ identity: 'assumed-friend', label: 'TN 4012' });
+ok('role img', el.getAttribute('role') === 'img', el.getAttribute('role'));
+ok('name carries label, hedge and the gap', /tn 4012, assumed friend, dimension not reported, no vector/.test(el.getAttribute('aria-label')), el.getAttribute('aria-label'));
+
+// 9. Attribute changes re-render.
+el = fresh({ identity: 'friend', dimension: 'surface' });
+el.setAttribute('identity', 'hostile');
+ok('changing identity redraws', sym(el).getAttribute('data-ov-family') === 'hostile', sym(el).getAttribute('data-ov-family'));
+
+// 10. The pure function agrees with the element, for ov-radar's sake.
+r = resolveTrack({ identity: 'SUSPECT', dimension: 'Subsurface', course: 370, speed: 12 });
+ok('resolveTrack normalises case and course', r.identity === 'suspect' && r.dimension === 'subsurface' && r.course === 10, r);
+ok('trackSymbol emits the same family', /data-ov-family="hostile"/.test(trackSymbol(r)), trackSymbol(r).slice(0, 100));
+ok('trackWords leads with the identity', trackWords(r)[0] === 'SUSPECT', trackWords(r));
+
+const passed = results.filter((x) => x.pass).length;
+const failed = results.length - passed;
+const controlsFailed = controls.filter((x) => !x.pass).length;
+const gate = failed === 0 && controlsFailed === controls.length && controls.length > 0;
+const lines = [
+  ...results.map((x) => `${x.pass ? 'PASS' : 'FAIL'}  ${x.name}${x.pass ? '' : '  got ' + JSON.stringify(x.got)}`),
+  ...controls.map((x) => `${x.pass ? 'CONTROL PASSED (BAD)' : 'CONTROL FAILED (good)'}  ${x.name}`),
+  '',
+  `${passed} passed, ${failed} failed, ${controlsFailed}/${controls.length} controls failed as required`,
+  `GATE: ${gate ? 'PASS' : 'FAIL'}`,
+];
+const out = document.getElementById('out');
+out.textContent = lines.join('\n');
+out.setAttribute('data-gate', gate ? 'pass' : 'fail');
+</script>

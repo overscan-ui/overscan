@@ -1,0 +1,290 @@
+@layer overscan {
+/* A level checked against the flows that should move it. See ov-balance.js
+ * for the refusal. PROTOTYPE.
+ *
+ * 🔴 NOTHING HERE RESTS ON COLOUR. The verdict is a sentence the element
+ * writes. The vessel says the same thing in FORM: the part of it no
+ * transmitter can see is hatched and stays hatched; the measured level is a
+ * solid edge, the level the flows expect is a dashed one, and the residual is
+ * the gap between them, drawn as a distance you can see without reading a
+ * number. A stream with no rate is dotted and says NO RATE.
+ */
+
+ov-balance {
+  --ov-b-glow: calc(var(--ov-bloom, .2) * 10px);
+  display: grid;
+  gap: 8px;
+  min-inline-size: 0;
+  font-family: var(--ov-font-mono);
+  font-size: var(--ov-size-1, 10px);
+  color: var(--ov-ink);
+}
+
+
+/* ---- the verdict ------------------------------------------------------
+ * The word is the loud thing, and the residual under it is the evidence, in
+ * both currencies. A number on its own would be the thing the sources warn
+ * about: a figure the reader completes with an explanation of their own.
+ */
+
+
+/* ⚠️ NO HEAD BAR HERE. Six elements opened with the same name-and-rules row and
+   the set read as a template rather than as instruments; `.ov-head` in
+   chrome.css is that row for the elements it genuinely suits. This one has a
+   loud readout of its own, so the NAME sits inside it and the declared rules
+   go underneath, where they are a footnote to the reading rather than a
+   heading above it. */
+.ov-balance__label {
+  grid-column: 1 / -1;
+  font-size: var(--ov-size-1, 10px);
+  letter-spacing: .18em;
+  text-transform: uppercase;
+  opacity: .75;
+}
+.ov-balance__rulebox {
+  color: var(--ov-faint);
+  letter-spacing: .08em;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+.ov-balance__word {
+  font-size: calc(var(--ov-size-2, 12px) * 1.5);
+  letter-spacing: .1em;
+  text-shadow: 0 0 var(--ov-b-glow) currentColor;
+}
+.ov-balance__why { color: var(--ov-ink); letter-spacing: .06em; line-height: 1.45; overflow-wrap: anywhere; }
+.ov-balance__why:empty { display: none; }
+
+ov-balance[data-ov-state="disputed"] .ov-balance__why { color: var(--ov-alarm); }
+
+/* ---- the vessel and the two sums -------------------------------------- */
+
+.ov-balance__body {
+  display: grid;
+  grid-template-columns: minmax(120px, 34%) 1fr;
+  gap: 12px;
+  align-items: stretch;
+}
+
+.ov-balance__vessel { display: grid; grid-template-rows: 1fr auto; gap: 5px; min-inline-size: 0; }
+.ov-balance__shell {
+  position: relative;
+  min-block-size: 190px;
+  border: var(--ov-rule, 1px) solid var(--ov-line-strong);
+  border-block-start-width: 2px;
+  background: var(--ov-field);
+  overflow: hidden;
+}
+.ov-balance__shell[data-ov-undeclared] {
+  background: repeating-linear-gradient(135deg,
+    color-mix(in srgb, var(--ov-alarm) 25%, transparent) 0 1px, transparent 1px 5px);
+}
+
+/* 🔴 THE PART NOBODY CAN MEASURE. Hatched always, not only when the reading
+   pegs: a display that draws only the span invites the reader to believe the
+   span is the vessel. This is the Texas City tower's 158 feet. */
+.ov-balance__unmeasured {
+  position: absolute;
+  inset-inline: 0;
+  background: repeating-linear-gradient(45deg,
+    color-mix(in srgb, var(--ov-dim) 55%, transparent) 0 1px, transparent 1px 5px);
+  border-block: var(--ov-rule, 1px) dashed color-mix(in srgb, var(--ov-dim) 70%, transparent);
+}
+/* The band the transmitter actually reads: the only part of the vessel whose
+   contents this element is entitled to state. */
+.ov-balance__span {
+  position: absolute;
+  inset-inline: 0;
+  border-block: var(--ov-rule, 1px) solid color-mix(in srgb, var(--ov-accent) 60%, transparent);
+  background: color-mix(in srgb, var(--ov-accent) 5%, transparent);
+}
+/* Liquid, not a bar. Denser toward the floor, with a bright surface and a
+   meniscus pulled up at the walls - the shape a fluid actually takes in a
+   vessel, which a flat block does not. */
+.ov-balance__fill {
+  position: absolute;
+  inset-inline: 0;
+  bottom: 0;
+  background:
+    linear-gradient(to top,
+      color-mix(in srgb, var(--ov-accent) 55%, transparent) 0%,
+      color-mix(in srgb, var(--ov-accent) 34%, transparent) 70%,
+      color-mix(in srgb, var(--ov-accent) 26%, transparent) 100%);
+  border-block-start: 2px solid var(--ov-accent);
+}
+/* The meniscus: the surface rides a little higher where it meets the walls. */
+.ov-balance__fill::before {
+  content: "";
+  position: absolute;
+  inset-inline: 0;
+  inset-block-start: -3px;
+  block-size: 5px;
+  background: radial-gradient(120% 150% at 50% 120%,
+    transparent 60%, color-mix(in srgb, var(--ov-accent) 75%, transparent) 100%);
+  pointer-events: none;
+}
+
+/* 🔴 THE SURFACE MOVES ONLY WHILE THE LEVEL DOES. A tank that shimmers for
+   ever says "liquid"; one that goes dead still the moment the reading stops
+   changing says "this gauge has stopped", which is the fault this element is
+   for. The animation is attached to a state the element measures, so the
+   stillness is a reading rather than a default. */
+.ov-balance__fill::after {
+  content: "";
+  position: absolute;
+  inset-inline: -20%;
+  inset-block-start: -2px;
+  block-size: 3px;
+  background: linear-gradient(90deg,
+    transparent 0%, color-mix(in srgb, var(--ov-accent) 90%, transparent) 35%,
+    color-mix(in srgb, var(--ov-accent) 90%, transparent) 65%, transparent 100%);
+  opacity: 0;
+  pointer-events: none;
+}
+ov-balance[data-ov-moving] .ov-balance__fill::after {
+  opacity: .85;
+  animation: ov-balance-swell 2.6s linear infinite;
+}
+@keyframes ov-balance-swell {
+  from { transform: translateX(-18%); }
+  to { transform: translateX(18%); }
+}
+/* ⚠️ And it is motion, so it goes when motion is unwelcome. The fill, the
+   meniscus and every reading stay exactly as they were. */
+@media (prefers-reduced-motion: reduce) {
+  ov-balance[data-ov-moving] .ov-balance__fill::after { animation: none; }
+}
+/* The residual, as a distance: the gap between what the level says and what
+   the flows say should be there. */
+.ov-balance__gap {
+  position: absolute;
+  inset-inline: 0;
+  background: repeating-linear-gradient(90deg,
+    color-mix(in srgb, var(--ov-alarm) 45%, transparent) 0 1px, transparent 1px 4px);
+}
+.ov-balance__gap[hidden] { display: none; }
+
+/* Each mark IS its line: the box is zero-height and carries the rule on its
+   top edge, so the line sits exactly at the level it names. The two labels
+   hang off OPPOSITE edges, because the whole point of the element is the case
+   where the two levels are close enough to collide. */
+.ov-balance__mark {
+  position: absolute;
+  inset-inline: 0;
+  block-size: 0;
+  border-block-start: 2px solid var(--ov-accent);
+  pointer-events: none;
+}
+.ov-balance__mark[hidden] { display: none; }
+.ov-balance__mark b {
+  position: absolute;
+  inset-block-start: 0;
+  padding: 0 3px;
+  max-inline-size: 100%;
+  box-sizing: border-box;
+  font-size: 8px;
+  font-weight: normal;
+  letter-spacing: .08em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  background: color-mix(in srgb, var(--ov-case, #000) 82%, transparent);
+  color: var(--ov-accent);
+  font-variant-numeric: tabular-nums;
+}
+.ov-balance__mark--level b { inset-inline-start: 0; }
+.ov-balance__mark--exp b { inset-inline-end: 0; }
+/* Clear of the floor and the roof, so a label is never half outside. */
+.ov-balance__mark[data-ov-place="on"] b { translate: 0 -50%; }
+.ov-balance__mark[data-ov-place="above"] b { translate: 0 -100%; }
+.ov-balance__mark[data-ov-place="below"] b { translate: 0 0; }
+/* The level the FLOWS expect is dashed, never solid: it is computed, not read. */
+.ov-balance__mark--exp { border-block-start-style: dashed; border-block-start-color: var(--ov-alarm); }
+.ov-balance__mark--exp b { color: var(--ov-alarm); }
+/* Pinned at the shell: the flows put the contents above the vessel itself. */
+.ov-balance__mark--exp[data-ov-pinned] { border-block-start-width: 3px; }
+.ov-balance__mark--exp[data-ov-pinned] b { border: var(--ov-rule, 1px) solid var(--ov-alarm); }
+/* A reading outside the span is not a measurement of the contents. */
+.ov-balance__mark--level[data-ov-outside] { border-block-start-style: dotted; }
+.ov-balance__mark--level[data-ov-outside] b { color: var(--ov-alarm); }
+
+.ov-balance__spanlabel {
+  color: var(--ov-faint);
+  font-size: 8px;
+  letter-spacing: .08em;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+/* The two sums, side by side, because the whole element is the claim that
+   they should be the same number. */
+.ov-balance__sums { margin: 0; display: grid; align-content: start; gap: 7px; min-inline-size: 0; }
+.ov-balance__sums > div {
+  display: grid;
+  gap: 1px;
+  padding-inline-start: 7px;
+  border-inline-start: 3px solid var(--ov-line);
+}
+.ov-balance__sums dt { color: var(--ov-faint); letter-spacing: .14em; }
+.ov-balance__sums dd {
+  margin: 0;
+  font-size: var(--ov-size-2, 12px);
+  letter-spacing: .04em;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+.ov-balance__sums > div:nth-child(1) { border-inline-start-color: var(--ov-accent); }
+/* Computed, so its rule is dashed, matching its mark on the vessel. */
+.ov-balance__sums > div:nth-child(2) { border-inline-start-style: dashed; border-inline-start-color: var(--ov-alarm); }
+.ov-balance__frommeters[data-ov-above] { color: var(--ov-alarm); }
+.ov-balance__residual[data-ov-over] { color: var(--ov-alarm); }
+.ov-balance__sums > div:nth-child(3):has([data-ov-over]) { border-inline-start-color: var(--ov-alarm); }
+
+/* ---- the streams ------------------------------------------------------ */
+
+.ov-balance__streams { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }
+.ov-balance__streams[hidden] { display: none; }
+.ov-balance__stream {
+  display: grid;
+  grid-template-columns: 1.5ch 3.5ch 1fr auto minmax(0, 12ch);
+  align-items: baseline;
+  gap: 1ch;
+  padding: 2px 5px;
+  border-inline-start: 3px solid var(--ov-line);
+  font-variant-numeric: tabular-nums;
+}
+.ov-balance__stream[data-ov-dir="out"] .ov-balance__arrow { rotate: 180deg; display: inline-block; }
+.ov-balance__dir { color: var(--ov-faint); letter-spacing: .1em; }
+.ov-balance__sid { letter-spacing: .08em; overflow-wrap: anywhere; }
+.ov-balance__sword { letter-spacing: .1em; text-align: end; }
+.ov-balance__stream[data-ov-status="reading"] { border-inline-start-color: var(--ov-accent); }
+/* 🔴 A meter with no rate is not a rate of zero, and never looks like one. */
+.ov-balance__stream:is([data-ov-status="unknown"], [data-ov-status="failed"]) {
+  border-inline-start-style: dotted;
+  border-inline-start-color: var(--ov-alarm);
+  color: var(--ov-alarm);
+}
+
+.ov-balance__foot { color: var(--ov-alarm); letter-spacing: .08em; overflow-wrap: anywhere; }
+.ov-balance__foot:empty { display: none; }
+
+/* Live region: heard, never seen. */
+.ov-balance__say {
+  position: absolute;
+  inline-size: 1px;
+  block-size: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+/* Narrow: the vessel goes full width above the sums rather than squeezing to
+   a sliver, and the stream rows stack their words. */
+@container (max-width: 400px) {
+  .ov-balance__body { grid-template-columns: 1fr; }
+  .ov-balance__shell { min-block-size: 150px; }
+  .ov-balance__stream { grid-template-columns: 1.5ch 3.5ch 1fr; }
+  .ov-balance__rate, .ov-balance__sword { grid-column: 3; text-align: start; }
+  .ov-balance__word { font-size: var(--ov-size-2, 12px); }
+}
+}

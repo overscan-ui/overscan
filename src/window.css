@@ -1,0 +1,112 @@
+/* ---- CASCADE LAYER ------------------------------------------------------
+ *
+ * Everything the kit ships sits in ONE layer named `overscan`, so a consumer's
+ * own CSS beats it without a specificity fight and without !important. That is
+ * close to mandatory for a distributed kit: an app should be able to restyle a
+ * panel by writing a plain rule.
+ *
+ * ⚠️ ONE layer, deliberately, NOT a sub-layer per file. Sub-layers look tidier
+ * and would silently reorder the kit against itself: layer order beats
+ * specificity, so a high-specificity rule in an early file that currently wins
+ * would start losing to a low-specificity rule in a later one. A single layer
+ * preserves source order exactly, so nothing inside the kit changes.
+ *
+ * Unlayered author CSS wins over all of it. That is the point.
+ */
+
+@layer overscan {
+/* Windows. The chrome is the kit's own, because two libraries cannot both own
+ * the window and the one to keep is the one whose job is invisible. */
+
+.ov-desk {
+  position: relative;
+  block-size: 100%;
+  min-block-size: 0;
+  overflow: hidden;
+}
+
+ov-window {
+  position: absolute;
+  inset-block-start: 0;
+  inset-inline-start: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--ov-panel);
+  border: var(--ov-bezel) solid var(--ov-line-strong);
+  color: var(--ov-ink);
+  font-family: var(--ov-font-mono);
+  font-size: var(--ov-size-2);
+
+  /* A clip is a cut, so the interior reserves the corner it removes. */
+  clip-path: polygon(
+    0 0, 100% 0,
+    100% calc(100% - var(--ov-corner)),
+    calc(100% - var(--ov-corner)) 100%,
+    0 100%);
+}
+
+.ov-window__bar {
+  flex: 0 0 auto;
+  padding: 6px 10px;
+  background: var(--ov-raised);
+  border-block-end: var(--ov-rule) solid var(--ov-line-strong);
+  color: var(--ov-dim);
+  font-size: var(--ov-size-1);
+  letter-spacing: calc(var(--ov-track) + 1px);
+  text-transform: uppercase;
+  cursor: grab;
+  user-select: none;
+}
+
+.ov-window__bar:focus-visible {
+  outline: 2px solid var(--ov-accent);
+  outline-offset: -2px;
+  color: var(--ov-accent);
+}
+
+.ov-window__body {
+  flex: 1 1 auto;
+  min-block-size: 0;
+  padding: var(--ov-pad);
+  padding-inline-end: calc(var(--ov-pad) + var(--ov-corner));
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--ov-gap);
+}
+
+.ov-window__grip {
+  position: absolute;
+  inset-block-end: 0;
+  inset-inline-end: 0;
+  inline-size: 16px;
+  block-size: 16px;
+  cursor: nwse-resize;
+  background: linear-gradient(
+    135deg, transparent 0 46%, var(--ov-line-strong) 46% 54%, transparent 54%);
+}
+
+/* ---- snap guides -------------------------------------------------------- */
+
+/* 🔴 A snap moves the window somewhere other than where you dragged it, which
+ * by this kit's own standard is an invention unless it is visible. The guide
+ * is that visibility: it shows the line the window caught, for as long as it
+ * is caught on it. See ov-window.js. */
+.ov-snapguide {
+  position: absolute;
+  z-index: 9;
+  display: none;
+  pointer-events: none;
+  background: var(--ov-accent);
+  opacity: 0.55;
+}
+
+.ov-snapguide--x { inset-block: 0; inline-size: 1px; inset-inline-start: 0; }
+.ov-snapguide--y { inset-inline: 0; block-size: 1px; inset-block-start: 0; }
+
+/* The window says what it caught, so it is inspectable and styleable rather
+ * than only visible for the instant of the drag. */
+ov-window[data-ov-snapped] > .ov-window__bar {
+  border-block-end-color: var(--ov-accent);
+}
+}

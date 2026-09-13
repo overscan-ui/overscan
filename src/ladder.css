@@ -1,0 +1,70 @@
+/* ---- CASCADE LAYER ------------------------------------------------------
+ *
+ * Everything the kit ships sits in ONE layer named `overscan`, so a consumer's
+ * own CSS beats it without a specificity fight and without !important. That is
+ * close to mandatory for a distributed kit: an app should be able to restyle a
+ * panel by writing a plain rule.
+ *
+ * ⚠️ ONE layer, deliberately, NOT a sub-layer per file. Sub-layers look tidier
+ * and would silently reorder the kit against itself: layer order beats
+ * specificity, so a high-specificity rule in an early file that currently wins
+ * would start losing to a low-specificity rule in a later one. A single layer
+ * preserves source order exactly, so nothing inside the kit changes.
+ *
+ * Unlayered author CSS wins over all of it. That is the point.
+ */
+
+@layer overscan {
+/* The receiver chain, rung by rung, and no data until the last. */
+
+ov-ladder {
+  display: grid;
+  gap: 8px;
+  max-inline-size: 460px;
+  padding: 10px 12px;
+  font-family: var(--ov-font-mono);
+  font-size: var(--ov-size-1);
+  letter-spacing: 0.8px;
+  color: var(--ov-dim);
+  background: var(--ov-field);
+  border: var(--ov-bezel) solid var(--ov-line-strong);
+}
+.ov-ladder__head { color: var(--ov-accent-2); letter-spacing: 1.2px; text-transform: uppercase; }
+.ov-ladder__head.is-data { color: var(--ov-accent); }
+.ov-ladder__rungs { list-style: none; margin: 0; padding: 0; display: grid; }
+.ov-ladder__rung {
+  position: relative; display: grid; grid-template-columns: 14px 13ch minmax(0, 1fr); gap: 2px 10px;
+  align-items: center; padding: 4px 0 4px 0;
+}
+/* The spine: lit only down to the last rung of an unbroken lock. */
+.ov-ladder__rung::before {
+  content: ''; position: absolute; inset-inline-start: 6px; inset-block: 0; inline-size: 2px;
+  background: var(--ov-line);
+}
+.ov-ladder__rung.is-chain::before { background: var(--ov-accent); }
+.ov-ladder__rung:first-child::before { inset-block-start: 50%; }
+.ov-ladder__rung:last-child::before { inset-block-end: 50%; }
+.ov-ladder__mark {
+  position: relative; z-index: 1; inline-size: 12px; block-size: 12px; box-sizing: border-box;
+  border: 1.5px solid var(--ov-line-strong); background: var(--ov-field); border-radius: 50%;
+}
+.ov-ladder__name { color: var(--ov-ink); text-transform: uppercase; letter-spacing: 1px; }
+.ov-ladder__state { letter-spacing: 1.2px; }
+.ov-ladder__why { grid-column: 2 / -1; color: var(--ov-faint); }
+.ov-ladder__rung.is-locked .ov-ladder__mark { background: var(--ov-accent); border-color: var(--ov-accent); }
+.ov-ladder__rung.is-locked .ov-ladder__state { color: var(--ov-accent); }
+.ov-ladder__rung.is-acquiring .ov-ladder__mark { border-color: var(--ov-accent-2); border-style: dashed; }
+.ov-ladder__rung.is-acquiring .ov-ladder__state { color: var(--ov-accent-2); }
+.ov-ladder__rung.is-off .ov-ladder__name, .ov-ladder__rung.is-noreport .ov-ladder__name { color: var(--ov-dim); }
+.ov-ladder__rung.is-noreport .ov-ladder__mark { border-style: dotted; }
+.ov-ladder__rung.is-held .ov-ladder__mark { border-color: var(--ov-alarm); }
+.ov-ladder__rung.is-held .ov-ladder__state { color: var(--ov-alarm); }
+@media (prefers-reduced-motion: no-preference) {
+  .ov-ladder__rung.is-acquiring .ov-ladder__mark { animation: ov-ladder-seek 1.2s steps(2) infinite; }
+}
+@keyframes ov-ladder-seek { 50% { border-color: var(--ov-line-strong); } }
+.ov-ladder__void {
+  display: grid; place-items: center; min-block-size: 70px;
+  color: var(--ov-alarm); text-transform: uppercase; border: 1px dashed var(--ov-line-strong);
+}
+}

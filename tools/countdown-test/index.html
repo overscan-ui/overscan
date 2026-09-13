@@ -1,0 +1,241 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>ov-countdown harness</title>
+<!-- The refusal gate for src/ov-countdown.js. Serve the repo root
+     (python3 tools/serve.py) and open tools/countdown-test/. Time is driven
+     by hand, so it runs in well under a second; the last line must read
+     GATE: PASS, and every CONTROL (an assertion false on purpose) must fail. -->
+<link rel="stylesheet" href="../../src/tokens.css">
+<link rel="stylesheet" href="../../src/countdown.css">
+<style>
+  body { background: #06060a; color: #cfe; font: 13px ui-monospace, monospace; padding: 20px; }
+  pre { white-space: pre-wrap; }
+</style>
+<div id="stage" data-ov-theme="industrial"></div>
+<pre id="out">running...</pre>
+<script type="module">
+import { OvCountdown } from '../../src/ov-countdown.js';
+
+const stage = document.getElementById('stage');
+const results = [];
+const ok = (name, cond, got) => results.push({ name, pass: !!cond, got });
+// A control is an assertion that is FALSE on purpose. The gate passes only if
+// every control fails, which proves the harness can report a failure at all.
+const controls = [];
+const control = (name, cond, got) => controls.push({ name, pass: !!cond, got });
+
+// Time is driven by hand. T is the LOCAL monotonic clock the holdover is
+// measured on; clock values handed to the element are SOURCE time.
+let T = 1000;
+OvCountdown.monotonic = () => T;
+const advance = (ms, el) => { T += ms; if (el) el.render(); };
+
+const TARGET = 100000;   // source-time T-0
+const fresh = (attrs = {}) => {
+  const el = document.createElement('ov-countdown');
+  el.setAttribute('target', String(TARGET));
+  for (const [k, v] of Object.entries(attrs)) el.setAttribute(k, v);
+  stage.replaceChildren(el);
+  return el;
+};
+const read = (el) => el.querySelector('.ov-countdown__sign').textContent
+  + el.querySelector('.ov-countdown__time').textContent;
+const tag = (el) => el.querySelector('.ov-countdown__tag').textContent;
+const note = (el) => el.querySelector('.ov-countdown__note').textContent;
+const st = (el) => el.getAttribute('data-ov-state');
+
+// Poll for a condition instead of sleeping a fixed time: sources tick on
+// animation frames, which run late on a busy machine, and a fixed wait raced
+// them (different wrong values run to run).
+const until = async (cond, ms = 3000) => { const t0 = performance.now(); while (!cond() && performance.now() - t0 < ms) await new Promise((r) => setTimeout(r, 25)); };
+let el, r;
+
+// 1. Nothing has arrived: a refusal, never a number and never blank.
+el = fresh();
+ok('no clock yet is unknown', st(el) === 'unknown', st(el));
+ok('...drawn as dashes', read(el) === 'T --:--:--', read(el));
+ok('...marked with the protocol reason', el.getAttribute('data-ov-refusal') === 'unknown',
+  el.getAttribute('data-ov-refusal'));
+ok('...tagged NO CLOCK', tag(el) === 'NO CLOCK', tag(el));
+ok('its accessible name has no digits', !/\d/.test(el.getAttribute('aria-label')), el.getAttribute('aria-label'));
+
+// 2. A heartbeat: live, and the number is the source's.
+el.clock = 40000;
+ok('a heartbeat makes it live', st(el) === 'live', st(el));
+ok('it reads target minus source time', read(el) === 'T-00:01:00', read(el));
+ok('the note shows the sync age', note(el) === 'SYNC 0.0s', note(el));
+ok('role is timer', el.getAttribute('role') === 'timer', el.getAttribute('role'));
+
+// 3. Between heartbeats it interpolates, inside the holdover only.
+el = fresh({ holdover: '2' });
+el.clock = 40000;
+advance(1500, el);
+ok('inside the holdover it advances locally', read(el) === 'T-00:00:59', read(el));
+ok('...and says how old its sync is', note(el) === 'SYNC 1.5s', note(el));
+
+// 4. THE REFUSAL: silence past the holdover stops the count.
+advance(600, el);   // 2.1 s since the sync
+ok('silence past the holdover is lost', st(el) === 'lost', st(el));
+ok('...drawn as dashes, not the last value', read(el) === 'T --:--:--', read(el));
+ok('...tagged LOST', tag(el) === 'LOST', tag(el));
+ok('the last synced value is stated, labelled', note(el) === 'LAST SYNC T-00:01:00', note(el));
+ok('the accessible name says it was lost', /clock source lost/.test(el.getAttribute('aria-label')),
+  el.getAttribute('aria-label'));
+advance(5000, el);
+control('CONTROL: five seconds on, it has counted on to T-00:00:53 (must fail)',
+  read(el) === 'T-00:00:53', read(el));
+ok('a lost clock does not tick', el._raf === 0, el._raf);
+
+// 5. An explicit null is lost AT ONCE: no holdover past a dropout.
+el = fresh({ holdover: '5' });
+el.clock = 40000;
+el.clock = null;
+ok('null is lost immediately', st(el) === 'lost', st(el));
+ok('...even with holdover to spare', read(el) === 'T --:--:--', read(el));
+
+// 6. A heartbeat after a loss brings it back, and restarts the tick.
+el.clock = 45000;
+ok('a heartbeat after a loss is live again', st(el) === 'live' && read(el) === 'T-00:00:55', read(el));
+ok('...and the tick loop is running again', el._raf !== 0, el._raf);
+
+// 7. A stuck clock: the same time again is not a heartbeat.
+el = fresh({ holdover: '1' });
+el.clock = 40000;
+for (let i = 0; i < 5; i++) { advance(400); el.clock = 40000; }
+el.render();
+ok('a source repeating one time goes lost', st(el) === 'lost', st(el));
+control('CONTROL: the stuck clock still reads live (must fail)', st(el) === 'live', st(el));
+
+// 8. The holdover is capped: a page cannot declare an hour of dead reckoning.
+el = fresh({ holdover: '3600' });
+el.clock = 40000;
+r = el.report;
+ok('holdover is clamped to ten seconds', r.holdover === 10 && r.holdoverClamped === true, r);
+advance(10500, el);
+ok('...and runs out at ten', st(el) === 'lost', st(el));
+
+// 9. A hold freezes the count and T-0 moves by exactly its length.
+el = fresh({ holdover: '2' });
+el.clock = 40000;
+el.setAttribute('holding', '');
+ok('holding shows the frozen number', st(el) === 'holding' && read(el) === 'T-00:01:00', read(el));
+ok('...tagged HOLD', tag(el) === 'HOLD', tag(el));
+advance(1000); el.clock = 70000;   // thirty seconds of source time pass
+ok('the source moving does not move a held count', read(el) === 'T-00:01:00', read(el));
+el.removeAttribute('holding');
+ok('release resumes from the held value', st(el) === 'live' && read(el) === 'T-00:01:00', read(el));
+ok('...having moved T-0 by the hold', el.report.shift === 30000, el.report.shift);
+advance(1000); el.clock = 71000;
+ok('...and then counts on', read(el) === 'T-00:00:59', read(el));
+
+// 10. A hold is a fact even when the clock goes away underneath it.
+el = fresh({ holdover: '1' });
+el.clock = 40000;
+el.setAttribute('holding', '');
+advance(5000, el);
+ok('a hold over a lost clock keeps its number', st(el) === 'holding' && read(el) === 'T-00:01:00', read(el));
+ok('...and says the clock is lost', note(el) === 'CLOCK LOST' && el.getAttribute('data-ov-clock') === 'lost', note(el));
+
+// 11. A release while lost cannot be timed, so it refuses until a sync.
+el.removeAttribute('holding');
+ok('release while lost is lost, not a guess', st(el) === 'lost' && read(el) === 'T --:--:--', read(el));
+ok('...and says untimedRelease', el.report.untimedRelease === true, el.report);
+el.clock = 90000;
+ok('the next sync resumes at the held value', st(el) === 'live' && read(el) === 'T-00:01:00', read(el));
+
+// 12. Rounding: down-count rounds up, so zero arrives at zero.
+el = fresh();
+el.clock = TARGET - 200;
+ok('0.2 s left reads T-00:00:01', read(el) === 'T-00:00:01', read(el));
+el.clock = TARGET;
+ok('zero reads T+00:00:00', read(el) === 'T+00:00:00', read(el));
+el.clock = TARGET + 1500;
+ok('past zero counts up and rounds down', read(el) === 'T+00:00:01' && el.hasAttribute('data-ov-past'), read(el));
+el.clock = TARGET - 150 * 3600 * 1000;
+ok('hours widen past 99 rather than wrapping', read(el) === 'T-150:00:00', read(el));
+
+// 13. Tenths.
+el = fresh({ places: '1' });
+el.clock = 40000 - 250;
+ok('places=1 draws tenths', read(el) === 'T-00:01:00.3', read(el));
+el.clock = null;
+ok('...and its dashes keep the same shape', read(el) === 'T --:--:--.-', read(el));
+
+// 14. The kit's {value, age} reading: an old heartbeat has less holdover left.
+el = fresh({ holdover: '1' });
+el.clock = { value: 40000, age: 0.6 };
+ok('age is taken as sync age', Math.abs(el.report.syncAge - 0.6) < 1e-9, el.report.syncAge);
+advance(500, el);
+ok('...so it runs out 0.6 s sooner', st(el) === 'lost', st(el));
+
+// 15. A sync that disagrees with the interpolation is taken and the step reported.
+el = fresh({ holdover: '2' });
+el.clock = 40000;
+advance(1000); el.clock = 40700;
+ok('the step is reported, not smoothed', Math.abs(el.report.lastStep - (-300)) < 1e-9, el.report.lastStep);
+ok('...and the readout takes the source', el.report.remaining === 59300, el.report.remaining);
+
+// 16. No target: nothing to count to.
+el = fresh({ target: 'not a time' });
+el.clock = 40000;
+ok('an unparseable target is a refusal', read(el) === 'T --:--:--' && tag(el) === 'NO TARGET', tag(el));
+ok('...and the report says so', el.report.targetInvalid === true, el.report);
+
+// 17. Every stop reads differently in words.
+const tags = {};
+el = fresh(); tags.unknown = tag(el);
+el.clock = 40000; tags.live = tag(el) || '(none)';
+el.setAttribute('holding', ''); tags.holding = tag(el);
+el.removeAttribute('holding'); el.clock = null; tags.lost = tag(el);
+ok('live, holding, lost and unknown carry distinct tags', new Set(Object.values(tags)).size === 4, tags);
+
+// 18. ov:clock fires on transitions, once each.
+el = fresh({ holdover: '1' });
+const seen = [];
+el.addEventListener('ov:clock', (e) => seen.push(`${e.detail.previous}>${e.detail.state}`));
+el.clock = 40000;
+advance(100, el); advance(100, el);
+advance(1000, el);
+ok('ov:clock reports unknown>live>lost and nothing between', seen.join(',') === 'unknown>live,live>lost', seen);
+
+// 19. A property set before upgrade is not lost.
+const el2 = document.createElement('ov-countdown');
+el2.setAttribute('target', String(TARGET));
+Object.defineProperty(el2, 'clock', { value: 40000, writable: true, configurable: true });
+stage.replaceChildren(el2);
+ok('an own `clock` set before connect is reclaimed', read(el2) === 'T-00:01:00', read(el2));
+
+// 19b. The attribute door, as for every readout.
+el = fresh({ holdover: '1', clock: '40000' });
+ok('a clock attribute is a heartbeat', st(el) === 'live' && read(el) === 'T-00:01:00', read(el));
+advance(600); el.setAttribute('clock', '40000');
+advance(600, el);
+ok('re-writing the same time is not a second heartbeat', st(el) === 'lost', st(el));
+el.setAttribute('clock', '');
+ok('an empty clock attribute is a dropout, not zero', st(el) === 'lost', st(el));
+el = fresh({ clock: '2026-09-11T00:00:00Z', target: '2026-09-11T00:01:00Z' });
+ok('ISO times on both attributes', read(el) === 'T-00:01:00', read(el));
+
+// 20. A named source drives it like any other readout.
+T = performance.now();
+OvCountdown.monotonic = () => performance.now();
+Overscan.source('mission', (t) => 40000 + t * 1000, { hz: 10 });
+el = fresh({ source: 'mission' });
+await until(() => st(el) === 'live');
+ok('source= makes it live', st(el) === 'live', st(el));
+
+const passed = results.filter((x) => x.pass).length;
+const failed = results.length - passed;
+const controlsFailed = controls.filter((x) => !x.pass).length;
+const gate = failed === 0 && controlsFailed === controls.length && controls.length > 0;
+const lines = [
+  ...results.map((x) => `${x.pass ? 'PASS' : 'FAIL'}  ${x.name}${x.pass ? '' : '  got ' + JSON.stringify(x.got)}`),
+  ...controls.map((x) => `${x.pass ? 'CONTROL PASSED (BAD)' : 'CONTROL FAILED (good)'}  ${x.name}`),
+  '',
+  `${passed} passed, ${failed} failed, ${controlsFailed}/${controls.length} controls failed as required`,
+  `GATE: ${gate ? 'PASS' : 'FAIL'}`,
+];
+const out = document.getElementById('out');
+out.textContent = lines.join('\n');
+out.setAttribute('data-gate', gate ? 'pass' : 'fail');
+</script>

@@ -1,0 +1,5 @@
+[2J[H[32mウェイク・アップ[0m  wake up
+[32mマトリックス[0m      the matrix
+café is five code points and four cells
+[2mｦｱｳｴｵｶｷｸｹｺ[0m halfwidth
+[6;1Hfollow the [1mwhite rabbit[0m

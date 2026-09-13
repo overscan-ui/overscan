@@ -1,0 +1,119 @@
+@layer overscan {
+/* The allocator. See ov-allocator.js for the refusal.
+ *
+ * 🔴 FILLED MEANS CONFIRMED, AND ONLY THAT. A pip the operator asked for and
+ * the system has not confirmed is HOLLOW; one the capacity cannot fund is
+ * HATCHED; a damaged unit in the pool is CROSSED. No state is colour alone:
+ * each pip kind is a different shape, and each row says its state in words.
+ */
+
+ov-allocator {
+  --ov-allocator-pip: 12px;
+  --ov-allocator-label-w: 9ch;
+  display: grid;
+  gap: 8px;
+  inline-size: max-content;
+  max-inline-size: 100%;
+  font-family: var(--ov-font-mono);
+  font-size: 11px;
+  letter-spacing: .06em;
+  color: var(--ov-ink);
+}
+
+.ov-allocator__supply { display: grid; gap: 4px; }
+.ov-allocator__sum { color: var(--ov-faint); font-size: 10px; letter-spacing: .1em; }
+ov-allocator[data-ov-unfunded="true"] .ov-allocator__sum { color: var(--ov-alarm); }
+
+.ov-allocator__pool,
+.ov-allocator__pips { display: flex; flex-wrap: wrap; gap: 3px; }
+
+.ov-allocator__rows { display: grid; gap: 4px; }
+.ov-allocator__row {
+  display: grid;
+  /* max-content, and packed to the start: with `auto` tracks the grid
+   * spread its spare width into the − and + buttons, which stretched across
+   * the row with the pips stranded between them. */
+  /* The pips column is the WIDEST consumer's, set by the element as
+   * --ov-allocator-maxpips, so − pips + line up down the rows; and a
+   * trailing 1fr takes the state text, which spanned the button columns and
+   * pushed a row's − sideways whenever its state read long. */
+  grid-template-columns: var(--ov-allocator-label-w) max-content
+    calc(var(--ov-allocator-maxpips, 4) * (var(--ov-allocator-pip) + 3px) - 3px) max-content 1fr;
+  grid-template-areas: "label minus pips plus ." ". state state state state" ". why why why why";
+  align-items: center;
+  column-gap: 6px;
+  row-gap: 2px;
+  padding: 5px 8px;
+  border: var(--ov-rule, 1px) solid var(--ov-line);
+  background: var(--ov-panel);
+}
+.ov-allocator__label { grid-area: label; letter-spacing: .1em; white-space: nowrap; overflow: hidden; }
+.ov-allocator__minus { grid-area: minus; }
+.ov-allocator__pips { grid-area: pips; }
+.ov-allocator__plus { grid-area: plus; }
+.ov-allocator__state { grid-area: state; color: var(--ov-faint); font-size: 10px; letter-spacing: .08em; }
+.ov-allocator__why { grid-area: why; color: var(--ov-faint); font-size: 9.5px; }
+.ov-allocator__why:empty { display: none; }
+
+.ov-allocator__minus,
+.ov-allocator__plus {
+  min-inline-size: 0;
+  padding: 0 7px;
+  font-size: 12px;
+  line-height: 1.5;
+}
+.ov-allocator__minus[aria-disabled="true"],
+.ov-allocator__plus[aria-disabled="true"] { color: var(--ov-faint); cursor: not-allowed; }
+
+/* ---- pips: one shape per meaning ------------------------------------ */
+.ov-allocator__pip {
+  inline-size: var(--ov-allocator-pip);
+  block-size: var(--ov-allocator-pip);
+  box-sizing: border-box;
+  border: 1px solid var(--ov-line-strong);
+  background: transparent;
+}
+/* Confirmed by readback: filled. */
+.ov-allocator__pip--confirmed { background: var(--ov-accent); border-color: var(--ov-accent); }
+/* Commanded, not confirmed: hollow, heavy edge. */
+.ov-allocator__pip--commanded { border: 2px solid var(--ov-accent); }
+/* Still delivered after the command came down: filled, struck through. */
+.ov-allocator__pip--releasing {
+  background: linear-gradient(135deg, transparent 45%, var(--ov-field) 45% 55%, transparent 55%),
+    color-mix(in srgb, var(--ov-accent) 55%, transparent);
+  border-color: var(--ov-accent);
+}
+/* Commanded past what the capacity can fund: hatched, alarm. */
+.ov-allocator__pip--unfunded {
+  border: 1px dashed var(--ov-alarm);
+  background: repeating-linear-gradient(135deg,
+    color-mix(in srgb, var(--ov-alarm) 40%, transparent) 0 2px, transparent 2px 4px);
+}
+/* Damaged capacity (pool only): crossed. */
+.ov-allocator__pip--damaged {
+  border-color: var(--ov-alarm);
+  background:
+    linear-gradient(45deg, transparent 44%, var(--ov-alarm) 44% 56%, transparent 56%),
+    linear-gradient(-45deg, transparent 44%, var(--ov-alarm) 44% 56%, transparent 56%);
+}
+.ov-allocator__pip--free { border-style: dotted; }
+
+/* ---- row states ----------------------------------------------------- */
+.ov-allocator__row[data-ov-state="agreed"] .ov-allocator__state { color: var(--ov-ink); }
+.ov-allocator__row[data-ov-state="pending"] .ov-allocator__state { color: var(--ov-accent); }
+.ov-allocator__row[data-ov-state="mismatch"],
+.ov-allocator__row[data-ov-state="no-readback"],
+.ov-allocator__row[data-ov-unfunded] { border-color: var(--ov-alarm); }
+.ov-allocator__row[data-ov-state="mismatch"] .ov-allocator__state,
+.ov-allocator__row[data-ov-state="no-readback"] .ov-allocator__state,
+.ov-allocator__row[data-ov-unfunded] .ov-allocator__state { color: var(--ov-alarm); }
+
+.ov-allocator__row[data-ov-refused] { animation: ov-allocator-refuse 700ms steps(2, end) 1; }
+@keyframes ov-allocator-refuse { 0% { border-color: var(--ov-alarm); } 100% { border-color: var(--ov-line); } }
+
+.ov-allocator__note { margin: 0; color: var(--ov-alarm); font-size: 10px; letter-spacing: .06em; max-inline-size: 60ch; }
+
+@media (prefers-reduced-motion: reduce) {
+  .ov-allocator__row[data-ov-refused] { animation: none; outline: 1px solid var(--ov-alarm); }
+}
+}

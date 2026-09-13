@@ -1,0 +1,277 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>data-ov-chrome="bare" harness</title>
+<!-- The gate for the SHARED option, not for any one element. Serve the repo
+     root (tools/serve.py) and open /tools/bare-test/. The last line must read
+     GATE: PASS, and every CONTROL must fail.
+
+     🔴 THE WHOLE RISK OF THIS OPTION IS THAT IT HIDES SOMETHING IT MAY NOT.
+     `bare` strips supporting prose. It may never strip a refusal, a qualifier,
+     a value or a unit, and it may not touch what is read aloud. Those are the
+     claims checked here, across every element that carries an aside. -->
+<link rel="stylesheet" href="../../src/tokens.css">
+<link rel="stylesheet" href="../../src/chrome.css">
+<style>
+  body { background: #06060a; color: #cfe; font: 13px ui-monospace, monospace; padding: 20px; }
+  pre { white-space: pre-wrap; }
+  #stage { max-inline-size: 560px; container-type: inline-size; }
+</style>
+<div id="stage" data-ov-theme="aegis"></div>
+<pre id="out" data-gate="pending">running...</pre>
+<script>
+  // 🔴 A THROW IS A RED GATE, NOT A HANG.
+  const fatal = (what) => {
+    const out = document.getElementById('out');
+    if (out) { out.textContent = `THREW: ${what}\n\nGATE: FAIL`; out.dataset.gate = 'fail'; }
+  };
+  addEventListener('error', (e) => fatal(e.error?.stack || e.message || e));
+  addEventListener('unhandledrejection', (e) => fatal(e.reason?.stack || e.reason));
+</script>
+<script type="module">
+const stage = document.getElementById('stage');
+const results = [], controls = [];
+const ok = (n, c, g) => results.push({ name: n, pass: !!c, got: g });
+const control = (n, c, g) => controls.push({ name: n, pass: !!c, got: g });
+const shows = (el) => {
+  if (!el) return false;
+  if (!el.isConnected) throw new Error('shows() on a detached element');
+  return getComputedStyle(el).display !== 'none';
+};
+
+/* Every element that marks prose as an aside. The count is part of the claim:
+ * a mark that silently disappears is a footnote that comes back, and a mark
+ * that silently appears is prose nobody reviewed. */
+const MARKED = {
+  'ov-quorum':    ['ov-quorum__rulebox', 'ov-quorum__label', 'ov-quorum__tag', 'ov-quorum__why'],
+  'ov-score':     ['ov-score__rulebox', 'ov-score__label', 'ov-score__why'],
+  'ov-station':   ['ov-station__label'],
+  'ov-mosaic':    ['ov-mosaic__rulebox', 'ov-mosaic__compiled', 'ov-mosaic__probe', 'ov-mosaic__label', 'ov-mosaic__agewhat'],
+  'ov-balance':   ['ov-balance__rulebox', 'ov-balance__spanlabel', 'ov-balance__label', 'ov-balance__why'],
+  'ov-position':  ['ov-position__rulebox', 'ov-position__cap', 'ov-position__label', 'ov-position__why'],
+  'ov-clearance': ['ov-clearance__rulebox', 'ov-clearance__label', 'ov-clearance__tag', 'ov-clearance__why'],
+  'ov-switch':    ['ov-switch__label', 'ov-switch__rule', 'ov-switch__why'],
+  'ov-vitals':    ['ov-vitals__limits'],
+};
+
+/* 🔴 A NAME IS THE ONE PIECE OF PROSE THAT IS ALSO AN IDENTITY, so it carries
+ * its own condition: it may be hidden from the eye ONLY while it is still the
+ * first thing said aloud. Every element in this kit opens its accessible name
+ * with `label()`, and section 4 below holds each of them to it. If an element
+ * ever stops doing that, marking its label as prose becomes a way to make an
+ * instrument anonymous, and this gate goes red before it can. */
+const NAMED = Object.keys(MARKED);
+
+/* 🔴 What may NEVER be an aside. These fragments name the parts that carry a
+ * refusal, a qualifier, a number or its unit - the things the kit exists to
+ * refuse to invent. If one of them ever takes the class, this gate goes red. */
+const NEVER = [
+  'ov-state',      // the status box itself: its tone, and the word it draws
+  '__value', '__unit', '__word', '__modeword', '__agev', '__total', '__notfor', '__latlon',
+  '__rl',          // the ring labels, which carry CONTAINMENT UNBOUNDED
+  '__qualifier', '__refusal', '__missing', '__scale', '__age',
+];
+/* ⚠️ `__why` LEFT THIS LIST ON PURPOSE. It is the SENTENCE after a refusal -
+ * "+1,590 bbl metered over 3h 00m, level fell 1.2 ft where +5.4 ft was due" -
+ * and it still reaches a screen reader whole, through the accessible name. The
+ * WORD it explains (DISPUTED, NOT QUALIFIED, DEAD RECKONED) is on this list,
+ * under __word, __modeword, __value and __agev, and may never be marked. */
+
+// ---- 1. The rule exists, and it is the only thing bare does -------------
+const withComments = await (await fetch('../../src/chrome.css')).text();
+/* 🔴 COMMENTS OUT FIRST. This file explains itself at length directly above
+ * the rules, and a scan that reads the prose as CSS finds every word it is
+ * looking for: the paragraph above these two rules contains "!important" and
+ * "position" while neither rule does. The first version of this check read
+ * the comment and called the rules guilty of what the comment warned against. */
+const css = withComments.replace(/\/\*[\s\S]*?\*\//g, ' ');
+const rule = /[^{}]*\[data-ov-chrome[^{]*\{[^}]*\}/g;
+const rules = css.match(rule) || [];
+const body = (r) => r.replace(/^[^{]*\{/, '').replace(/\}$/, '').replace(/\s+/g, ' ').trim();
+const sel = (r) => r.replace(/\{[\s\S]*$/, '');
+/* ⚠️ A SELECTOR LIST SPLITS ON ITS TOP-LEVEL COMMAS ONLY. `:where(a, b *)` has
+ * a comma inside it, and splitting there cut every rule into halves that each
+ * lacked half the condition - so the check called a correctly scoped rule
+ * unscoped, and its own controls "passed" for the same wrong reason. */
+const parts = (r) => {
+  const out = []; let depth = 0, cur = '';
+  for (const ch of sel(r)) {
+    if (ch === '(') depth++;
+    if (ch === ')') depth--;
+    if (ch === ',' && depth === 0) { out.push(cur); cur = ''; } else cur += ch;
+  }
+  return [...out, cur].map((x) => x.trim()).filter(Boolean);
+};
+const prose = rules.filter((r) => /\.ov-aside|\.ov-head\b/.test(sel(r)));
+const boxes = rules.filter((r) => /\.ov-state\b/.test(sel(r)));
+ok('the option is declared in the shared layer, and only there', rules.length === 5 && prose.length + boxes.length === 5, [rules.length, prose.length, boxes.length]);
+ok('⭐ every rule about prose only ever hides it', prose.length === 2 && prose.every((r) => /^display: none;?$/.test(body(r))), prose.map(body));
+/* The status box may lose its FRAME, and may disappear ONLY when its tone is
+ * ok and it is not the box that holds the reading. Every other change to it
+ * is refused, and so is a rule that hides a box of any other tone. */
+const FRAME = /^(padding: 0;|border: 0;|background: none;|transform: none;|\s)+$/;
+ok('⭐ a status box may lose its frame, and nothing else about it changes',
+  boxes.some((r) => FRAME.test(body(r))) && boxes.every((r) => FRAME.test(body(r)) || /^color: inherit;?$/.test(body(r)) || /^display: none;?$/.test(body(r))),
+  boxes.map(body));
+const hidesBox = boxes.filter((r) => /display: none/.test(body(r)));
+ok('⭐ a status box is hidden only when its tone is ok, and never the box that holds the reading',
+  hidesBox.length === 1 && parts(hidesBox[0]).every((part) => /\[data-ov-tone="ok"\]/.test(part) && /:not\(\.ov-state--reading\)/.test(part)),
+  hidesBox.map(sel));
+control('CONTROL: a refusing box (note or bad) may be hidden (must fail)',
+  hidesBox.some((r) => parts(r).some((part) => !/\[data-ov-tone="ok"\]/.test(part))), hidesBox.map(sel));
+control('CONTROL: the box holding the reading may be hidden (must fail)',
+  hidesBox.some((r) => parts(r).some((part) => !/:not\(\.ov-state--reading\)/.test(part))), hidesBox.map(sel));
+/* 🔴 THE DOUBLED CLASS IS LOAD-ORDER INSURANCE, not a typo, so it is asserted. */
+ok('⭐ the hiding outranks an element\'s own one-class rule without !important',
+  /\.ov-aside\.ov-aside/.test(css) && /\.ov-head\.ov-head/.test(css) && /\.ov-state\.ov-state/.test(css) && !/!important/.test(css),
+  'selectors');
+control('CONTROL: the option may restyle prose however it likes (must fail)',
+  prose.some((r) => /color|background|font|inline-size|position:/.test(body(r))), prose.map(body));
+control('CONTROL: it may lean on !important (must fail)', /!important/.test(css), 'css');
+
+// ---- 2. Every mark is on prose, and never on a fact ---------------------
+for (const [tag, expected] of Object.entries(MARKED)) {
+  const src = await (await fetch(`../../src/${tag}.js`)).text();
+  /* Read the CLASS ATTRIBUTES, not the file. A compound class is still one
+   * mark, and a mention of ov-aside in a comment is not a mark at all. */
+  const attrs = [...src.matchAll(/class="([^"]*\bov-aside\b[^"]*)"/g)].map((m) => m[1].trim());
+  const marked = attrs.map((a) => a.split(/\s+/).filter((c) => c !== 'ov-aside' && !c.startsWith('ov-head')));
+  const flat = marked.flat();
+  ok(`${tag}: marks exactly the prose it declares`,
+    JSON.stringify(flat.slice().sort()) === JSON.stringify(expected.slice().sort()), flat);
+  /* ⚠️ MATCH CLASS TOKENS, NOT SUBSTRINGS. `__age` is the composite's age
+   * box; `__agewhat` is the sentence after it. A substring test cannot tell
+   * them apart, and called a sentence a protected fact. */
+  const hit = (cls, n) => n.startsWith('__') ? cls.endsWith(n) : cls === n;
+  const trespass = attrs.filter((a) => a.split(/\s+/).some((cls) => NEVER.some((n) => hit(cls, n))));
+  ok(`⭐ ${tag}: no refusal, qualifier, value or unit is marked as an aside`,
+    trespass.length === 0, trespass);
+  control(`CONTROL: ${tag} may mark a fact as an aside (must fail)`, trespass.length > 0, trespass);
+}
+
+// ---- 3. A hidden name is still a spoken name ---------------------------
+for (const tag of NAMED) {
+  const src = await (await fetch(`../../src/${tag}.js`)).text();
+  /* The accessible name is built from `label()` - the same string the hidden
+   * span shows. Read the aria-label writes and insist every one of them uses
+   * it, so nothing can be named on screen and anonymous in the ear. */
+  const writes = [...src.matchAll(/setAttribute\(\s*'aria-label'\s*,\s*([\s\S]{0,400}?)\);/g)]
+    .map((m) => m[1]);
+  /* ⚠️ NOT EVERY ELEMENT SPELLS IT `label()`. ov-station reads the attribute
+   * directly, and a pattern that missed that called a healthy element a
+   * refusal to name itself. The claim is that the NAME is in there, not that
+   * a particular helper was called. */
+  const hostWrites = writes.filter((w) => /label\(\)|getAttribute\('label'\)|r\.id|r\.name/.test(w));
+  ok(`${tag}: its accessible name is built from the same label it may hide`,
+    writes.length > 0 && hostWrites.length === writes.length,
+    [writes.length, hostWrites.length]);
+  control(`CONTROL: ${tag} may hide its name and not say it (must fail)`,
+    writes.length === 0 || hostWrites.length < writes.length, writes.length);
+}
+
+// ---- 4. The default, and the way back, both paint ----------------------
+/* 🔴 Ask what PAINTS. A class on an element proves nothing until a browser
+ * agrees; this gate loads chrome.css for exactly that reason, and the
+ * ov-position gate did not until it was caught doing so. */
+const host = document.createElement('div');
+host.innerHTML = '<p class="ov-aside">prose</p><p class="fact">a number</p>';
+stage.replaceChildren(host);
+ok('⭐ BY DEFAULT, with no attribute anywhere, an aside is hidden',
+  !shows(host.querySelector('.ov-aside')), getComputedStyle(host.querySelector('.ov-aside')).display);
+ok('⭐ ...and the reading beside it is untouched',
+  shows(host.querySelector('.fact')), getComputedStyle(host.querySelector('.fact')).display);
+control('CONTROL: the default takes the reading with the prose (must fail)',
+  !shows(host.querySelector('.fact')), 'fact');
+
+host.setAttribute('data-ov-chrome', 'full');
+ok('⭐ data-ov-chrome="full" on a container puts the prose back',
+  shows(host.querySelector('.ov-aside')), getComputedStyle(host.querySelector('.ov-aside')).display);
+control('CONTROL: full is ignored and prose stays hidden (must fail)',
+  !shows(host.querySelector('.ov-aside')), 'aside under full');
+
+/* ⭐ `full` is an EXEMPTION, not a `display` it sets back, because there is no
+ * one value to set back TO. An element that hides a part for its own reasons
+ * must keep hiding it under full. */
+const own = document.createElement('style');
+own.textContent = '.ownrule { display: none; }';
+document.head.append(own);
+const cap = document.createElement('p');
+cap.className = 'ov-aside ownrule';
+cap.textContent = 'a footnote the element itself decided not to draw';
+host.append(cap);
+ok('⭐ ...but full never overrules a part the ELEMENT hides for its own reasons',
+  !shows(cap), getComputedStyle(cap).display);
+control('CONTROL: full forces that part back on screen (must fail)', shows(cap), 'own rule');
+own.remove(); cap.remove();
+
+/* The default said out loud, nested back inside a `full` region. */
+const inner = document.createElement('div');
+inner.setAttribute('data-ov-chrome', 'bare');
+inner.innerHTML = '<p class="ov-aside">dense again</p>';
+host.append(inner);
+ok('⭐ data-ov-chrome="bare" inside a full container goes dense again',
+  !shows(inner.querySelector('.ov-aside')), getComputedStyle(inner.querySelector('.ov-aside')).display);
+control('CONTROL: a nested bare is ignored inside full (must fail)',
+  shows(inner.querySelector('.ov-aside')), 'nested bare');
+inner.remove();
+
+/* The head row is a name and a rules note, both asides: by default there is
+ * nothing left in it, so the row goes rather than standing empty. */
+const head = document.createElement('div');
+head.innerHTML = '<div class="ov-head"><span class="ov-head__name ov-aside">AOA</span>'
+  + '<span class="ov-head__note ov-aside">MEDIAN</span></div><p class="fact">4.2</p>';
+stage.append(head);
+ok('⭐ by default the head row collapses, rather than standing empty',
+  !shows(head.querySelector('.ov-head')), getComputedStyle(head.querySelector('.ov-head')).display);
+control('CONTROL: the head row stands empty by default (must fail)',
+  shows(head.querySelector('.ov-head')), getComputedStyle(head.querySelector('.ov-head')).display);
+head.setAttribute('data-ov-chrome', 'full');
+ok('...and comes back whole under full',
+  shows(head.querySelector('.ov-head')) && shows(head.querySelector('.ov-head__name')),
+  getComputedStyle(head.querySelector('.ov-head')).display);
+head.remove();
+
+// ---- 5. The status box: frameless, gone when ordinary, a word when not --
+{
+  const wall = document.createElement('div');
+  wall.innerHTML =
+    '<div class="ov-state ov-state--bar" data-ov-tone="ok"><span class="ov-state__word">AGREES</span></div>'
+  + '<div class="ov-state ov-state--bar" data-ov-tone="bad"><span class="ov-state__word">DISPUTED</span></div>'
+  + '<div class="ov-state ov-state--badge" data-ov-tone="note"><span class="ov-state__word">DEAD RECKONED</span></div>'
+  + '<div class="ov-state ov-state--panel ov-state--reading" data-ov-tone="ok"><span class="v">4.2</span></div>';
+  stage.replaceChildren(wall);
+  const [agree, bad, badge, reading] = wall.children;
+  const cs = (el) => getComputedStyle(el);
+  ok('⭐ BY DEFAULT an ordinary reading draws no status box at all', !shows(agree), cs(agree).display);
+  ok('⭐ ...a refusal still draws its word', shows(bad) && shows(bad.querySelector('.ov-state__word')), cs(bad).display);
+  ok('⭐ ...without the frame that made it read as a header', cs(bad).borderInlineStartWidth === '0px' && cs(bad).paddingInlineStart === '0px', [cs(bad).borderInlineStartWidth, cs(bad).paddingInlineStart]);
+  control('CONTROL: a refusal is hidden like an ordinary reading (must fail)', !shows(bad), cs(bad).display);
+  /* The inverted badge painted its word in the field colour on a filled
+   * ground. Remove the ground and that word must not go dark on dark. */
+  const w = badge.querySelector('.ov-state__word');
+  ok('⭐ ...and the inverted badge\'s word stays in its tone colour, not the ground\'s',
+    shows(badge) && cs(w).color === cs(badge).color && cs(badge).backgroundColor === 'rgba(0, 0, 0, 0)',
+    [cs(w).color, cs(badge).color, cs(badge).backgroundColor]);
+  control('CONTROL: the badge word is left in the field colour with no ground (must fail)',
+    cs(w).color !== cs(badge).color, [cs(w).color, cs(badge).color]);
+  ok('⭐ a box that HOLDS THE READING stays, even when ordinary', shows(reading) && shows(reading.querySelector('.v')), cs(reading).display);
+  control('CONTROL: the reading goes with its box (must fail)', !shows(reading), cs(reading).display);
+  wall.setAttribute('data-ov-chrome', 'full');
+  ok('⭐ under full the ordinary box comes back, framed', shows(agree) && cs(agree).borderInlineStartWidth !== '0px', [cs(agree).display, cs(agree).borderInlineStartWidth]);
+  wall.remove();
+}
+
+// ---- report ----
+const bad = results.filter((r) => !r.pass);
+const live = controls.filter((x) => x.pass);
+const lines = [];
+for (const r of results) lines.push(`${r.pass ? 'ok  ' : 'FAIL'} ${r.name}${r.pass ? '' : `\n       got: ${JSON.stringify(r.got)}`}`);
+lines.push('');
+for (const x of controls) lines.push(`${x.pass ? 'CONTROL DID NOT FAIL' : 'control failed as required'}  ${x.name}${x.pass ? `\n       got: ${JSON.stringify(x.got)}` : ''}`);
+lines.push('');
+lines.push(`${results.length - bad.length}/${results.length} checks, ${controls.length - live.length}/${controls.length} controls failed as required`);
+const pass = bad.length === 0 && live.length === 0;
+lines.push(pass ? 'GATE: PASS' : 'GATE: FAIL');
+const out = document.getElementById('out');
+out.textContent = lines.join('\n');
+out.dataset.gate = pass ? 'pass' : 'fail';
+</script>

@@ -1,0 +1,56 @@
+/* ---- CASCADE LAYER ------------------------------------------------------
+ *
+ * Everything the kit ships sits in ONE layer named `overscan`, so a consumer's
+ * own CSS beats it without a specificity fight and without !important. That is
+ * close to mandatory for a distributed kit: an app should be able to restyle a
+ * panel by writing a plain rule.
+ *
+ * ⚠️ ONE layer, deliberately, NOT a sub-layer per file. Sub-layers look tidier
+ * and would silently reorder the kit against itself: layer order beats
+ * specificity, so a high-specificity rule in an early file that currently wins
+ * would start losing to a low-specificity rule in a later one. A single layer
+ * preserves source order exactly, so nothing inside the kit changes.
+ *
+ * Unlayered author CSS wins over all of it. That is the point.
+ */
+
+@layer overscan {
+/* How long a consumable lasts, as a range, from what it is using. */
+
+ov-endurance {
+  display: grid;
+  gap: 6px;
+  max-inline-size: 460px;
+  padding: 10px 12px;
+  font-family: var(--ov-font-mono);
+  font-size: var(--ov-size-1);
+  letter-spacing: 0.8px;
+  color: var(--ov-dim);
+  background: var(--ov-field);
+  border: var(--ov-bezel) solid var(--ov-line-strong);
+}
+.ov-endurance__head { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 4px 14px; align-items: baseline; }
+.ov-endurance__name { color: var(--ov-ink); text-transform: uppercase; letter-spacing: 1.2px; }
+.ov-endurance__range { color: var(--ov-accent); font-size: var(--ov-size-3, 15px); letter-spacing: 1px; }
+.ov-endurance__range i { font-style: normal; color: var(--ov-dim); font-size: var(--ov-size-1); }
+.ov-endurance__refused { color: var(--ov-accent-2); text-transform: uppercase; letter-spacing: 1px; }
+.ov-endurance__rem { display: grid; grid-template-columns: 120px minmax(0, 1fr); gap: 10px; align-items: center; }
+.ov-endurance__tank { block-size: 8px; border: var(--ov-rule) solid var(--ov-line-strong); }
+.ov-endurance__tank i { display: block; block-size: 100%; background: var(--ov-accent); }
+.ov-endurance__tank.is-nocap { border-style: dashed; }
+.ov-endurance__stale { font-weight: 400; color: var(--ov-accent-2); }
+.ov-endurance__band { display: block; inline-size: 100%; }
+.ov-endurance__axis, .ov-endurance__tick { stroke: var(--ov-line-strong); stroke-width: 1; }
+.ov-endurance__text { font: 8px var(--ov-font-mono); fill: var(--ov-faint); letter-spacing: 0.4px; }
+.ov-endurance__text.is-edge { fill: var(--ov-accent); }
+/* The spread, and nothing in the middle of it to read as the answer. */
+.ov-endurance__spread { fill: color-mix(in srgb, var(--ov-accent) 28%, transparent); stroke: none; }
+.ov-endurance__spread.is-open { fill: color-mix(in srgb, var(--ov-accent) 14%, transparent); }
+.ov-endurance__edge { stroke: var(--ov-accent); stroke-width: 1.4; }
+.ov-endurance__src { color: var(--ov-faint); }
+.ov-endurance__note { color: var(--ov-faint); font-style: italic; }
+.ov-endurance__void {
+  display: grid; place-items: center; min-block-size: 70px;
+  color: var(--ov-alarm); text-transform: uppercase; border: 1px dashed var(--ov-line-strong);
+}
+}

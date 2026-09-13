@@ -1,0 +1,58 @@
+/* ---- CASCADE LAYER ------------------------------------------------------
+ *
+ * Everything the kit ships sits in ONE layer named `overscan`, so a consumer's
+ * own CSS beats it without a specificity fight and without !important. That is
+ * close to mandatory for a distributed kit: an app should be able to restyle a
+ * panel by writing a plain rule.
+ *
+ * ⚠️ ONE layer, deliberately, NOT a sub-layer per file. Sub-layers look tidier
+ * and would silently reorder the kit against itself: layer order beats
+ * specificity, so a high-specificity rule in an early file that currently wins
+ * would start losing to a low-specificity rule in a later one. A single layer
+ * preserves source order exactly, so nothing inside the kit changes.
+ *
+ * Unlayered author CSS wins over all of it. That is the point.
+ */
+
+@layer overscan {
+/* Character cell grid. */
+
+ov-grid {
+  position: relative;
+  display: block;
+  font-family: var(--ov-font-mono);
+  font-size: var(--ov-size-2);
+  line-height: 1.35;
+  color: var(--ov-ink);
+  padding-block-end: 14px;
+}
+
+.ov-grid__row { display: flex; white-space: pre; }
+
+/* Every glyph gets its own cell, so an error in one cannot push the rest of the
+ * row. That is the whole difference from a <pre>. */
+.ov-grid__c {
+  display: inline-block;
+  inline-size: calc(var(--ov-grid-unit) * var(--c, 1));
+  flex: 0 0 auto;
+  font-style: normal;
+  text-align: center;
+  transform: scaleX(var(--s, 1));
+  transform-origin: center;
+}
+
+/* Box drawing takes the rule colour, not the ink: a frame is furniture. */
+.ov-grid--frame { color: var(--ov-line-strong); }
+.ov-grid--frame .ov-grid__c { color: inherit; }
+
+ov-grid[data-ov-fitted]::after {
+  content: attr(data-ov-fitted-n);
+  position: absolute;
+  inset-block-end: 0;
+  inset-inline-start: 0;
+  font-size: var(--ov-size-1);
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  color: var(--ov-dim);
+}
+}

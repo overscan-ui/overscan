@@ -1,0 +1,45 @@
+/* Overscan flip - the visible half of what src/ov-flip.js declined to animate.
+ *
+ * There is deliberately almost nothing here. A reorder animation is written in
+ * script because it has to MEASURE, and CSS cannot; what CSS owns is the one
+ * thing the script produces that a reader needs to see, which is the count of
+ * what it refused to move.
+ *
+ * ⚠️ THIS FILE STYLES AN ELEMENT, NOT A PSEUDO-ELEMENT ON SOMEONE ELSE'S HOST.
+ * `ov-table` already spends its host `::after` on the ARIA defect it admits
+ * to, and `ov-chart` spends both of its own. A motion layer that reached into
+ * another component's pseudo-elements would be the CSS form of the `ov-`
+ * prefix collision: it works until the day the component wants its own.
+ */
+
+@layer overscan {
+
+/* Written in the same register as ov-table's foot, because it is the same kind
+ * of statement: the foot says how much of the data is drawn, this says how
+ * much of the movement was real. A reader who trusts one should be reading the
+ * other in the same voice. */
+.ov-flip__declined {
+  margin: 0;
+  padding: 5px 10px;
+  border-block-start: var(--ov-rule) solid var(--ov-line);
+  font-family: var(--ov-font-mono);
+  font-size: var(--ov-size-1);
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  /* Dim, not alarm. Declining to animate a row that went off the window is the
+   * module working correctly, not a fault, and colouring it as a fault would
+   * teach a reader to ignore the colour that means something is wrong. */
+  color: var(--ov-dim);
+}
+
+/* The note is a report, not a control: it must never take a tab stop or read
+ * as something to act on. */
+.ov-flip__declined { user-select: text; }
+
+/* 🔴 The moving element is animated by the Web Animations API, which composites
+ * `transform` off the main thread. Nothing here may set a `transition` on the
+ * same property: a transition and a WAAPI animation on one property both apply,
+ * the animation wins while it runs, and the transition then re-runs the tail of
+ * the move when it finishes. That reads as a bounce nobody asked for. */
+
+}

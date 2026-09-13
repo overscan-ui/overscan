@@ -1,0 +1,134 @@
+@layer overscan {
+/* The numerics beside a bed. See ov-vitals.js for the refusal.
+ *
+ * One narrow row per parameter: name and source, trend, number. Built to sit
+ * beside an ECG strip as a monitor's numeric column.
+ *
+ * 🔴 NOTHING RESTS ON COLOUR. Each row's form says what its number is:
+ *   live          a solid rule, the number in the accent
+ *   taken         a DOTTED rule and the number in ink: a blood pressure is
+ *                 never drawn in the live form, however fresh
+ *   aged          dotted and faint, and AGED in words
+ *   invalid       no number at all, the age in words
+ *   measuring     dashed, the cuff pressure named as a cuff pressure
+ *   questionable  dashed, with a ? beside the number
+ *   withheld      a double rule and -?- in the alarm colour
+ *   absent        a dotted dim rule and NOT MEASURED
+ * In the trend: a line broken wherever readings stopped or changed source,
+ * ending at the last reading short of the "now" rule; blood pressures as
+ * separate bars; the limit band only when both limits are set.
+ */
+
+ov-vitals {
+  display: grid;
+  gap: 5px;
+  min-inline-size: 0;
+  max-inline-size: 44ch;
+  font-family: var(--ov-font-mono);
+  font-size: var(--ov-size-1, 10px);
+  color: var(--ov-ink);
+}
+
+.ov-vitals__scale { color: var(--ov-faint); letter-spacing: .1em; }
+.ov-vitals__rows { display: grid; gap: 3px; }
+
+.ov-vitals__row {
+  display: grid;
+  grid-template-columns: 9.5ch minmax(32px, 1fr) max-content;
+  column-gap: 8px;
+  align-items: center;
+  min-inline-size: 0;
+  padding: 3px 6px 3px 7px;
+  border-inline-start: 3px solid var(--ov-accent);
+  background: color-mix(in srgb, var(--ov-raised) 55%, transparent);
+}
+.ov-vitals__id { display: grid; min-inline-size: 0; line-height: 1.25; }
+.ov-vitals__label { letter-spacing: .12em; }
+/* The source is the refusal's own words: it is never an aside. */
+.ov-vitals__src { color: var(--ov-faint); letter-spacing: .04em; font-size: .9em; overflow-wrap: anywhere; }
+
+.ov-vitals__trend { display: block; inline-size: 100%; block-size: 30px; overflow: visible; }
+.ov-vitals__line {
+  fill: none;
+  stroke: var(--ov-accent);
+  stroke-width: 1.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  vector-effect: non-scaling-stroke;
+}
+.ov-vitals__bar { fill: none; stroke: var(--ov-ink); stroke-width: 3; vector-effect: non-scaling-stroke; }
+.ov-vitals__band {
+  fill: color-mix(in srgb, var(--ov-accent) 9%, transparent);
+  stroke: color-mix(in srgb, var(--ov-line) 80%, transparent);
+  stroke-width: 1;
+  stroke-dasharray: 2 3;
+  vector-effect: non-scaling-stroke;
+}
+.ov-vitals__now { stroke: var(--ov-faint); stroke-width: 1; vector-effect: non-scaling-stroke; }
+
+.ov-vitals__read {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  align-items: baseline;
+  gap: 0 .4ch;
+  min-inline-size: 5ch;
+  text-align: end;
+}
+.ov-vitals__num {
+  font-weight: normal;
+  font-size: calc(var(--ov-size-2, 12px) * 2);
+  line-height: 1.05;
+  letter-spacing: .01em;
+  font-variant-numeric: tabular-nums;
+  color: var(--ov-accent);
+}
+.ov-vitals__row[data-ov-param="nibp"] .ov-vitals__num { font-size: calc(var(--ov-size-2, 12px) * 1.5); }
+.ov-vitals__q { font-size: calc(var(--ov-size-2, 12px) * 1.4); color: var(--ov-alarm); }
+.ov-vitals__unit { color: var(--ov-faint); letter-spacing: .06em; }
+
+.ov-vitals__foot {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 0 1ch;
+  line-height: 1.3;
+}
+.ov-vitals__words { color: var(--ov-ink); letter-spacing: .05em; overflow-wrap: anywhere; }
+.ov-vitals__limits { color: var(--ov-faint); letter-spacing: .06em; margin-inline-start: auto; }
+
+.ov-vitals__off { display: inline-flex; align-items: center; gap: .3ch; color: var(--ov-alarm); letter-spacing: .08em; }
+.ov-vitals__off svg { inline-size: 1.3em; block-size: 1.3em; fill: currentColor; }
+.ov-vitals__slash { stroke: currentColor; stroke-width: 1.6; fill: none; }
+
+/* ---- the forms ---------------------------------------------------------- */
+
+.ov-vitals__row[data-ov-mark="taken"] { border-inline-start-style: dotted; border-inline-start-color: var(--ov-ink); }
+.ov-vitals__row[data-ov-mark="taken"] .ov-vitals__num { color: var(--ov-ink); }
+.ov-vitals__row[data-ov-mark="aged"] { border-inline-start: 3px dotted var(--ov-faint); }
+.ov-vitals__row[data-ov-mark="aged"] :is(.ov-vitals__num, .ov-vitals__words) { color: var(--ov-faint); }
+.ov-vitals__row[data-ov-mark="aged"] .ov-vitals__bar { stroke: var(--ov-faint); }
+.ov-vitals__row[data-ov-mark="invalid"] { border-inline-start: 3px dotted var(--ov-dim); }
+.ov-vitals__row[data-ov-mark="invalid"] .ov-vitals__words { color: var(--ov-faint); }
+.ov-vitals__row[data-ov-mark="measuring"] { border-inline-start-style: dashed; border-inline-start-color: var(--ov-ink); }
+.ov-vitals__row[data-ov-mark="measuring"] .ov-vitals__num { color: var(--ov-faint); }
+.ov-vitals__row[data-ov-mark="questionable"] { border-inline-start-style: dashed; }
+.ov-vitals__row[data-ov-mark="withheld"] { border-inline-start: 6px double var(--ov-alarm); }
+.ov-vitals__row[data-ov-mark="withheld"] :is(.ov-vitals__num, .ov-vitals__words) { color: var(--ov-alarm); }
+.ov-vitals__row[data-ov-mark="withheld"] .ov-vitals__line { stroke: var(--ov-faint); }
+.ov-vitals__row[data-ov-mark="absent"] { border-inline-start: 3px dotted var(--ov-dim); background: none; }
+.ov-vitals__row[data-ov-mark="absent"] .ov-vitals__words { color: var(--ov-faint); letter-spacing: .12em; }
+
+.ov-vitals__row[data-ov-alarm] { border-inline-start: 3px solid var(--ov-alarm); outline: var(--ov-rule, 1px) solid var(--ov-alarm); outline-offset: -1px; }
+.ov-vitals__row[data-ov-alarm] :is(.ov-vitals__num, .ov-vitals__words) { color: var(--ov-alarm); }
+
+/* The marks that keep a mockup from passing for a patient. */
+.ov-vitals__demo, .ov-vitals__void {
+  padding: 2px 6px;
+  border: var(--ov-rule, 1px) dashed var(--ov-line);
+  color: var(--ov-faint);
+  letter-spacing: .14em;
+  text-align: center;
+}
+}

@@ -1,0 +1,340 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>ov-verifier tests</title>
+<!-- Over tools/serve.py: /tools/verifier-test/ . Cases named CONTROL must fail. -->
+<link rel="stylesheet" href="../../src/tokens.css">
+<link rel="stylesheet" href="../../src/verifier.css">
+<style>
+  body { background: #06060a; color: #cfe; font: 13px ui-monospace, monospace; padding: 20px; }
+  pre { white-space: pre-wrap; }
+</style>
+<div id="stage" data-ov-theme="terminal" style="width: 1100px"></div>
+<pre id="out">running...</pre>
+<script type="module">
+import '../../src/ov-verifier.js';
+
+const stage = document.getElementById('stage');
+const results = [];
+const ok = (name, cond, got) => results.push({ name, pass: !!cond, got });
+const controls = [];
+const control = (name, cond, got) => controls.push({ name, pass: !!cond, got });
+const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+const fresh = (attrs, width) => {
+  const el = document.createElement('ov-verifier');
+  for (const [k, v] of Object.entries(attrs)) el.setAttribute(k, v);
+  stage.style.width = width || '1100px';
+  stage.replaceChildren(el);
+  return el;
+};
+const row = (el, id) => [...el.querySelectorAll('.ov-verifier__row')].find((r) => r.querySelector('.ov-verifier__id').textContent === id);
+const verdict = (el, id) => row(el, id)?.querySelector('.ov-verifier__verdict').textContent ?? null;
+const cell = (el, id, s) => row(el, id)?.querySelector(`.ov-verifier__cell[data-ov-stage="${s}"]`);
+const cstate = (el, id, s) => cell(el, id, s)?.getAttribute('data-ov-state') ?? null;
+const cword = (el, id, s) => cell(el, id, s)?.querySelector('.ov-verifier__word').textContent ?? null;
+const note = (el) => el.querySelector('.ov-verifier__note').textContent;
+const sum = (el) => el.querySelector('.ov-verifier__sum').textContent;
+const LONG = 'QUEUED:60, SENT:60, RECEIVED:60, EXECUTING:60, COMPLETE:60';
+
+let el, r;
+
+// 1. THE REFUSAL: a stage it has not seen is never shown as passed.
+el = fresh({ stages: LONG });
+el.issue({ id: 'C1', label: 'HTR-2 ON' });
+el.report('C1', 'QUEUED', 'pass');
+el.report('C1', 'SENT', 'pass');
+ok('after SENT, the verdict names SENT and the pending stage', /^SENT · RECEIVED PENDING \d+s$/.test(verdict(el, 'C1')), verdict(el, 'C1'));
+ok('...EXECUTING and COMPLETE are still not open', cstate(el, 'C1', 'EXECUTING') === 'idle' && cstate(el, 'C1', 'COMPLETE') === 'idle',
+  [cstate(el, 'C1', 'EXECUTING'), cstate(el, 'C1', 'COMPLETE')]);
+control('CONTROL: a command only SENT reads as executed or complete (must fail)', /EXECUT|COMPLETE|OK|DONE/.test(verdict(el, 'C1')), verdict(el, 'C1'));
+ok('...the row is PENDING, the summary counts 1 PENDING', row(el, 'C1').getAttribute('data-ov-state') === 'pending' && /1 PENDING/.test(sum(el)), sum(el));
+
+// 2. A later stage passing does not fill in an earlier one.
+el.report('C1', 'EXECUTING', 'pass');
+ok('EXECUTING passed while RECEIVED is still waiting: RECEIVED stays pending', cstate(el, 'C1', 'RECEIVED') === 'pending', cstate(el, 'C1', 'RECEIVED'));
+ok('...the verdict names EXECUTING and the stage still waiting', /^EXECUTING · RECEIVED PENDING/.test(verdict(el, 'C1')), verdict(el, 'C1'));
+el.report('C1', 'COMPLETE', 'pass');
+ok('COMPLETE by report with RECEIVED never seen: still pending, not filled', cstate(el, 'C1', 'RECEIVED') === 'pending', cstate(el, 'C1', 'RECEIVED'));
+
+// 3. A timeout is neither a pass nor a fail.
+el = fresh({ stages: 'A:0.15, B:60' });
+el.issue({ id: 'T1' });
+await wait(350);
+ok('A times out on its own window', cstate(el, 'T1', 'A') === 'timeout' && cword(el, 'T1', 'A') === 'T/O', cstate(el, 'T1', 'A'));
+ok('...and B still opens (a lost acknowledgement is not a lost command)', cstate(el, 'T1', 'B') === 'pending', cstate(el, 'T1', 'B'));
+ok('...the verdict says A was not seen, and B is pending', /B PENDING/.test(verdict(el, 'T1')) && /A NOT SEEN/.test(verdict(el, 'T1')), verdict(el, 'T1'));
+r = el.report('T1', 'A', 'pass');
+ok('an answer after the window is taken as LATE, not PASS', r.ok && cstate(el, 'T1', 'A') === 'late' && cword(el, 'T1', 'A') === 'LATE', cstate(el, 'T1', 'A'));
+
+el = fresh({ stages: 'A:0.1, B:0.1' });
+el.issue({ id: 'T2' });
+await wait(450);
+ok('both windows closed unanswered: NO ANSWER AT A', verdict(el, 'T2') === 'NO ANSWER AT A · NOTHING SEEN', verdict(el, 'T2'));
+ok('...counted as NO ANSWER, not as failed or verified', /1 NO ANSWER/.test(sum(el)) && !/FAILED|VERIFIED/.test(sum(el)), sum(el));
+
+// 4. A telemetry match is not credited to the command.
+el = fresh({ stages: 'SENT:60, COMPLETE:60' });
+el.issue({ id: 'M1' });
+el.report('M1', 'SENT', 'pass');
+el.report('M1', 'COMPLETE', 'pass', 'tm');
+ok('a bare TM pass reads TM ?, with its own evidence mark', cword(el, 'M1', 'COMPLETE') === 'TM ?' && cell(el, 'M1', 'COMPLETE').getAttribute('data-ov-evidence') === 'tm',
+  cword(el, 'M1', 'COMPLETE'));
+ok('...the verdict says NOT CREDITED, and the row is uncredited, not complete',
+  verdict(el, 'M1') === 'COMPLETE BY TM, NOT CREDITED: NO CHANGE SHOWN' && row(el, 'M1').getAttribute('data-ov-state') === 'uncredited', verdict(el, 'M1'));
+ok('...the summary counts it TM ONLY, not VERIFIED', /1 TM ONLY/.test(sum(el)) && !/VERIFIED/.test(sum(el)), sum(el));
+el.issue({ id: 'M2' });
+el.report('M2', 'SENT', 'pass');
+el.report('M2', 'COMPLETE', 'pass');
+ok('the same command verified by report reads COMPLETE and counts VERIFIED', verdict(el, 'M2') === 'COMPLETE' && /1 VERIFIED/.test(sum(el)), verdict(el, 'M2'));
+
+// 5. Supersession: a newer command to the same target.
+el = fresh({ stages: 'SENT:60, COMPLETE:60' });
+el.issue({ id: 'S1', label: 'HTR ON', target: 'HTR' });
+el.report('S1', 'SENT', 'pass');
+r = el.issue({ id: 'S2', label: 'HTR OFF', target: 'HTR' });
+ok('issuing S2 to the same target supersedes S1', r.superseded.join() === 'S1' && cstate(el, 'S1', 'COMPLETE') === 'superseded', r);
+ok('...S1\'s passed stage keeps its PASS', cstate(el, 'S1', 'SENT') === 'pass', cstate(el, 'S1', 'SENT'));
+ok('...and S1 reads SUPERSEDED BY S2', verdict(el, 'S1') === 'SUPERSEDED BY S2 · LAST SEEN SENT', verdict(el, 'S1'));
+r = el.report('S1', 'COMPLETE', 'pass', 'tm');
+ok('a TM match on a superseded stage is refused, and said', !r.ok && /TM not credited: superseded by S2/.test(note(el)), r);
+r = el.report('S1', 'COMPLETE', 'pass', 'report');
+ok('...a report naming S1 is still taken', r.ok && cstate(el, 'S1', 'COMPLETE') === 'pass', r);
+el.issue({ id: 'S3', target: 'VLV' });
+ok('a command to another target supersedes nothing', cstate(el, 'S2', 'SENT') === 'pending', cstate(el, 'S2', 'SENT'));
+el = fresh({ stages: 'SENT:60' });
+el.issue({ id: 'D1', target: 'X' });
+el.report('D1', 'SENT', 'pass');
+el.issue({ id: 'D2', target: 'X' });
+ok('a settled command is not superseded', verdict(el, 'D1') === 'SENT', verdict(el, 'D1'));
+
+// 6. A FAIL stops the chain; what follows is not reached.
+el = fresh({ stages: LONG });
+el.issue({ id: 'F1' });
+el.report('F1', 'QUEUED', 'pass');
+el.report('F1', 'SENT', 'pass');
+el.report('F1', 'RECEIVED', 'fail');
+ok('FAILED AT RECEIVED', verdict(el, 'F1') === 'FAILED AT RECEIVED', verdict(el, 'F1'));
+ok('...later stages are not reached', cstate(el, 'F1', 'EXECUTING') === 'unreached' && cword(el, 'F1', 'COMPLETE') === '—',
+  [cstate(el, 'F1', 'EXECUTING'), cword(el, 'F1', 'COMPLETE')]);
+
+// 7. A second answer is not taken.
+r = el.report('F1', 'SENT', 'fail');
+ok('a second answer to SENT is refused', !r.ok && cstate(el, 'F1', 'SENT') === 'pass' && /second answer/.test(note(el)), r);
+r = el.report('NOPE', 'SENT', 'pass');
+ok('a report for an unknown command is refused', !r.ok && /no command NOPE/.test(r.reason), r);
+
+// 8. History drops the oldest SETTLED command, never one waiting.
+el = fresh({ stages: 'SENT:60', history: '2' });
+el.issue({ id: 'H1' }); el.issue({ id: 'H2' }); el.issue({ id: 'H3' });
+ok('three waiting commands over a history of 2: none dropped', el.querySelectorAll('.ov-verifier__row').length === 3, el.querySelectorAll('.ov-verifier__row').length);
+el.report('H2', 'SENT', 'pass');
+ok('...once H2 settles, it is the one dropped (not the older H1)', !row(el, 'H2') && row(el, 'H1') && /1 settled command dropped/.test(note(el)), note(el));
+
+// 9. Attributes are a snapshot.
+el = fresh({
+  stages: 'SENT:60, COMPLETE:60',
+  commands: 'C41 HTR-2 ON @HTR2; C42 VLV-3 OPEN',
+  reports: 'C41 SENT=pass, C41 COMPLETE=tm, C42 SENT=timeout, C99 SENT=pass, junk',
+});
+ok('attribute reports set the stages (tm = pass by TM)', cword(el, 'C41', 'COMPLETE') === 'TM ?' && cstate(el, 'C42', 'SENT') === 'timeout',
+  [cword(el, 'C41', 'COMPLETE'), cstate(el, 'C42', 'SENT')]);
+ok('...the target is read from @', /@HTR2/.test(row(el, 'C41').querySelector('.ov-verifier__label').textContent), row(el, 'C41').textContent);
+ok('...a report for a missing command and a junk entry are counted', /2 malformed entries ignored/.test(note(el)), note(el));
+
+// 10. The property: an array replaces; a map is refused; the getter round-trips.
+el = fresh({ stages: 'SENT:60, COMPLETE:60' });
+el.commands = [{ id: 'P1', label: 'X', stages: [{ stage: 'SENT', state: 'pass', evidence: 'report' }, { stage: 'COMPLETE', state: 'pass', evidence: 'tm' }] }];
+ok('the property replaces the stack, and cannot declare a TM pass credited', verdict(el, 'P1') === 'COMPLETE BY TM, NOT CREDITED: NO CHANGE SHOWN', verdict(el, 'P1'));
+ok('...and the getter returns an array', Array.isArray(el.commands) && el.commands[0].stages[1].evidence === 'tm', el.commands);
+el.commands = { P1: {} };
+ok('a map is refused, and said', /not an array/.test(note(el)) && !row(el, 'P1'), note(el));
+
+// 11. ov:verify fires once per stage that resolves.
+el = fresh({ stages: 'SENT:60, COMPLETE:60' });
+const seen = [];
+el.addEventListener('ov:verify', (e) => seen.push(`${e.detail.id}/${e.detail.stage}/${e.detail.state}/${e.detail.evidence}`));
+el.issue({ id: 'E1', target: 'Z' });
+el.report('E1', 'SENT', 'pass', 'tm');
+el.issue({ id: 'E2', target: 'Z' });
+ok('ov:verify: a TM pass, then a supersession', seen.join() === 'E1/SENT/pass/tm,E1/COMPLETE/superseded/null', seen);
+
+// 12. The default stages are Yamcs's own, in its order.
+el = fresh({ commands: 'Y1 NOOP' });
+const heads = [...el.querySelectorAll('.ov-verifier__head .ov-verifier__stage')].map((e) => e.textContent);
+ok('with no stages declared, the columns are the Yamcs verifier stages', heads.join() === 'TO-RANGE,FROM-RANGE,RECEIVED,ACCEPTED,QUEUED,EXECUTION,COMPLETE', heads);
+
+// 13. A timeout declared to fail the command (on_timeout=FAIL), opt-in.
+el = fresh({ stages: 'A:0.1:fail, B:60' });
+ok('the rule is shown before it bites: A* in the head, and a legend', [...el.querySelectorAll('.ov-verifier__head .ov-verifier__stage')][0].textContent === 'A*'
+  && /A TIMEOUT AT A FAILS THE COMMAND/.test(el.querySelector('.ov-verifier__legend').textContent), el.querySelector('.ov-verifier__legend').textContent);
+el.issue({ id: 'K1' });
+await wait(350);
+ok('A times out: the cell still reads T/O, marked fatal', cstate(el, 'K1', 'A') === 'timeout' && cword(el, 'K1', 'A') === 'T/O' && cell(el, 'K1', 'A').hasAttribute('data-ov-fatal'),
+  cstate(el, 'K1', 'A'));
+ok('...the command FAILS, and says it was no answer, not a failure report', verdict(el, 'K1') === 'FAILED AT A: NO ANSWER IN ITS WINDOW' && /1 FAILED/.test(sum(el)), verdict(el, 'K1'));
+ok('...and B never opens', cstate(el, 'K1', 'B') === 'unreached', cstate(el, 'K1', 'B'));
+r = el.report('K1', 'A', 'pass');
+ok('a late answer is taken and drawn LATE, and the command stays failed', r.ok && cstate(el, 'K1', 'A') === 'late'
+  && verdict(el, 'K1') === 'FAILED AT A: NO ANSWER IN ITS WINDOW, ANSWERED LATE' && cstate(el, 'K1', 'B') === 'unreached', verdict(el, 'K1'));
+el = fresh({ stages: 'A:0.1, B:60' });
+el.issue({ id: 'K2' });
+await wait(350);
+ok('the same timeout NOT declared fatal still decides nothing', !/FAILED/.test(verdict(el, 'K2')) && cstate(el, 'K2', 'B') === 'pending', verdict(el, 'K2'));
+el = fresh({ stages: 'A:5:retry, B:5' });
+ok('an on-timeout word other than fail is ignored, and said', /on-timeout "retry" ignored/.test(note(el))
+  && el.querySelector('.ov-verifier__legend').hidden, note(el));
+
+// 14. TM credit is DERIVED from four conditions, never declared.
+const tmStack = () => { const v = fresh({ stages: 'SENT:60, COMPLETE:60' }); return v; };
+const tmCase = (v, id, target, detail) => {
+  v.issue({ id, target });
+  v.report(id, 'SENT', 'pass');
+  return v.report(id, 'COMPLETE', 'pass', 'tm', detail);
+};
+el = tmStack();
+await wait(20);
+tmCase(el, 'T1', 'PUMP1', { before: 'OFF', value: 'ON', expected: 'ON', age: 0, beforeAge: 0 });
+ok('a change from OFF to ON, sampled inside the window, no rival: TM OK, credited', cword(el, 'T1', 'COMPLETE') === 'TM OK'
+  && cell(el, 'T1', 'COMPLETE').hasAttribute('data-ov-credited') && verdict(el, 'T1') === 'COMPLETE BY TM CHANGE', verdict(el, 'T1'));
+ok('...counted VERIFIED BY TM CHANGE, apart from reports', /1 VERIFIED BY TM CHANGE/.test(sum(el)) && !/\d VERIFIED ·|\d VERIFIED$/.test(sum(el)), sum(el));
+control('CONTROL: a value that was ALREADY the expected one is credited (must fail)', (() => {
+  const v = tmStack(); tmCase(v, 'T2', 'PUMP1', { before: 'ON', value: 'ON', expected: 'ON', age: 0, beforeAge: 0 });
+  return cword(v, 'T2', 'COMPLETE') === 'TM OK';
+})());
+el = tmStack();
+tmCase(el, 'T2', 'PUMP1', { before: 'ON', value: 'ON', expected: 'ON', age: 0, beforeAge: 0 });
+ok('b. the value was already ON when the window opened: TM ?, and it says so', cword(el, 'T2', 'COMPLETE') === 'TM ?'
+  && verdict(el, 'T2') === 'COMPLETE BY TM, NOT CREDITED: WAS ALREADY ON', verdict(el, 'T2'));
+el = tmStack();
+await wait(30);
+tmCase(el, 'T3', 'PUMP1', { before: 'OFF', value: 'ON', expected: 'ON', age: 30, beforeAge: 31 });
+ok('a. a sample older than the window: not credited, SAMPLE PREDATES ITS WINDOW', /NOT CREDITED: SAMPLE PREDATES ITS WINDOW/.test(verdict(el, 'T3')), verdict(el, 'T3'));
+el = tmStack();
+tmCase(el, 'T4', 'PUMP1', { before: 'OFF', value: 'TRIP', expected: 'ON', age: 0, beforeAge: 0 });
+ok('c. a value that is not the expected one: not credited, and both named', /NOT CREDITED: READS TRIP, EXPECTS ON/.test(verdict(el, 'T4')), verdict(el, 'T4'));
+el = tmStack();
+el.issue({ id: 'R1', target: 'HTR2' });
+tmCase(el, 'R2', 'HTR2', { before: 'OFF', value: 'ON', expected: 'ON', age: 0, beforeAge: 0 });
+ok('d. another command to HTR2 in flight when R2 went out: not credited, the rival named',
+  /NOT CREDITED: HTR2 ALSO IN FLIGHT: R1/.test(verdict(el, 'R2')), verdict(el, 'R2'));
+el = tmStack();
+tmCase(el, 'T5', 'PUMP1', { value: 'ON', expected: 'ON', age: 0, beforeAge: 0 });
+ok('no `before` given: no change can be shown, so none is credited', /NOT CREDITED: NO CHANGE SHOWN/.test(verdict(el, 'T5')), verdict(el, 'T5'));
+el = fresh({ stages: 'SENT:60, COMPLETE:60', commands: 'A1 X', reports: 'A1 SENT=pass, A1 COMPLETE=tm' });
+ok('an attribute can only ever declare an UNcredited TM pass', cword(el, 'A1', 'COMPLETE') === 'TM ?', cword(el, 'A1', 'COMPLETE'));
+
+// 14b. The change interval (tBefore, tValue] must sit inside the window.
+el = tmStack();
+await wait(50);
+tmCase(el, 'U1', 'PUMP1', { before: 'OFF', value: 'ON', expected: 'ON', age: 0, beforeAge: 20 });
+ok('last OFF sample from before the window, ON inside it: UNDETERMINED, not credited',
+  /NOT CREDITED: CHANGE TIME UNDETERMINED: LAST OLD SAMPLE PREDATES ITS WINDOW/.test(verdict(el, 'U1')), verdict(el, 'U1'));
+el = tmStack();
+tmCase(el, 'U2', 'PUMP1', { before: 'OFF', value: 'ON', expected: 'ON', age: 0 });
+ok('no time for the old value: not credited, CHANGE TIME NOT GIVEN', /NOT CREDITED: CHANGE TIME NOT GIVEN/.test(verdict(el, 'U2')), verdict(el, 'U2'));
+el = fresh({ stages: 'SENT:60, COMPLETE:0.1' });
+el.issue({ id: 'U3', target: 'PUMP1' });
+el.report('U3', 'SENT', 'pass');
+await wait(300);
+el.report('U3', 'COMPLETE', 'pass', 'tm', { before: 'OFF', value: 'ON', expected: 'ON', age: 0, beforeAge: 0 });
+ok('OFF and ON both sampled after the window closed: LATE, CHANGE AFTER ITS WINDOW', cstate(el, 'U3', 'COMPLETE') === 'late'
+  && /NOT CREDITED: CHANGE AFTER ITS WINDOW$/.test(verdict(el, 'U3')), verdict(el, 'U3'));
+el = fresh({ stages: 'SENT:60, COMPLETE:0.3' });
+el.issue({ id: 'U4', target: 'PUMP1' });
+el.report('U4', 'SENT', 'pass');
+await wait(450);
+el.report('U4', 'COMPLETE', 'pass', 'tm', { before: 'OFF', value: 'ON', expected: 'ON', age: 0, beforeAge: 0.3 });
+ok('last OFF inside the window, first ON after it: straddles the close, UNDETERMINED',
+  /NOT CREDITED: CHANGE TIME UNDETERMINED: FIRST NEW SAMPLE IS AFTER ITS WINDOW/.test(verdict(el, 'U4')), verdict(el, 'U4'));
+
+// 16. Motion is time, not decoration.
+const anim = (e) => getComputedStyle(e).animationName;
+el = fresh({ stages: 'SENT:60, COMPLETE:60' });
+el.issue({ id: 'V1' });
+ok('a pending mark drains over its real window', anim(cell(el, 'V1', 'SENT').querySelector('.ov-verifier__mark')) === 'ov-verifier-drain'
+  && cell(el, 'V1', 'SENT').style.getPropertyValue('--ov-verifier-window') === '60s', anim(cell(el, 'V1', 'SENT').querySelector('.ov-verifier__mark')));
+await wait(1100);
+ok('...a repaint continues the drain (negative delay = time spent), it does not restart it',
+  parseInt(cell(el, 'V1', 'SENT').style.getPropertyValue('--ov-verifier-elapsed'), 10) <= -1000, cell(el, 'V1', 'SENT').style.getPropertyValue('--ov-verifier-elapsed'));
+el.report('V1', 'SENT', 'pass');
+ok('the stage that just resolved gets the one-shot cue', cell(el, 'V1', 'SENT').hasAttribute('data-ov-cue') && anim(cell(el, 'V1', 'SENT')) === 'ov-verifier-cue', anim(cell(el, 'V1', 'SENT')));
+ok('...and only that stage', !cell(el, 'V1', 'COMPLETE').hasAttribute('data-ov-cue'), null);
+await wait(1100);
+ok('...a repaint mid-cue continues it rather than replaying it', parseInt(cell(el, 'V1', 'SENT').style.getPropertyValue('--ov-verifier-cue'), 10) <= -1000,
+  cell(el, 'V1', 'SENT').style.getPropertyValue('--ov-verifier-cue'));
+await wait(1100);
+el.setAttribute('label', 'repaint');
+ok('...two seconds on, a repaint no longer cues it', !cell(el, 'V1', 'SENT').hasAttribute('data-ov-cue'), null);
+el = fresh({ stages: 'SENT:60', commands: 'V2 X', reports: 'V2 SENT=pass' });
+ok('a stack built from attributes does not flash on load', !el.querySelector('[data-ov-cue]'), null);
+const reduce = [...document.styleSheets].flatMap((sh) => [...sh.cssRules]).flatMap((r) => (r.cssRules ? [...r.cssRules] : [r]))
+  .find((r) => r.media && /prefers-reduced-motion: reduce/.test(r.media.mediaText) && /ov-verifier__cell/.test(r.cssText));
+ok('reduced motion switches off the drain and the cue', reduce && /data-ov-cue/.test(reduce.cssText) && /data-ov-state="pending"/.test(reduce.cssText)
+  && reduce.cssRules[0].style.animationName === 'none', reduce && reduce.cssText);
+
+// 15. Narrow is a layout, set synchronously on connect.
+el = fresh({ stages: LONG, commands: 'N1 HTR-2 ON', reports: 'N1 QUEUED=pass' }, '226px');
+ok('in a 226px cell the verifier goes narrow at once', el.hasAttribute('data-ov-narrow'), el.clientWidth);
+ok('...and nothing runs off the edge', el.scrollWidth <= el.clientWidth + 1, [el.scrollWidth, el.clientWidth]);
+el = fresh({ stages: LONG, commands: 'N1 HTR-2 ON' }, '1100px');
+ok('at 1100px it stays wide', !el.hasAttribute('data-ov-narrow'), el.clientWidth);
+
+// 16. The command is never clipped: its value and its target stay readable.
+// The target decides whether a telemetry change may be credited, so an
+// ellipsis that hides it hides the reason for a verdict.
+const whole = (e) => !!e && e.scrollWidth <= e.clientWidth + 1 && e.scrollHeight <= e.clientHeight + 1;
+const inside = (a, b) => {
+  const x = a.getBoundingClientRect(), y = b.getBoundingClientRect();
+  return x.width > 0 && x.left >= y.left - 0.5 && x.right <= y.right + 0.5 && x.bottom <= y.bottom + 0.5;
+};
+const oneLine = (e, r) => e.getBoundingClientRect().height <= r.querySelector('.ov-verifier__id').getBoundingClientRect().height + 1;
+const LBL = 'AHU-2 SUPPLY DAMPER POSITION 40%';
+const labelOf = (e, id) => row(e, id).querySelector('.ov-verifier__label');
+el = fresh({ stages: LONG, commands: `L1 ${LBL} @AHU2-SUPPLY`, reports: 'L1 QUEUED=pass' });
+let lab = labelOf(el, 'L1'), tg = lab.querySelector('.ov-verifier__target');
+ok('a label longer than its column wraps, and none of it is clipped', whole(lab) && lab.textContent === `${LBL} @AHU2-SUPPLY`,
+  [lab.scrollWidth, lab.clientWidth, lab.scrollHeight, lab.clientHeight]);
+ok('...the target is drawn whole, on one line, inside the label cell', inside(tg, lab) && oneLine(tg, row(el, 'L1')),
+  [tg.getBoundingClientRect().right, lab.getBoundingClientRect().right, tg.getBoundingClientRect().height]);
+ok('...the row grows, not the column: the label cell is still the head\'s width, and the stack stays wide',
+  !el.hasAttribute('data-ov-narrow')
+  && Math.abs(lab.getBoundingClientRect().width - el.querySelector('.ov-verifier__head .ov-verifier__label').getBoundingClientRect().width) < 1,
+  [lab.getBoundingClientRect().width, el.querySelector('.ov-verifier__head .ov-verifier__label').getBoundingClientRect().width]);
+el = fresh({ stages: LONG, commands: 'L2 DEPLOYSOLARARRAYPANELSEQUENCE @ARRAY' });
+lab = labelOf(el, 'L2');
+ok('a single word wider than the column breaks, it does not run under the marks', whole(lab), [lab.scrollWidth, lab.clientWidth]);
+el = fresh({ stages: LONG, commands: `L3 ${LBL} @AHU2-SUPPLY` }, '226px');
+lab = labelOf(el, 'L3'); tg = lab.querySelector('.ov-verifier__target');
+ok('narrow too: the whole command and its target are shown', el.hasAttribute('data-ov-narrow') && whole(lab) && inside(tg, lab),
+  [lab.scrollWidth, lab.clientWidth]);
+// A target moved as one unit must still be a separate word: an inline-block
+// swallowed the leading space it carried and drew "HTR-2 ON@HTR2".
+el = fresh({ stages: LONG, commands: 'L5 HTR-2 ON @HTR2' });
+lab = labelOf(el, 'L5'); tg = lab.querySelector('.ov-verifier__target');
+const words = document.createRange(); words.selectNodeContents(lab.firstChild);
+const gap = tg.getBoundingClientRect().left - words.getBoundingClientRect().right;
+ok('...and the target is set off from the command by a space, not run into it', gap >= 3 && lab.textContent === 'HTR-2 ON @HTR2', [gap, lab.textContent]);
+// The control puts the old rule back (unlayered, so it wins over the kit's
+// layered CSS) on one element: the same checks must see the clipping.
+const old = document.createElement('style');
+old.textContent = '.clip .ov-verifier__row .ov-verifier__label { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }';
+document.head.append(old);
+el = fresh({ stages: LONG, commands: `L4 ${LBL} @AHU2-SUPPLY` });
+el.classList.add('clip');
+lab = labelOf(el, 'L4'); tg = lab.querySelector('.ov-verifier__target');
+control('CONTROL: under the old ellipsis rule the label and target read as whole (must fail)', whole(lab) && inside(tg, lab));
+old.remove();
+
+const passed = results.filter((x) => x.pass).length;
+const failed = results.length - passed;
+const controlsFailed = controls.filter((x) => !x.pass).length;
+const gate = failed === 0 && controlsFailed === controls.length && controls.length > 0;
+const out = document.getElementById('out');
+out.textContent = [
+  ...results.map((x) => `${x.pass ? 'PASS' : 'FAIL'}  ${x.name}${x.pass ? '' : '  got ' + JSON.stringify(x.got)}`),
+  ...controls.map((x) => `${x.pass ? 'CONTROL PASSED (BAD)' : 'CONTROL FAILED (good)'}  ${x.name}`),
+  '',
+  `${passed} passed, ${failed} failed, ${controlsFailed}/${controls.length} controls failed as required`,
+  `GATE: ${gate ? 'PASS' : 'FAIL'}`,
+].join('\n');
+out.setAttribute('data-gate', gate ? 'pass' : 'fail');
+</script>
