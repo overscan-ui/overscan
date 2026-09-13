@@ -11,7 +11,7 @@
 // reported "no canvas" while a real renderer showed both lending at once
 // (2026-09-12). A gate that cannot tell working from broken is not a gate.
 const path = require('path');
-const { launch, sleep } = require(path.join(__dirname, '../perf/lib.cjs'));
+const { launch, sleep } = require(path.join(__dirname, 'browser.cjs'));
 
 (async () => {
   const urls = process.argv.slice(2);

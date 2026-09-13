@@ -4,7 +4,7 @@
 # missing from `files`, or types that do not compile once packaged: nothing
 # run inside the repo touches any of that.
 #
-# Needs tools/serve.py already running on :8842 (the scratch project lives at
+# Needs tools/static_server.py already running on :8842 (the scratch project lives at
 # tmp/consumer/, inside the repo, so the running server serves it).
 #
 # Prove it can fail:
@@ -37,7 +37,7 @@ node_modules/.bin/tsc --noEmit --lib es2022,dom --strict tmp/consumer/node_modul
 echo 'OK  packaged types compile'
 
 CHROME='/Applications/Google Chrome.app/Contents/MacOS/Google Chrome'
-# The server that serves this checkout. Same variable as tools/perf/lib.cjs, so
+# The server that serves this checkout. Same variable as tools/release.py, so
 # a copy of the repo elsewhere can be tested without touching :8842.
 BASE_URL="${OVERSCAN_URL:-http://localhost:8842/}"
 

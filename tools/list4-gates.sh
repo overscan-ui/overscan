@@ -1,7 +1,7 @@
 #!/bin/sh
 # Every list-4 element and every one of its mutants, in one command.
 #
-#   sh tools/list4-gates.sh          # needs tools/serve.py running on :8842
+#   sh tools/list4-gates.sh          # needs tools/static_server.py running on :8842
 #
 # The element must read GATE: PASS. Every mutant must read GATE: FAIL, because
 # a mutant is a copy of the element with one refusal broken on purpose: if the
