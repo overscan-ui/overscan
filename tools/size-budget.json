@@ -1,8 +1,9 @@
 {
   "largest_closure_is": "ov-waterfall",
-  "kit_js": 390068,
+  "kit_js": 388296,
   "opt_in_js": 20063,
-  "kit_css": 118139,
-  "radar_closure": 12903,
-  "largest_closure": 22457
+  "kit_css": 108163,
+  "opt_in_css": 9520,
+  "radar_closure": 12842,
+  "largest_closure": 22389
 }

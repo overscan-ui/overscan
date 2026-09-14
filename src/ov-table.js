@@ -19,6 +19,7 @@
  */
 
 import { define } from './ov-core.js';
+import './ov-refusal.js';
 
 /* A stable identity per ROW OBJECT, so a reorder can be recognised as one.
  *

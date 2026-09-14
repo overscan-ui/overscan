@@ -2,6 +2,9 @@
  *
  * Overscan, whole kit, one file:  import 'overscan/overscan.css'
  *
+ * Except the media player: a page with <ov-player> also imports
+ * 'overscan/src/player.css' and 'overscan/src/player-icons.css'.
+ *
  * ⚠️ THE ORDER HERE IS THE CASCADE and it is not alphabetical. It is the order
  * the demo pages have always linked these files in, so the kit resolves against
  * itself exactly as it does in the repo. Reordering is a visual change.
@@ -68,8 +71,6 @@
 @import url('avatar.css');
 @import url('vitals.css');
 @import url('ecg.css');
-@import url('player.css');
-@import url('player-icons.css');
 @import url('geomap.css');
 @import url('tactical.css');
 @import url('ascii.css');

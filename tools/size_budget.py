@@ -77,9 +77,16 @@ def opt_in():
     return set(re.findall(r"'([\w-]+)'", m.group(1))) if m else set()
 
 
+def opt_in_css():
+    """The stylesheets tools/gen_entry.py keeps OUT of overscan.css."""
+    m = re.search(r"^CSS_OPT_IN = \[([^\]]*)\]", (ROOT / 'tools' / 'gen_entry.py').read_text(), re.M)
+    return set(re.findall(r"'([\w-]+)'", m.group(1))) if m else set()
+
+
 def measure(root):
     src = root / 'src'
     skip = opt_in()
+    css_skip = opt_in_css()
     # 🔴 kit_js is what `import 'overscan'` loads, so opt-in data is not in it;
     # it is budgeted on its own line instead, where it cannot hide an element.
     js = sorted(p for p in src.glob('*.js') if p.stem not in skip)
@@ -89,7 +96,10 @@ def measure(root):
     return {
         'kit_js': gz(js),
         **({'opt_in_js': gz(data)} if data else {}),
-        'kit_css': gz(sorted(src.glob('*.css'))),
+        # The same split for CSS: kit_css is what overscan.css pulls in.
+        'kit_css': gz(sorted(p for p in src.glob('*.css') if p.stem not in css_skip)),
+        **({'opt_in_css': gz(sorted(p for p in src.glob('*.css') if p.stem in css_skip))}
+           if css_skip else {}),
         'radar_closure': closures.get('ov-radar', 0),
         'largest_closure': closures[heaviest],
     }, heaviest

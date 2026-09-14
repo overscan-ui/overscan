@@ -135,6 +135,47 @@ KIT_GATES = ['palette.py', 'clearance.py', 'icons.py']
 SITE_GATES = ['themes.py', 'examples.py', 'bundle.py']
 
 
+GLOBAL_DEF = re.compile(r'window\.([A-Z][A-Za-z]+)\s*=(?!=)')
+BLOCK_COMMENT = re.compile(r'/\*.*?\*/', re.S)
+LINE_COMMENT = re.compile(r'^\s*//.*$', re.M)
+
+
+def unimported_globals(sources):
+    """[(module, global, definers)] for each module that reads a window global
+    another module defines, without importing any module that defines it.
+
+    🔴 THE BUG THIS EXISTS FOR. ov-table.js called window.OverscanRefusal and
+    never imported ov-refusal.js. Every page that loaded another element first
+    worked, so it passed everywhere it was looked at, and a consumer importing
+    the table on its own got a TypeError on connect. Comments are stripped
+    first, because this kit discusses the globals in prose far more often
+    than it reads them."""
+    defs = {}
+    for name, text in sources.items():
+        for glob in GLOBAL_DEF.findall(text):
+            defs.setdefault(glob, set()).add(name)
+    bad = []
+    for name, text in sorted(sources.items()):
+        code = LINE_COMMENT.sub('', BLOCK_COMMENT.sub('', text))
+        for glob, definers in sorted(defs.items()):
+            if name in definers or not re.search(r'\bwindow\.' + glob + r'\b', code):
+                continue
+            imported = any(re.search(r"""\bimport\s+(?:[^'";]*\bfrom\s+)?['"]\./"""
+                                     + re.escape(d) + r"""['"]""", code) for d in definers)
+            if not imported:
+                bad.append((name, glob, sorted(definers)))
+    return bad
+
+
+def stage_globals(g):
+    """Prove it fails: delete `import './ov-refusal.js';` from src/ov-table.js."""
+    sources = {p.name: p.read_text() for p in sorted((ROOT / 'src').glob('*.js'))}
+    bad = unimported_globals(sources)
+    g.check('every module imports the globals it reads', not bad,
+            '\n'.join(f'{m} reads window.{glob} but imports none of {", ".join(d)}'
+                      for m, glob, d in bad))
+
+
 def stage_generators(g, kit=False):
     """Prove it fails: hand-edit a generated file and do not re-run its tool."""
     # ⚠️ collisions.py IS NOT IN THIS LIST, and not by oversight. It refuses
@@ -464,6 +505,26 @@ def selftest():
             if noted(text):
                 fails.append(f'notes scan false-positives on ordinary text: {text!r}')
 
+    # The globals check: a module that reads a global it does not import is
+    # caught, and an import, a second definer or a comment are not.
+    refusal = {'ov-refusal.js': 'window.OverscanRefusal = (() => ({}))();'}
+    cases = [
+        ({**refusal, 'ov-table.js': "import { define } from './ov-core.js';\n"
+          "window.OverscanRefusal.upgrade(this);"}, 1),
+        ({**refusal, 'ov-table.js': "import './ov-refusal.js';\n"
+          "window.OverscanRefusal.upgrade(this);"}, 0),
+        ({**refusal, 'ov-note.js': '/* window.OverscanRefusal is shared */\n'
+          '// window.OverscanRefusal again\nexport const x = 1;'}, 0),
+        ({'ov-core.js': 'window.Overscan = {};', 'ov-gl.js': 'window.Overscan = window.Overscan || {};',
+          'ov-a.js': "import './ov-gl.js';\nwindow.Overscan.x();"}, 0),
+        ({**refusal, 'ov-core.js': 'window.Overscan = {};',
+          'ov-b.js': "import './ov-core.js';\nwindow.Overscan.y(); window.OverscanRefusal.z();"}, 1),
+    ]
+    for i, (sources, want) in enumerate(cases):
+        got = len(unimported_globals(sources))
+        if got != want:
+            fails.append(f'globals check case {i}: {got} findings, expected {want}')
+
     # The verdict parser. A harness speaks in one of five ways, and silence
     # must read as silence rather than as success.
     verdicts = [
@@ -512,6 +573,7 @@ def main():
     stage_exports(g)
     stage_types(g)
     stage_wrappers(g)
+    stage_globals(g)
 
     print('\n=== generated tree ===')
     stage_generators(g, kit=args.kit)

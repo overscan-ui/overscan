@@ -56,6 +56,16 @@ link `overscan/overscan.css` whichever route you take. It is one file of
 `@import`s that the browser caches once, and loading only part of it is not
 supported until something proves each element renders the same that way.
 
+The one exception is the media player. Its styles are 9 KB that a page without
+a player should not load, so they are not in `overscan.css`, and a page with
+`<ov-player>` imports them as well:
+
+```js
+import "overscan/overscan.css";
+import "overscan/src/player.css";
+import "overscan/src/player-icons.css";
+```
+
 Every import registers a custom element as a side effect, which is why this
 package lists every element module and stylesheet under `sideEffects`. A
 bundler told otherwise will tree-shake the kit away and leave a page of tags
