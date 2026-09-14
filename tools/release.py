@@ -606,8 +606,9 @@ def main():
         print(f'REFUSED: {len(g.failures)} stage(s) red -> ' + ', '.join(g.failures))
         return 1
     if private:
-        print('READY, and not published. To publish: set private=false, '
-              'then `npm publish` (check `npm view overscan` first).')
+        print('READY, and not published. This package.json is private on purpose: '
+              'the kit export writes the publishable copy, and publishing runs '
+              'from overscan-ui/overscan.')
     else:
         print('READY to publish.')
     return 0

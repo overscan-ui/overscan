@@ -76,7 +76,7 @@
     "sci-fi",
     "terminal"
   ],
-  "private": true,
+  "private": false,
   "peerDependencies": {
     "react": ">=18",
     "react-dom": ">=18",
