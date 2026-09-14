@@ -51,8 +51,9 @@ NAME_FLAGS = re.IGNORECASE
 GENERIC_NAME_PATTERNS = [
     r'\bme-[0-9a-f]{2}\b',          # session ids, which leak our working notes
     # An email address. The top-level domain must be letters, so a version
-    # pin like overscan@0.1.0 is not an address.
-    r'\b[\w.+-]+@[\w-]+(?:\.[\w-]+)*\.[a-z]{2,}\b',
+    # pin like overscan@0.1.0 is not an address. The project's own public
+    # address is the one exception, matched whole so no look-alike passes.
+    r'\b(?!hi@overscan\.dev(?![\w.@-]))[\w.+-]+@[\w-]+(?:\.[\w-]+)*\.[a-z]{2,}\b',
 ]
 
 try:
@@ -502,10 +503,13 @@ def selftest():
     must_catch = [
         sid + '30 measured it', sid.upper() + 'AB landed it',
         f'write to someone{at}mailhost.org', f'CONTACT A.B{at}MAIL.CO.UK',
+        # Look-alikes of the project address are still addresses.
+        f'hi{at}overscan.dev.example.org', f'x.hi{at}overscan.dev', f'hello{at}overscan.dev',
     ]
     must_miss = [
         'frame-me-thing', 'the theme-01 token',
         'npm i overscan@0.1.0', 'svelte@5.57.0', 'import "@scope/pkg"',
+        f'MIT 2026 Overscan UI Kit hi{at}overscan.dev', f'<HI{at}OVERSCAN.DEV>',
     ]
     if release_lab:
         must_catch += release_lab.MUST_CATCH

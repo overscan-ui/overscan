@@ -198,4 +198,6 @@ The WebGL elements borrow from a pool of twelve contexts, lent to whatever is on
 screen and taken back when it leaves, because a browser silently evicts contexts
 past about sixteen.
 
-MIT.
+## License
+
+MIT &copy; 2026 &bull; [Overscan UI Kit](https://overscan.dev) &bull; [hi@overscan.dev](mailto:hi@overscan.dev)
