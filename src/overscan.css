@@ -29,6 +29,7 @@
 @import url('reticle.css');
 @import url('plate.css');
 @import url('wireframe.css');
+@import url('solid.css');
 @import url('schematic.css');
 @import url('locator.css');
 @import url('horizon.css');
@@ -73,6 +74,9 @@
 @import url('ecg.css');
 @import url('geomap.css');
 @import url('tactical.css');
+@import url('watchdog.css');
+@import url('authority.css');
+@import url('datablock.css');
 @import url('ascii.css');
 @import url('graph.css');
 @import url('grid.css');

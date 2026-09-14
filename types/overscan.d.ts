@@ -64,6 +64,13 @@ export interface OvCellbar extends HTMLElement {
   value: Reading;
 }
 
+/** `<ov-authority>`
+ *  Events: ov:authority.
+ */
+export interface OvAuthority extends HTMLElement {
+  picture: Structured;
+}
+
 /** `<ov-avatar>`
  */
 export interface OvAvatar extends HTMLElement {
@@ -127,6 +134,13 @@ export interface OvCountdown extends HTMLElement {
  */
 export interface OvCoverage extends HTMLElement {
   coverage: Structured;
+}
+
+/** `<ov-datablock>`
+ *  Events: ov:datablock.
+ */
+export interface OvDatablock extends HTMLElement {
+  track: Structured;
 }
 
 /** `<ov-dial>`
@@ -402,6 +416,13 @@ export interface OvSequence extends HTMLElement {
   sequence: Structured;
 }
 
+/** `<ov-solid>`
+ */
+export interface OvSolid extends HTMLElement {
+  mesh: Structured;
+  survey: Structured;
+}
+
 /** `<ov-sound-switch>`
  */
 export interface OvSoundSwitch extends HTMLElement {
@@ -504,6 +525,12 @@ export interface OvVitals extends HTMLElement {
   vitals: Structured;
 }
 
+/** `<ov-watchdog>`
+ *  Events: ov:watchdog.
+ */
+export interface OvWatchdog extends HTMLElement {
+}
+
 /** `<ov-waterfall>`
  */
 export interface OvWaterfall extends HTMLElement {
@@ -534,6 +561,7 @@ declare global {
     'ov-ansi': OvAnsi;
     'ov-spark': OvSpark;
     'ov-cellbar': OvCellbar;
+    'ov-authority': OvAuthority;
     'ov-avatar': OvAvatar;
     'ov-balance': OvBalance;
     'ov-baseline': OvBaseline;
@@ -544,6 +572,7 @@ declare global {
     'ov-continuity': OvContinuity;
     'ov-countdown': OvCountdown;
     'ov-coverage': OvCoverage;
+    'ov-datablock': OvDatablock;
     'ov-dial': OvDial;
     'ov-donut': OvDonut;
     'ov-dose': OvDose;
@@ -590,6 +619,7 @@ declare global {
     'ov-score': OvScore;
     'ov-segment': OvSegment;
     'ov-sequence': OvSequence;
+    'ov-solid': OvSolid;
     'ov-sound-switch': OvSoundSwitch;
     'ov-split': OvSplit;
     'ov-station': OvStation;
@@ -606,6 +636,7 @@ declare global {
     'ov-tree': OvTree;
     'ov-verifier': OvVerifier;
     'ov-vitals': OvVitals;
+    'ov-watchdog': OvWatchdog;
     'ov-waterfall': OvWaterfall;
     'ov-wave': OvWave;
     'ov-window': OvWindow;

@@ -1,0 +1,74 @@
+/* ---- CASCADE LAYER ------------------------------------------------------
+ *
+ * Everything the kit ships sits in ONE layer named `overscan`, so a consumer's
+ * own CSS beats it without a specificity fight and without !important. That is
+ * close to mandatory for a distributed kit: an app should be able to restyle a
+ * panel by writing a plain rule.
+ *
+ * ⚠️ ONE layer, deliberately, NOT a sub-layer per file. Sub-layers look tidier
+ * and would silently reorder the kit against itself: layer order beats
+ * specificity, so a high-specificity rule in an early file that currently wins
+ * would start losing to a low-specificity rule in a later one. A single layer
+ * preserves source order exactly, so nothing inside the kit changes.
+ *
+ * Unlayered author CSS wins over all of it. That is the point.
+ */
+
+@layer overscan {
+/* A model or a surveyed terrain, drawn solid, at the detail it has. */
+
+ov-solid {
+  position: relative;
+  display: grid;
+  /* Stage then readout, packed to the top: stretched into a taller grid row,
+   * the readout would drift away from the picture it describes. */
+  align-content: start;
+  gap: 8px;
+  font-family: var(--ov-font-mono);
+  font-size: var(--ov-size-1);
+  letter-spacing: 1px;
+  color: var(--ov-dim);
+}
+
+.ov-solid__stage {
+  position: relative;
+  block-size: var(--ov-solid-height, 300px);
+  overflow: hidden;
+  background: var(--ov-field);
+  border: var(--ov-bezel) solid var(--ov-line-strong);
+}
+
+/* ov-gl lends the canvas and appends it to the element, so it is placed over
+ * the stage's inside rather than inside the stage. Its buffer is sized from
+ * the stage (see resize() in ov-solid.js), so the two must match exactly. */
+ov-solid > canvas {
+  position: absolute;
+  inset-block-start: var(--ov-bezel);
+  inset-inline-start: var(--ov-bezel);
+  inline-size: calc(100% - 2 * var(--ov-bezel));
+  block-size: calc(var(--ov-solid-height, 300px) - 2 * var(--ov-bezel));
+  display: block;
+  pointer-events: none;
+  image-rendering: pixelated;
+}
+
+.ov-solid__void {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  color: var(--ov-alarm);
+  text-transform: uppercase;
+}
+/* Author `display` beats the UA's [hidden]; without this the refusal would sit
+ * over every model that drew. */
+.ov-solid__void[hidden] { display: none; }
+
+.ov-solid__readout {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 20px;
+}
+.ov-solid__readout .is-doubt { color: var(--ov-accent-2); }
+.ov-solid__readout .is-open { color: var(--ov-alarm); }
+}

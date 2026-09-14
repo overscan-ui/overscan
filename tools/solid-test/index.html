@@ -1,0 +1,198 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>ov-solid harness</title>
+<!-- The gate for ov-solid. Serve the repo root (tools/static_server.py) and open
+     /tools/solid-test/. The last line must read GATE: PASS, and every CONTROL must
+     fail. The drawn-pixel cases need WebGL; without it the gate FAILS and says so,
+     because a picture nobody could check is not a passing picture. -->
+<link rel="stylesheet" href="../../src/tokens.css">
+<link rel="stylesheet" href="../../src/solid.css">
+<style>
+  body { background: #06060a; color: #cfe; font: 13px ui-monospace, monospace; padding: 20px; }
+  pre { white-space: pre-wrap; }
+  #stage { inline-size: 480px; }
+</style>
+<div id="stage" data-ov-theme="industrial"></div>
+<pre id="out" data-gate="pending">running...</pre>
+<script>
+  const fatal = (what) => {
+    const out = document.getElementById('out');
+    if (out) { out.textContent = `THREW: ${what}\n\nGATE: FAIL`; out.dataset.gate = 'fail'; }
+  };
+  addEventListener('error', (e) => fatal(e.error?.stack || e.message || e));
+  addEventListener('unhandledrejection', (e) => fatal(e.reason?.stack || e.reason));
+</script>
+<script type="module">
+const SRC = new URLSearchParams(location.search).get('src') || '../../src/ov-solid.js';
+await import(new URL(SRC, location.href).href);
+await customElements.whenDefined('ov-solid');
+
+const stage = document.getElementById('stage');
+const results = [], controls = [], unverified = [];
+const ok = (n, c, g) => results.push({ name: n, pass: !!c, got: g });
+const control = (n, c, g) => controls.push({ name: n, pass: !!c, got: g });
+
+const make = (attrs = {}, height = 200, width = 480) => {
+  const el = document.createElement('ov-solid');
+  for (const [k, v] of Object.entries(attrs)) el.setAttribute(k, v);
+  el.style.setProperty('--ov-solid-height', `${height}px`);
+  stage.style.inlineSize = `${width}px`;
+  stage.replaceChildren(el);
+  return el;
+};
+/* A survey from functions of (column, row). */
+const grid = (cols, rows, h, c) => {
+  const s = { cols, rows, heights: [] };
+  if (c) s.confidence = [];
+  for (let r = 0; r < rows; r++) for (let q = 0; q < cols; q++) {
+    s.heights.push(h(q, r));
+    if (c) s.confidence.push(c(q, r));
+  }
+  return s;
+};
+const L = (el) => el.list;
+const text = (el) => el.querySelector('.ov-solid__readout').textContent;
+const voidText = (el) => { const v = el.querySelector('.ov-solid__void'); return v && !v.hidden ? v.textContent : ''; };
+const detail = (el) => { const m = /past detail x(\d+)/.exec(text(el)); return m ? Number(m[1]) : /within detail/.test(text(el)) ? 1 : null; };
+const waitFor = (fn, ms = 5000) => new Promise((done) => {
+  const t0 = Date.now();
+  const look = () => { let v = false; try { v = fn(); } catch {} if (v) return done(true); if (Date.now() - t0 > ms) return done(false); setTimeout(look, 40); };
+  look();
+});
+
+// ---- 1. Counting what was measured ---------------------------------------
+let el = make();
+el.survey = grid(3, 3, () => 0);
+ok('a 3x3 survey is 8 faces, all measured', L(el).faces === 8 && L(el).measured === 8 && L(el).open === 0, L(el));
+ok('⭐ with no confidence given, the readout SAYS so rather than going quiet', /confidence not supplied/.test(text(el)), text(el));
+control('CONTROL: a survey with no confidence claims nothing about it (must fail)', !/confidence not supplied/.test(text(el)), text(el));
+
+el.survey = grid(2, 2, () => 0, (q, r) => (q === 1 && r === 1 ? 0.5 : 1));
+ok('a face takes the LOWEST confidence of its corners: one measured, one inferred', L(el).measured === 1 && L(el).inferred === 1 && L(el).open === 0, L(el));
+ok('...and the readout counts the inferred face as dithered', /1 inferred, dithered by confidence/.test(text(el)), text(el));
+
+el.survey = grid(2, 2, (q, r) => (q === 1 && r === 1 ? null : 0));
+ok('⭐ a face touching an unmeasured height is OPEN, not interpolated shut', L(el).measured === 1 && L(el).open === 1, L(el));
+control('CONTROL: an unmeasured height still yields two drawn faces (must fail)', L(el).count === 6, L(el).count);
+
+el.survey = grid(2, 2, () => 0, (q, r) => (q === 1 && r === 1 ? 0 : 1));
+ok('confidence 0 is open', L(el).measured === 1 && L(el).open === 1, L(el));
+el.survey = grid(2, 2, () => 0, (q, r) => (q === 1 && r === 1 ? 1.5 : 1));
+ok('confidence outside 0..1 is unreadable, left open, and said', L(el).unreadable === 1 && L(el).open === 1 && /1 with unreadable confidence, left open/.test(text(el)), [L(el), text(el)]);
+
+el.mesh = { vertices: [[0, 0, 0], [1, 0, 0], [1, 1, 0], [0, 1, 0]], faces: [[0, 1, 2], [0, 2, 3], [0, 1, 9]], confidence: [1, 0.25, 1] };
+ok('a mesh counts measured, inferred and a face on a missing vertex as open', L(el).measured === 1 && L(el).inferred === 1 && L(el).open === 1, L(el));
+
+// ---- 2. Refusals ----------------------------------------------------------
+el = make();
+ok('⭐ no input is a refusal, NO MESH, not an empty stage', el.getAttribute('data-ov-refusal') === 'unknown' && voidText(el) === 'no mesh', voidText(el));
+control('CONTROL: an element with no input claims no refusal (must fail)', !el.hasAttribute('data-ov-refusal'), el.getAttribute('data-ov-refusal'));
+el.survey = grid(2, 2, () => null);
+ok('a survey where nothing was measured refuses: no face measured', el.getAttribute('data-ov-refusal') === 'unknown' && /no face measured: 2 of 2 open/.test(voidText(el)), voidText(el));
+el = make({ model: './no-such-model.json' });
+await waitFor(() => /failed to load/.test(voidText(el)), 3000);
+ok('a model that fails to load says so, with its address', voidText(el) === 'model failed to load: ./no-such-model.json', voidText(el));
+
+// ---- 3. Pixelation is resolution (the readout) -----------------------------
+const coarse = grid(8, 6, (q, r) => Math.sin(q) * 0.3 + Math.cos(r) * 0.2);
+el = make({ yaw: '-28', pitch: '34' }, 120, 240);
+el.survey = coarse;
+const small = detail(el);
+el = make({ yaw: '-28', pitch: '34' }, 400, 480);
+el.survey = coarse;
+const big = detail(el);
+ok('⭐ the same survey on a larger stage is further past its detail', small !== null && big !== null && big > small && big > 1, { small, big });
+el = make({ yaw: '-28', pitch: '34' }, 120, 240);
+el.survey = grid(240, 180, (q, r) => Math.sin(q / 20) * 0.3);
+ok('a fine survey on a small stage reads within detail', detail(el) === 1, text(el));
+el = make({ yaw: '-28', pitch: '34' }, 400, 480);
+el.survey = coarse;
+control('CONTROL: a coarse survey on a large stage reads within detail (must fail)', detail(el) === 1, text(el));
+
+// ---- 4. Drawn pixels: dither, blocks, holes, and the context handed back --
+/* Seen from straight above and orthographic, a flat survey covers a fixed
+ * patch of the stage, so coverage compares directly between confidences. */
+async function drawn(survey, height = 240, width = 480) {
+  const e = make({ pitch: '90', yaw: '0', fov: '0' }, height, width);
+  e.survey = survey;
+  const ready = await waitFor(() => e.gl && e.meshProg && e.drawn);
+  if (!ready) return null;
+  e.draw(e.gl);
+  const gl = e.gl, w = e.canvas.width, h = e.canvas.height;
+  const px = new Uint8Array(w * h * 4);
+  gl.readPixels(0, 0, w, h, gl.RGBA, gl.UNSIGNED_BYTE, px);
+  const covered = (() => { let n = 0; for (let i = 3; i < px.length; i += 4) if (px[i] > 0) n++; return n; })();
+  return { e, gl, w, h, px, covered, block: e.drawn.block };
+}
+const flat = (cols, conf, hole = false) => grid(cols, cols,
+  (q, r) => (hole && Math.abs(q - (cols - 1) / 2) < cols / 6 && Math.abs(r - (cols - 1) / 2) < cols / 6 ? null : 0),
+  conf === null ? null : () => conf);
+/* Every block-sized cell of the frame is one colour. */
+const uniformCells = (d, b) => {
+  let bad = 0, cells = 0;
+  for (let cy = 0; cy + b <= d.h; cy += b) for (let cx = 0; cx + b <= d.w; cx += b) {
+    cells++;
+    const i0 = (cy * d.w + cx) * 4;
+    let same = true;
+    for (let y = cy; y < cy + b && same; y++) for (let x = cx; x < cx + b; x++) {
+      const i = (y * d.w + x) * 4;
+      if (d.px[i] !== d.px[i0] || d.px[i + 1] !== d.px[i0 + 1] || d.px[i + 2] !== d.px[i0 + 2] || d.px[i + 3] !== d.px[i0 + 3]) { same = false; break; }
+    }
+    if (!same) bad++;
+  }
+  return { bad, cells };
+};
+
+const solid = await drawn(flat(6, 1));
+if (!solid) {
+  unverified.push('no drawing GL context here (no WebGL, or the element never drew)');
+} else {
+  ok('a measured flat survey draws (the pixel cases are real)', solid.covered > 1000, solid.covered);
+  const half = await drawn(flat(6, 0.5));
+  const quarter = await drawn(flat(6, 0.25));
+  const rHalf = half.covered / solid.covered, rQuarter = quarter.covered / solid.covered;
+  ok('⭐ dither IS confidence: a 0.5 face covers about half of a measured one', rHalf > 0.4 && rHalf < 0.6, rHalf.toFixed(3));
+  ok('...and a 0.25 face about a quarter', rQuarter > 0.18 && rQuarter < 0.32, rQuarter.toFixed(3));
+  control('CONTROL: a 0.5 face covers as much as a measured one (must fail)', rHalf > 0.9, rHalf.toFixed(3));
+
+  ok('the coarse flat survey is drawn in blocks larger than a pixel', half.block > 1, half.block);
+  const u = uniformCells(half, half.block);
+  ok('⭐ pixelation IS resolution: every block is one colour, dither included', u.cells > 20 && u.bad === 0, u);
+  /* 160 samples across a 240 by 120 stage is under one CSS pixel per sample,
+   * so within detail at any device pixel ratio up to 2. */
+  const fine = await drawn(flat(160, 0.5), 120, 240);
+  ok('a survey finer than its stage is drawn at one device pixel per block', fine.block === 1 && detail(fine.e) === 1, { block: fine.block, readout: text(fine.e) });
+  const uf = uniformCells(fine, half.block);
+  control('CONTROL: the fine dithered survey is uniform in coarse-sized blocks (must fail)', uf.bad === 0, uf);
+  ok('the readout block and the drawn block are the same number', detail(half.e) === half.block, { readout: detail(half.e), drawn: half.block });
+
+  const holed = await drawn(flat(12, 1, true));
+  const at = (d, x, y) => d.px[(Math.floor(y) * d.w + Math.floor(x)) * 4 + 3];
+  ok('⭐ an unmeasured hole is transparent where the ground around it is drawn', at(holed, holed.w / 2, holed.h / 2) === 0 && holed.covered > 1000, { centre: at(holed, holed.w / 2, holed.h / 2), covered: holed.covered });
+
+  const g = holed.gl;
+  const back = {
+    buffer: g.getParameter(g.ARRAY_BUFFER_BINDING) === holed.e.quad,
+    program: g.getParameter(g.CURRENT_PROGRAM) === holed.e.prog,
+    depth: g.isEnabled(g.DEPTH_TEST) === false,
+    blend: g.isEnabled(g.BLEND) === true,
+    framebuffer: g.getParameter(g.FRAMEBUFFER_BINDING) === null,
+  };
+  ok('the lent context is handed back as ov-gl left it: triangle bound, blend on, depth off, no framebuffer', Object.values(back).every(Boolean), back);
+}
+
+// ---- report ---------------------------------------------------------------
+const lines = [];
+for (const r of results) lines.push(`${r.pass ? 'ok  ' : 'FAIL'} ${r.name}${r.pass ? '' : `\n      got: ${JSON.stringify(r.got)}`}`);
+for (const c of controls) lines.push(`${c.pass ? 'FAIL' : 'ok  '} ${c.name}${c.pass ? `\n      got: ${JSON.stringify(c.got)}` : ''}`);
+for (const u of unverified) lines.push(`UNVERIFIED ${u}`);
+const passed = results.filter((r) => r.pass).length;
+const controlsFailed = controls.filter((c) => !c.pass).length;
+const green = passed === results.length && controlsFailed === controls.length && unverified.length === 0;
+lines.push('', `${passed} of ${results.length} pass, ${controlsFailed} of ${controls.length} controls failed as they must`
+  + (unverified.length ? `, ${unverified.length} unverified` : ''), `GATE: ${green ? 'PASS' : 'FAIL'}`);
+const out = document.getElementById('out');
+out.textContent = lines.join('\n');
+out.dataset.gate = green ? 'pass' : 'fail';
+window.solidResults = { passed, total: results.length, controlsFailed, controls: controls.length, unverified, green };
+</script>

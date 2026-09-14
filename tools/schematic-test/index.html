@@ -1,7 +1,7 @@
 <!doctype html>
 <meta charset="utf-8">
 <title>ov-schematic flow tests</title>
-<!-- Over tools/static_server.py: /tools/schematic-test/ . The last case is a CONTROL that must fail. -->
+<!-- Over tools/static_server.py: /tools/schematic-test/ . Every CONTROL case must fail. -->
 <link rel="stylesheet" href="../../src/tokens.css">
 <link rel="stylesheet" href="../../src/finish.css">
 <link rel="stylesheet" href="../../src/schematic.css">
@@ -17,7 +17,8 @@
 <section class="ov ov-finish" data-ov-theme="aegis"><ov-schematic src="../../demo/models/schematic.json" max-age="10"></ov-schematic></section>
 <div id="tests">running…</div>
 <script type="module">
-  import '../../src/ov-schematic.js';
+  import { OvSchematic } from '../../src/ov-schematic.js';
+  import plans from '../../src/ov-plans.js';
   await customElements.whenDefined('ov-schematic');
   /* A straight line: S -> A -> B -> C, plus a branch S -> D. */
   const plan = (extra = {}) => ({ width: 200, height: 100, rooms: [{ id: 'r', x: 0, y: 0, w: 50, h: 50 }],
@@ -27,8 +28,25 @@
   const fresh = (id, state) => ({ id, state, age: 1 });
   const base = [fresh('s', 'ok'), fresh('a', 'open'), fresh('b', 'running'), fresh('c', 'ok'), fresh('d', 'ok'), fresh('r', 'ok')];
   const pipesOf = (el) => [...el.querySelectorAll('.ov-schematic__pipe')].map((p) => p.classList[1].replace('is-', ''));
-  const mk = (states, p = plan()) => { const el = document.createElement('ov-schematic'); el.setAttribute('max-age', '10'); el.style.display = 'none'; document.body.append(el); el.plan = p; el.states = states; return el; };
+  const mk = (states, p = plan(), attrs = {}) => {
+    const el = document.createElement('ov-schematic'); el.setAttribute('max-age', '10');
+    for (const [k, v] of Object.entries(attrs)) el.setAttribute(k, v);
+    el.style.display = 'none'; document.body.append(el);
+    if (p) el.plan = p; el.states = states; return el;
+  };
   const swap = (id, r) => base.map((s) => (s.id === id ? r : s)).filter(Boolean);
+  const voidText = (el) => el.querySelector('.ov-schematic__void')?.textContent || '';
+  const readout = (el) => el.querySelector('.ov-schematic__readout').textContent;
+  const settle = (el, not) => new Promise((res) => {
+    const t0 = performance.now();
+    const tick = () => (!voidText(el).includes(not) || performance.now() - t0 > 3000 ? res(el) : setTimeout(tick, 30));
+    tick();
+  });
+  /* Every coordinate a path names, as [x, y] pairs. Absolute M L C Z only. */
+  const coords = (d) => { const n = d.match(/\d*\.?\d+/g).map(Number); const out = []; for (let i = 0; i + 1 < n.length; i += 2) out.push([n[i], n[i + 1]]); return out; };
+  const meanX = (d) => { const c = coords(d); return c.reduce((s, [x]) => s + x, 0) / c.length; };
+  const NAMES = ['body', 'head', 'vehicle', 'ship'];
+
   const cases = [
     ['all fresh and open: every pipe flows', () => pipesOf(mk(base)).every((c) => c === 'flowing')],
     ['a known closed valve makes downstream DRY', () => pipesOf(mk(swap('a', fresh('a', 'closed')))).join() === 'flowing,dry,dry,flowing'],
@@ -41,16 +59,172 @@
       const p = plan({ parts: [...plan().parts, { id: 'j', kind: 'node', x: 180, y: 60 }], pipes: [...plan().pipes, { from: 'c', to: 'j' }, { from: 'd', to: 'j' }] });
       const el = mk([...swap('d', null), fresh('j', 'ok')], p); const got = pipesOf(el); return got[4] === 'flowing' && got[5] === 'undetermined'; }],
     ['no plan is a refusal, not an empty frame', () => { const el = mk([], null); el.plan = null; return el.getAttribute('data-ov-refusal') === 'unknown'; }],
-    ['the readout counts what did not report', () => mk(swap('a', null)).querySelector('.ov-schematic__readout').textContent.includes('1 no report')],
+    ['the readout counts what did not report', () => readout(mk(swap('a', null))).includes('1 no report')],
     ['CONTROL: a false claim is caught', () => pipesOf(mk(base)).includes('dry')],
+
+    // ---- stock plans ---------------------------------------------------------
+    // Before anything is loaded: the order of these first three matters.
+    ['⭐ a stock plan asked for and never loaded says STOCK PLANS NOT LOADED', () => { const el = mk([], null, { stock: 'body' }); return el.getAttribute('data-ov-refusal') === 'unknown' && voidText(el) === 'STOCK PLANS NOT LOADED'; }],
+    ['CONTROL: an unloaded stock plan draws a body anyway', () => mk([], null, { stock: 'body' }).querySelectorAll('.ov-schematic__room').length > 0],
+    ['a module that fails to import says FAILED TO LOAD, with its address', async () => { const el = mk([], null, { stock: 'body', plans: './no-such-plans.js' }); await settle(el, 'LOADING'); return voidText(el) === 'STOCK PLANS FAILED TO LOAD: ./no-such-plans.js'; }],
+    ['plans named on the element load and draw', async () => { const el = mk([], null, { stock: 'ship', plans: '../../src/ov-plans.js' }); await settle(el, 'LOADING'); return !el.hasAttribute('data-ov-refusal') && el.querySelectorAll('.ov-schematic__room').length === plans.ship.rooms.length; }],
+    ['data that is not plans says UNREADABLE', () => { OvSchematic.plans = { body: 42 }; const el = mk([], null, { stock: 'body' }); const got = voidText(el); OvSchematic.plans = plans; return got.startsWith('STOCK PLANS UNREADABLE'); }],
+    ['setting OvSchematic.plans redraws a waiting schematic', () => { OvSchematic.plans = null; const el = mk([], null, { stock: 'head' }); const before = voidText(el); OvSchematic.plans = plans; return before === 'STOCK PLANS NOT LOADED' && el.querySelectorAll('.ov-schematic__room').length === 6; }],
+    ['a stock name that is not a plan is refused, and the real names are listed', () => voidText(mk([], null, { stock: 'torso' })) === 'NO STOCK PLAN "TORSO": BODY, HEAD, VEHICLE, SHIP'],
+    ['⭐ a stock name AND a plan of its own: neither is picked', () => { const el = mk([], plan(), { stock: 'body' }); return el.getAttribute('data-ov-refusal') === 'unknown' && voidText(el).startsWith('TWO PLANS GIVEN'); }],
+
+    ['each plan has unique ids across rooms and parts', () => NAMES.every((n) => { const p = plans[n]; const ids = [...p.rooms, ...p.parts].map((x) => x.id); return ids.length > 0 && new Set(ids).size === ids.length; })],
+    ['⭐ every stock plan PRINTS which way it faces', () => NAMES.every((n) => { const el = mk([], null, { stock: n }); const o = el.querySelector('.ov-schematic__orient')?.textContent; return o && o === plans[n].orient; })],
+    ['no region, outline, label or lead of a stock plan leaves its box', () => NAMES.every((n) => {
+      const p = plans[n]; const inside = ([x, y]) => x >= 0 && x <= p.width && y >= 0 && y <= p.height;
+      return [...(p.outline || []), ...p.rooms.filter((r) => r.d).map((r) => r.d)].every((d) => coords(d).every(inside))
+        && p.rooms.every((r) => (r.d ? inside([r.lx, r.ly]) : inside([r.x, r.y]) && inside([r.x + r.w, r.y + r.h]))
+          && (!r.lead || (inside(r.lead.slice(0, 2)) && inside(r.lead.slice(2)))))
+        && p.parts.every((q) => inside([q.x, q.y])); })],
+    ['every region of every stock plan draws as a filled shape a state can light', () => NAMES.every((n) => {
+      const el = mk(plans[n].rooms.map((r) => fresh(r.id, 'ok')), null, { stock: n });
+      return el.querySelectorAll('.ov-schematic__room.is-ok').length === plans[n].rooms.length; })],
+    ['⭐ the subject\'s RIGHT is on the viewer\'s left, on every paired body region', () => {
+      const R = plans.body.rooms.filter((r) => r.id.endsWith('_r')); const L = plans.body.rooms.filter((r) => r.id.endsWith('_l'));
+      return R.length === 6 && L.length === 6 && R.every((r) => meanX(r.d) < plans.body.width / 2 && r.label.startsWith('R '))
+        && L.every((r) => meanX(r.d) > plans.body.width / 2 && r.label.startsWith('L ')); }],
+    ['...and the two sides are one shape, mirrored', () => plans.body.rooms.filter((r) => r.id.endsWith('_r')).every((r) => {
+      const l = plans.body.rooms.find((x) => x.id === r.id.replace(/_r$/, '_l'));
+      const a = coords(r.d), b = coords(l.d);
+      return a.length === b.length && a.every(([x, y], i) => Math.abs(plans.body.width - x - b[i][0]) < 0.11 && y === b[i][1]); })],
+    ['CONTROL: a body drawn with R on the viewer\'s right', () => plans.body.rooms.filter((r) => r.id.endsWith('_r')).every((r) => meanX(r.d) > plans.body.width / 2)],
+    ['⭐ an outline is not a part: never counted, never hatched, never lit', () => {
+      const el = mk([], null, { stock: 'head' }); const hull = el.querySelector('.ov-schematic__hull');
+      return hull && !hull.closest('.ov-schematic__room, .ov-schematic__part') && getComputedStyle(hull).fill === 'none'
+        && readout(el).startsWith('0 of 6 reporting, 6 no report'); }],
+    ['a stock region with no report is hatched like any room', () => { const el = mk([], null, { stock: 'body' }); const r = el.querySelector('.ov-schematic__room.is-none path'); return r && getComputedStyle(r).fill.startsWith('url('); }],
+    ['⭐ a report for an id the plan does not have is COUNTED and NAMED, not matched', () => {
+      const el = mk([{ id: 'left_arm', state: 'alarm', age: 1 }, fresh('arm_l', 'ok')], null, { stock: 'body' });
+      const stray = el.querySelector('.ov-schematic__stray');
+      return stray && stray.textContent === '1 report names no part of this plan: left_arm' && el.querySelectorAll('.ov-schematic__room.is-alarm').length === 0
+        && el.querySelector('svg').getAttribute('aria-label').includes('left_arm'); }],
+    ['CONTROL: a stray report lights the nearest region', () => mk([{ id: 'left_arm', state: 'alarm', age: 1 }], null, { stock: 'body' }).querySelectorAll('.ov-schematic__room.is-alarm').length > 0],
+    ['the vehicle fuel line flows only through a fresh open shutoff', () => {
+      const all = [fresh('fuel_tank', 'ok'), fresh('fuel_pump', 'running'), fresh('fuel_shutoff', 'open'), fresh('injectors', 'ok')];
+      const open = pipesOf(mk(all, null, { stock: 'vehicle' })).join();
+      const unknown = pipesOf(mk(all.slice(0, 2), null, { stock: 'vehicle' })).join();
+      return open === 'flowing,flowing,flowing' && unknown === 'flowing,flowing,undetermined'; }],
+
+    // ---- proportions, measured on the DRAWN figure --------------------------
+    ['⭐ the body is drawn to measured proportions (ANSUR II, in heads)', () => bodyFails(drawn(plans.body)).length === 0],
+    ['CONTROL: a body 30% too wide passes the proportion check', () => bodyFails(drawn(squash(plans.body, 1.3, 1))).length === 0],
+    ['CONTROL: a body with legs 15% short passes the proportion check', () => bodyFails(drawn(squash(plans.body, 1, 0.85))).length === 0],
+    ['⭐ the brain is drawn to measured proportions, in a head taller than long', () => brainFails(drawn(plans.head)).length === 0],
+    ['CONTROL: a brain and head flattened 30% pass the proportion check', () => brainFails(drawn(squash(plans.head, 1, 0.7))).length === 0],
+    ['⭐ the brainstem runs down into the neck, clear of the back of the head', () => neckFails(drawn(plans.head)).length === 0],
+    ['CONTROL: a brainstem leaned 30 degrees back still fits the neck', () => neckFails(drawn(lean(plans.head, 'brainstem', 0.58, 0))).length === 0],
+    ['CONTROL: a brainstem moved 40 px back toward the nape still fits the neck', () => neckFails(drawn(lean(plans.head, 'brainstem', 0, 40))).length === 0],
   ];
+
+  /* Proportion checks read getBBox() off the rendered paths, so they measure
+   * the curves as drawn rather than the numbers in the plan. The element has
+   * to be laid out for that, so it sits offscreen rather than display:none. */
+  function drawn(p) {
+    const el = document.createElement('ov-schematic');
+    el.style.cssText = 'position:absolute;left:-10000px;top:0;inline-size:900px';
+    document.body.append(el);
+    el.plan = p;
+    const box = (id) => el.querySelectorAll('.ov-schematic__room')[p.rooms.findIndex((r) => r.id === id)].querySelector('path').getBBox();
+    const hull = el.querySelector('.ov-schematic__hull');
+    const out = { p, box, hull: hull ? hull.getBBox() : null, hullEl: hull, path: (id) => el.querySelectorAll('.ov-schematic__room')[p.rooms.findIndex((r) => r.id === id)].querySelector('path') };
+    return out;
+  }
+  /* Scale a plan's drawing about its centre: fx across, fy down. */
+  function squash(p, fx, fy) {
+    const cx = p.width / 2;
+    const scale = (d) => { let i = 0; return d.replace(/[A-Za-z]|\d*\.?\d+/g, (t) => { if (/[A-Za-z]/.test(t)) { i = 0; return t; } const n = Number(t); const v = i % 2 === 0 ? cx + (n - cx) * fx : n * fy; i += 1; return String(+v.toFixed(2)); }); };
+    return { ...p, outline: (p.outline || []).map(scale), rooms: p.rooms.map((r) => ({ ...r, d: r.d && scale(r.d) })) };
+  }
+  /* Lean one region back about its top (k px across per px down), then move
+   * it dx px across. Every other region and the outline stay put. */
+  function lean(p, id, k, dx) {
+    const PAIR = /(-?\d*\.?\d+) (-?\d*\.?\d+)/g;
+    return { ...p, rooms: p.rooms.map((r) => {
+      if (r.id !== id) return r;
+      const top = Math.min(...[...r.d.matchAll(PAIR)].map((m) => +m[2]));
+      return { ...r, d: r.d.replace(PAIR, (_, x, y) => `${+(+x + (+y - top) * k + dx).toFixed(2)} ${y}`) };
+    }) };
+  }
+  const within = (fails, name, v, lo, hi) => { if (!(v >= lo && v <= hi)) fails.push(`${name} ${v.toFixed(2)} not in ${lo}..${hi}`); };
+  function bodyFails(m) {
+    const f = [];
+    const h = m.box('head'); const H = h.height; const top = h.y;
+    const down = (id) => (m.box(id).y + m.box(id).height - top) / H;
+    within(f, 'total height', down('foot_r'), 7.3, 7.7);
+    within(f, 'crotch', down('pelvis'), 3.8, 4.0);
+    within(f, 'fingertip', down('hand_r'), 4.55, 4.85);
+    within(f, 'wrist', down('forearm_r'), 3.75, 3.95);
+    within(f, 'knee', down('thigh_r'), 5.3, 5.55);
+    within(f, 'ankle', down('leg_r'), 7.1, 7.3);
+    within(f, 'head width', h.width / H, 0.62, 0.72);
+    within(f, 'across the acromions', m.box('chest').width / H, 1.65, 1.85);
+    within(f, 'hips', m.box('pelvis').width / H, 1.45, 1.65);
+    within(f, 'waist', m.box('abdomen').width / H, 1.3, 1.48);
+    return f;
+  }
+  function brainFails(m) {
+    const f = [];
+    const lobes = ['frontal', 'parietal', 'occipital', 'temporal'].map(m.box);
+    const x0 = Math.min(...lobes.map((b) => b.x)), x1 = Math.max(...lobes.map((b) => b.x + b.width));
+    const y0 = Math.min(...lobes.map((b) => b.y)), y1 = Math.max(...lobes.map((b) => b.y + b.height));
+    const L = x1 - x0, H = y1 - y0;
+    within(f, 'cerebrum length:height', L / H, 1.4, 1.6);
+    const fr = m.box('frontal');
+    within(f, 'central sulcus at the top, from the frontal pole', (fr.x + fr.width - x0) / L, 0.52, 0.62);
+    const cb = m.box('cerebellum');
+    within(f, 'cerebellum front, from the frontal pole', (cb.x - x0) / L, 0.55, 0.72);
+    within(f, 'cerebellum length', cb.width / L, 0.25, 0.45);
+    if (!(cb.y + cb.height > y1)) f.push('cerebellum does not reach below the cerebrum');
+    // Brainstem tilt: the mean x of its top tenth against its bottom tenth.
+    const stem = m.path('brainstem'); const sb = stem.getBBox(); const len = stem.getTotalLength();
+    const tops = [], bots = [];
+    for (let i = 0; i < 400; i++) { const q = stem.getPointAtLength((len * i) / 400); if (q.y < sb.y + sb.height * 0.1) tops.push(q.x); if (q.y > sb.y + sb.height * 0.9) bots.push(q.x); }
+    const mean = (a) => a.reduce((s, v) => s + v, 0) / a.length;
+    const tilt = Math.atan2(mean(bots) - mean(tops), sb.height * 0.9) * 180 / Math.PI;
+    within(f, 'brainstem tilt back from vertical, degrees', tilt, 3, 18);
+    within(f, 'brainstem length:width', sb.height / (sb.width || 1), 1.2, 3.5);
+    within(f, 'head height:length', m.hull.height / m.hull.width, 1.05, 1.3);
+    within(f, 'cerebrum height in the head', H / m.hull.height, 0.35, 0.55);
+    return f;
+  }
+  /* The brainstem has to go somewhere: down through the skull base into the
+   * spinal canal in the neck. Carry its axis on down to the base of the
+   * outline, which ends at the throat and the nape: it must land in the neck
+   * behind the airway, not in or past the nape. And no point of it may come
+   * closer than 18 px (13 mm, the skull margin) to the back of the head. */
+  function neckFails(m) {
+    const f = [];
+    const stem = m.path('brainstem'); const sb = stem.getBBox(); const len = stem.getTotalLength();
+    const pts = Array.from({ length: 400 }, (_, i) => stem.getPointAtLength((len * i) / 400));
+    const mean = (a) => a.reduce((s, v) => s + v, 0) / a.length;
+    const topX = mean(pts.filter((q) => q.y < sb.y + sb.height * 0.1).map((q) => q.x));
+    const botX = mean(pts.filter((q) => q.y > sb.y + sb.height * 0.9).map((q) => q.x));
+    const o = m.hullEl; const ol = o.getTotalLength();
+    const a = o.getPointAtLength(0), z = o.getPointAtLength(ol);
+    const baseY = Math.max(a.y, z.y), throat = Math.min(a.x, z.x), nape = Math.max(a.x, z.x);
+    const atBase = botX + ((botX - topX) / (sb.height * 0.9)) * (baseY - (sb.y + sb.height * 0.95));
+    within(f, 'brainstem axis at the base of the neck, throat 0 to nape 1', (atBase - throat) / (nape - throat), 0.45, 0.8);
+    const rim = Array.from({ length: 601 }, (_, i) => o.getPointAtLength((ol * i) / 600));
+    let near = Infinity;
+    for (const q of pts) { const row = rim.filter((r) => Math.abs(r.y - q.y) < 3); if (row.length) near = Math.min(near, Math.max(...row.map((r) => r.x)) - q.x); }
+    if (!(near >= 18)) f.push(`brainstem ${near.toFixed(1)} px from the back of the head, needs 18`);
+    return f;
+  }
+  window.proportionReport = () => ({ body: bodyFails(drawn(plans.body)), head: brainFails(drawn(plans.head)), neck: neckFails(drawn(plans.head)) });
+
   let bad = 0;
-  const out = cases.map(([name, fn]) => {
-    let ok = false; try { ok = !!fn(); } catch (e) { ok = false; }
+  const out = [];
+  for (const [name, fn] of cases) {
+    let ok = false; try { ok = !!(await fn()); } catch (e) { ok = false; }
     const control = name.startsWith('CONTROL'); const pass = control ? !ok : ok;
     if (!pass) bad += 1;
-    return `${pass ? 'ok  ' : 'FAIL'} ${name}${control ? ' (must fail)' : ''}`;
-  });
+    out.push(`${pass ? 'ok  ' : 'FAIL'} ${name}${control ? ' (must fail)' : ''}`);
+  }
   const el = document.getElementById('tests');
   el.textContent = `${cases.length - bad} of ${cases.length} pass\n` + out.join('\n');
   el.classList.toggle('fail', bad > 0);

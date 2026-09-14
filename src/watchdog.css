@@ -1,0 +1,257 @@
+@layer overscan {
+/* The path watchdog, drawn as a pipeline. See ov-watchdog.js for the refusal.
+ *
+ * 🔴 NO STAGE STATE RESTS ON COLOUR. Every state is a word the element
+ * writes, and the drawing differs in form as well: a live ring is a solid arc,
+ * a late one a dashed full ring, a stalled one a flat line on its trace, a
+ * never-beaten or uncounted or shared one a dotted ring. The verdict is the
+ * kit's shared state block (chrome.css), a bar, because it is a sentence.
+ *
+ * Glow scales with the theme's --ov-bloom, so a flat theme stays flat.
+ */
+
+ov-watchdog {
+  --ov-wd-ring: 48px;
+  --ov-wd-gap: 14px;
+  --ov-wd-glow: calc(var(--ov-bloom, .2) * 12px);
+  display: grid;
+  gap: 8px;
+  min-inline-size: 0;
+  font-family: var(--ov-font-mono);
+  font-size: var(--ov-size-1, 10px);
+  color: var(--ov-ink);
+}
+
+.ov-watchdog__since { letter-spacing: .1em; }
+.ov-watchdog__foot:empty { display: none; }
+
+/* ---- stages ---------------------------------------------------------- */
+
+.ov-watchdog__stages,
+.ov-watchdog__pagerow {
+  display: grid;
+  gap: var(--ov-wd-gap);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.ov-watchdog__stage {
+  position: relative;
+  display: grid;
+  grid-template-columns: var(--ov-wd-ring) minmax(0, 1fr);
+  column-gap: 12px;
+  align-items: start;
+  color: var(--ov-accent);
+}
+.ov-watchdog__stage:not([data-ov-beat="live"], [data-ov-beat="page"]) { color: var(--ov-alarm); }
+
+.ov-watchdog__ring {
+  inline-size: var(--ov-wd-ring);
+  block-size: var(--ov-wd-ring);
+  overflow: visible;
+  filter: drop-shadow(0 0 var(--ov-wd-glow) currentColor);
+}
+.ov-watchdog__ringtrack {
+  fill: color-mix(in srgb, currentColor 7%, var(--ov-field));
+  stroke: var(--ov-line);
+  stroke-width: 3;
+}
+.ov-watchdog__ringarc {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 3;
+}
+.ov-watchdog__ringmark {
+  stroke: var(--ov-ink);
+  stroke-width: 1.5;
+  opacity: .7;
+}
+.ov-watchdog__ringseq {
+  fill: var(--ov-ink);
+  font: 8.5px var(--ov-font-mono);
+  text-anchor: middle;
+}
+/* Late and shared: a full ring, dashed, so "overdue" is a shape too. */
+.ov-watchdog__stage:is([data-ov-beat="late"], [data-ov-beat="shared"]) .ov-watchdog__ringarc { stroke-dasharray: 5 3; }
+/* Stalled: the outer track goes dotted around the held-time arc. */
+.ov-watchdog__stage[data-ov-beat="stalled"] .ov-watchdog__ringtrack { stroke: currentColor; stroke-dasharray: 1 3; }
+.ov-watchdog__stage:is([data-ov-beat="none"], [data-ov-beat="uncounted"], [data-ov-beat="shared"]) .ov-watchdog__ringtrack {
+  stroke: currentColor;
+  stroke-dasharray: 2 4;
+}
+
+.ov-watchdog__line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 2px 1.2ch;
+}
+.ov-watchdog__name {
+  flex: 1 1 auto;
+  min-inline-size: 0;
+  color: var(--ov-ink);
+  letter-spacing: .12em;
+  overflow-wrap: anywhere;
+}
+.ov-watchdog__period,
+.ov-watchdog__age {
+  color: var(--ov-faint);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.ov-watchdog__word {
+  padding: 0 5px;
+  border: var(--ov-rule, 1px) solid currentColor;
+  letter-spacing: .12em;
+  white-space: nowrap;
+}
+.ov-watchdog__stage[data-ov-beat="late"] .ov-watchdog__word { border-style: dashed; }
+.ov-watchdog__stage[data-ov-beat="stalled"] .ov-watchdog__word { border: 3px double currentColor; }
+.ov-watchdog__stage:is([data-ov-beat="none"], [data-ov-beat="uncounted"], [data-ov-beat="shared"]) .ov-watchdog__word { border-style: dotted; }
+
+/* The trace: time runs left to right, now at the right edge. */
+.ov-watchdog__trace {
+  display: block;
+  inline-size: 100%;
+  block-size: 40px;
+  margin-block-start: 4px;
+  overflow: visible;
+  filter: drop-shadow(0 0 var(--ov-wd-glow) currentColor);
+}
+.ov-watchdog__trace path { fill: none; vector-effect: non-scaling-stroke; }
+.ov-watchdog__base { stroke: var(--ov-line); stroke-width: 1; }
+.ov-watchdog__moved { stroke: currentColor; stroke-width: 1.8; }
+.ov-watchdog__held { stroke: currentColor; stroke-width: 1.8; }
+.ov-watchdog__none { stroke: currentColor; stroke-width: 1.4; stroke-dasharray: 2 2; }
+.ov-watchdog__flat { stroke: var(--ov-alarm); stroke-width: 3; }
+.ov-watchdog__expected { stroke: var(--ov-alarm); stroke-width: 1; stroke-dasharray: 3 3; }
+/* Faint: it covers the whole strip for a stage that never beat, and a heavy
+ * fill there read as a solid bar rather than an absence. */
+.ov-watchdog__missing { fill: color-mix(in srgb, var(--ov-alarm) 7%, transparent); }
+.ov-watchdog__now { stroke: var(--ov-faint); stroke-width: 1; }
+
+.ov-watchdog__why {
+  display: block;
+  margin-block-start: 2px;
+  color: var(--ov-faint);
+  line-height: 1.35;
+}
+.ov-watchdog__why:empty { display: none; }
+.ov-watchdog__stage:not([data-ov-beat="live"], [data-ov-beat="page"]) .ov-watchdog__why { color: var(--ov-alarm); }
+
+/* The conduit, from each ring down to the next, and from the last ring to
+ * the elements guarded. Coloured by the stage it leaves. */
+.ov-watchdog__conduit {
+  position: absolute;
+  inset-inline-start: calc(var(--ov-wd-ring) / 2 - 1px);
+  inset-block-start: var(--ov-wd-ring);
+  inset-block-end: calc(-1 * var(--ov-wd-gap));
+  inline-size: 2px;
+  background: color-mix(in srgb, currentColor 40%, transparent);
+}
+.ov-watchdog__stage:is([data-ov-beat="late"], [data-ov-beat="none"], [data-ov-beat="shared"]) .ov-watchdog__conduit {
+  background: repeating-linear-gradient(to bottom, currentColor 0 3px, transparent 3px 7px);
+}
+.ov-watchdog__pulse {
+  position: absolute;
+  inset-inline-start: -3px;
+  inset-block-start: 0;
+  inline-size: 8px;
+  block-size: 8px;
+  border-radius: 50%;
+  background: currentColor;
+  box-shadow: 0 0 calc(var(--ov-wd-glow) + 4px) currentColor;
+  opacity: 0;
+}
+
+/* The elements guarded: where the conduit ends. */
+.ov-watchdog__sink {
+  position: relative;
+  display: grid;
+  gap: 3px;
+  min-block-size: 16px;
+  padding-inline-start: calc(var(--ov-wd-ring) + 12px);
+  letter-spacing: .1em;
+  text-transform: uppercase;
+  color: var(--ov-alarm);
+}
+/* 🔴 `hidden` LOSES TO THE display ABOVE. The UA sheet's [hidden] rule is
+ * beaten by any author display, so without this the sink of a watchdog that
+ * guards nothing still painted its diamond. */
+.ov-watchdog__sink[hidden] { display: none; }
+ov-watchdog[data-ov-path="live"] .ov-watchdog__sink { color: var(--ov-accent); }
+.ov-watchdog__sink::before {
+  content: '';
+  position: absolute;
+  inset-inline-start: calc(var(--ov-wd-ring) / 2 - 6px);
+  inset-block-start: 1px;
+  inline-size: 10px;
+  block-size: 10px;
+  border: 2px solid currentColor;
+  rotate: 45deg;
+  box-shadow: 0 0 var(--ov-wd-glow) currentColor;
+}
+
+/* The page's own row: set apart, because it is never part of the verdict. */
+.ov-watchdog__pagerow {
+  padding-block-start: 8px;
+  border-block-start: var(--ov-rule, 1px) dashed var(--ov-line);
+}
+.ov-watchdog__page { color: var(--ov-faint); }
+.ov-watchdog__page .ov-watchdog__ringtrack { stroke-dasharray: 2 3; }
+.ov-watchdog__dial { stroke: var(--ov-line); stroke-width: 1.5; }
+.ov-watchdog__hand { stroke: var(--ov-ink); stroke-width: 2; stroke-linecap: round; }
+.ov-watchdog__page .ov-watchdog__moved { stroke: var(--ov-faint); stroke-width: 1.2; }
+
+.ov-watchdog__foot {
+  letter-spacing: .1em;
+  color: var(--ov-alarm);
+}
+
+.ov-watchdog__say,
+.ov-watchdog__desc {
+  position: absolute;
+  inline-size: 1px;
+  block-size: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+/* ---- The binding: what a guarded element's silence may say ------------
+ * Set on the GUARDED element by the watchdog, with the words to show. The
+ * hatch (::before) covers the element, so a dark panel under an unproven path
+ * cannot be read as a calm one at a glance; the words (::after) sit on a tab
+ * BELOW it, in space the mark reserves, because written over the element they
+ * collided with its own text. */
+[data-ov-unproven] {
+  position: relative;
+  outline: 2px dashed var(--ov-alarm);
+  outline-offset: 3px;
+  margin-block-end: calc(2.6em + 10px);
+}
+[data-ov-unproven]::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+  background: repeating-linear-gradient(135deg,
+    transparent 0 7px,
+    color-mix(in srgb, var(--ov-alarm) 16%, transparent) 7px 9px);
+}
+[data-ov-unproven]::after {
+  content: attr(data-ov-unproven);
+  position: absolute;
+  inset-block-start: calc(100% + 5px);
+  inset-inline: -3px;
+  z-index: 1;
+  padding: 3px 6px;
+  pointer-events: none;
+  font: var(--ov-size-1, 10px)/1.3 var(--ov-font-mono);
+  letter-spacing: .12em;
+  color: var(--ov-alarm);
+  background: var(--ov-field);
+  border: var(--ov-rule, 1px) dashed var(--ov-alarm);
+}
+}

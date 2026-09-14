@@ -49,7 +49,10 @@ const flagText = (s) => flag(s).textContent;
 const pole = (s) => flag(s).dataset.ovFlag === 'barberpole' && /repeating-linear-gradient/.test(cs(flag(s)).backgroundImage);
 const word = (s) => s.querySelector('.ov-switch__word').textContent;
 const why = (s) => s.querySelector('.ov-switch__why').textContent;
-const outShown = (s) => cs(s.querySelector('.ov-switch__out')).display !== 'none';
+// Painted, not merely present: an ok reading and a safe switch's ARMED keep
+// their place in the layout and paint nothing.
+const painted = (el) => cs(el).display !== 'none' && cs(el).visibility !== 'hidden';
+const outShown = (s) => painted(s.querySelector('.ov-switch__out'));
 const state = (s) => s.report.state;
 const T = { positions: 'REL,OFF,LAT', transit: '0.3', label: 'MRL' };
 let s;
@@ -113,22 +116,23 @@ ok('a talkback word that is not a position of this switch is not drawn', pole(s)
 s = make({ ...T, set: 'OFF', guard: 'IRREVERSIBLE' });
 s.talkback = 'OFF';
 const btns = () => [...s.querySelectorAll('.ov-switch__pos')];
-const armedWord = () => s.querySelector('.ov-switch__armed');
+const cover = () => s.querySelector('.ov-switch__guard');
+// The open cover IS the armed state: the word on a shut cover goes, which is
+// not transitioned, so it reads true at once.
+const coverOpen = () => cs(s.querySelector('.ov-switch__guardword')).visibility === 'hidden';
 ok('⭐ a guarded switch refuses a command until armed', s.command('LAT') === false && s.set === 'OFF' && state(s) === 'agree', [s.set, state(s)]);
-ok('...its positions are disabled, and the guard is drawn over them', btns().every((b) => b.disabled) && cs(s.querySelector('.ov-switch__guard')).display !== 'none', btns().map((b) => b.disabled));
-ok('...and ARMED is not shown while it is safe', cs(armedWord()).display === 'none', cs(armedWord()).display);
+ok('...its positions are disabled, and the guard is drawn over them', btns().every((b) => b.disabled) && cs(cover()).display !== 'none', btns().map((b) => b.disabled));
+ok('...and the cover is drawn shut while it is safe', !coverOpen() && cover().getAttribute('aria-pressed') === 'false', cover().getAttribute('aria-pressed'));
+ok('the cover is the control: a button, and there is no separate ARM or SAFE', cover().tagName === 'BUTTON' && !s.querySelector('ov-hold, .ov-switch__safe, .ov-switch__arm'), cover().tagName);
 control('CONTROL: an unarmed guarded switch took the command (must fail)', s.set === 'LAT', s.set);
-s.querySelector('ov-hold').dispatchEvent(new CustomEvent('ov:commit', { bubbles: true }));
-ok('the arm is an ov-hold, and only its completed hold arms the switch', s.armed === true && s.hasAttribute('data-ov-armed'), s.armed);
-ok('⭐ the armed state is itself shown, in the dense default', cs(armedWord()).display !== 'none', cs(armedWord()).display);
-control('CONTROL: an armed switch looks safe (must fail)', cs(armedWord()).display === 'none', cs(armedWord()).display);
+cover().click();
+ok('clicking the cover lifts it and arms the switch', s.armed === true && s.hasAttribute('data-ov-armed'), s.armed);
+ok('⭐ the open cover is itself the armed state, drawn in the dense default, and said', coverOpen() && cover().getAttribute('aria-pressed') === 'true' && /open/.test(cover().getAttribute('aria-label')), [coverOpen(), cover().getAttribute('aria-label')]);
+control('CONTROL: an armed switch looks safe (must fail)', !coverOpen(), coverOpen());
 ok('...and an armed switch takes the command, into transit', s.command('LAT') === true && state(s) === 'transit', state(s));
-const armR = s.querySelector('ov-hold').getBoundingClientRect();
-const safeR = s.querySelector('.ov-switch__safe').getBoundingClientRect();
-ok('SAFE sits to the right of ARM or beneath it', safeR.left >= armR.right - 1 || safeR.top >= armR.bottom - 1, [armR.right, safeR.left, armR.bottom, safeR.top]);
-s.querySelector('.ov-switch__safe').click();
-ok('⭐ SAFE removes the armed condition, and the next command is refused', !s.armed && !s.hasAttribute('data-ov-armed') && s.command('OFF') === false, s.armed);
-control('CONTROL: still armed after SAFE (must fail)', s.armed, s.armed);
+cover().click();
+ok('⭐ clicking the open cover closes it, and the next command is refused', !s.armed && !s.hasAttribute('data-ov-armed') && !coverOpen() && s.command('OFF') === false, s.armed);
+control('CONTROL: still armed after closing the cover (must fail)', s.armed, s.armed);
 
 // ---- 8. A flick switch springs back ---------------------------------------
 s = make({ positions: 'REL,OFF,LAT', kind: 'flick', transit: '0.3', label: 'MRL' });
@@ -165,7 +169,7 @@ s.reading = { set: 'LAT', talkback: 'REL' };
 ok('...and without that history it is DISAGREE, never guessed', state(s) === 'disagree', state(s));
 s = make({ ...T, set: 'OFF', guard: 'IRREVERSIBLE' });
 s.reading = { set: 'OFF', talkback: 'OFF', armed: true };
-ok('a reading can say a guarded switch is armed, and it is shown', s.armed && cs(s.querySelector('.ov-switch__armed')).display !== 'none', s.armed);
+ok('a reading can say a guarded switch is armed, and it is shown', s.armed && cs(s.querySelector('.ov-switch__guardword')).visibility === 'hidden', s.armed);
 s = make({ ...T });
 s.reading = { set: 'OFF', talkback: 'OFF', armed: true };
 ok('...but cannot arm a switch that has no guard', !s.armed && !s.hasAttribute('data-ov-armed'), s.armed);
@@ -195,7 +199,61 @@ s.setAttribute('look', 'triangle');
 const tip = s.querySelector('.ov-switch__tip');
 ok('look="triangle" draws a blade, wider than it is deep', s.getAttribute('data-ov-look') === 'triangle' && parseFloat(cs(tip).width) > parseFloat(cs(tip).height), [s.getAttribute('data-ov-look'), cs(tip).width, cs(tip).height]);
 
-// ---- 13. What the source may not do ---------------------------------------
+// ---- 13. Nothing around the plate moves the row ----------------------------
+// Switches stand in rows, so a state change that resizes one moves the rest.
+const box = (el) => { const r = el.getBoundingClientRect(); return `${Math.round(r.width)}x${Math.round(r.height)}`; };
+s = make({ ...T, set: 'LAT' });
+s.talkback = 'LAT';
+const agreeBox = box(s);
+s.command('REL');
+const transitBox = box(s);
+await wait(450);
+const failBox = box(s);
+s.talkback = null;
+const lostBox = box(s);
+const sizes = [agreeBox, transitBox, failBox, lostBox];
+ok('⭐ a switch is the same size agreeing, in transit, failed and out of position', sizes.every((b) => b === agreeBox), sizes);
+control('CONTROL: the switch changed size between those states (must fail)', !sizes.every((b) => b === agreeBox), sizes);
+s = make({ ...T, set: 'OFF', guard: 'IRREVERSIBLE' });
+s.talkback = 'OFF';
+const safeBox = box(s);
+s.querySelector('.ov-switch__guard').click();
+const armedBox = box(s);
+ok('⭐ lifting the cover does not change the switch\'s size', s.armed && armedBox === safeBox, [safeBox, armedBox]);
+s = make({ positions: 'REL,OFF,LAT', kind: 'flick', transit: '0.3', label: 'MRL' });
+s.talkback = 'OFF';
+const restBox = box(s);
+s.command('LAT');
+ok('a flick switch keeps the line its last command is written on', box(s) === restBox, [restBox, box(s)]);
+stage.setAttribute('data-ov-chrome', 'full');
+s = make({ ...T, set: 'LAT' });
+s.talkback = 'LAT';
+const fullAgree = box(s);
+s.command('REL');
+await wait(450);
+const fullFail = box(s);
+const fullWhy = why(s);
+stage.removeAttribute('data-ov-chrome');
+ok('⭐ with its explanation shown (chrome="full"), a switch is the same size agreeing and failed', fullAgree === fullFail && fullWhy !== '', [fullAgree, fullFail, fullWhy]);
+// No word runs past its switch onto the next one: a switch is as wide as the
+// longest word it can say, whatever it says now.
+const inkW = (el) => { const rg = document.createRange(); rg.selectNodeContents(el); return Math.round(rg.getBoundingClientRect().width); };
+const fits = [];
+for (const kind of ['toggle', 'rocker', 'lever', 'flick']) {
+  s = make({ ...T, kind, positions: kind === 'rocker' ? 'I,O' : T.positions });
+  const p = s.positions();
+  s.reading = { set: p[0], talkback: null, confirmed: true };
+  fits.push([kind, word(s), inkW(s.querySelector('.ov-switch__word')), Math.round(s.getBoundingClientRect().width)]);
+}
+ok('⭐ the longest word, NOT IN POSITION, fits inside every kind of switch', fits.every(([, w, ww, sw]) => w === 'NOT IN POSITION' && ww <= sw), fits);
+control('CONTROL: a word runs past its switch (must fail)', fits.some(([, , ww, sw]) => ww > sw), fits);
+s = make({ positions: 'REL,OFF,LAT', kind: 'flick', transit: '0.3', label: 'MRL' });
+s.talkback = 'OFF';
+s.command('LAT');
+ok('...and a flick switch\'s last command fits inside it', inkW(s.querySelector('.ov-switch__cmd')) <= Math.round(s.getBoundingClientRect().width), [inkW(s.querySelector('.ov-switch__cmd')), Math.round(s.getBoundingClientRect().width)]);
+ok('...and reserving that width adds no row: the flag is still the first thing in the switch', Math.abs(flag(s).getBoundingClientRect().top - s.getBoundingClientRect().top) < 1, [flag(s).getBoundingClientRect().top, s.getBoundingClientRect().top]);
+
+// ---- 14. What the source may not do ---------------------------------------
 const srcText = await (await fetch(new URL(SRC, location.href).href)).text();
 ok('the element never asks for an animation frame', !/requestAnimationFrame/.test(srcText), true);
 ok('...and runs no repeating timer: it re-evaluates once, when a transit runs out', !/setInterval/.test(srcText), true);

@@ -1,0 +1,204 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>ov-datablock harness</title>
+<!-- The refusal gate for the ov-datablock element. Serve the repo root
+     (tools/static_server.py) and open /tools/datablock-test/. The last line must read
+     GATE: PASS, and every CONTROL (an assertion false on purpose) must fail. -->
+<link rel="stylesheet" href="../../src/tokens.css">
+<link rel="stylesheet" href="../../src/chrome.css">
+<link rel="stylesheet" href="../../src/track.css">
+<link rel="stylesheet" href="../../src/datablock.css">
+<style>
+  body { background: #06060a; color: #cfe; font: 13px ui-monospace, monospace; padding: 20px; }
+  pre { white-space: pre-wrap; }
+  #stage { max-inline-size: 640px; }
+</style>
+<div id="stage" data-ov-theme="aegis"></div>
+<pre id="out">running...</pre>
+<script>
+  // 🔴 A THROW IS A RED GATE, NOT A HANG.
+  const fatal = (what) => {
+    const out = document.getElementById('out');
+    if (out) out.textContent = `THREW: ${what}\n\nVERDICT: RED`;
+  };
+  addEventListener('error', (e) => fatal(e.error?.stack || e.message || e));
+  addEventListener('unhandledrejection', (e) => fatal(e.reason?.stack || e.reason));
+</script>
+<script type="module">
+// ?src=mut/<mutant>.js runs the same gate against a copy with one refusal
+// broken on purpose: every mutant must turn the gate red.
+const SRC = new URLSearchParams(location.search).get('src') || '../../src/ov-datablock.js';
+const { OvDatablock } = await import(new URL(SRC, location.href).href);
+
+const stage = document.getElementById('stage');
+const results = [];
+const ok = (name, cond, got) => results.push({ name, pass: !!cond, got });
+const controls = [];
+const control = (name, cond, got) => controls.push({ name, pass: !!cond, got });
+const settle = () => new Promise((r) => setTimeout(r, 0));
+
+let NOW = 1_800_000_000_000;
+OvDatablock.now = () => NOW;
+const step = (s) => { NOW += s * 1000; };
+
+const make = (attrs = {}) => {
+  const el = document.createElement('ov-datablock');
+  for (const [k, v] of Object.entries({ label: 'SECTOR 12', ...attrs })) el.setAttribute(k, v);
+  stage.replaceChildren(el);
+  return el;
+};
+const q = (el, c) => el.querySelector(`.ov-datablock__${c}`);
+const txt = (el, c) => q(el, c)?.textContent ?? null;
+const said = (el) => q(el, 'say').textContent;
+const paints = (x) => !!x && getComputedStyle(x).display !== 'none';
+const FIXES = (...sources) => sources.map((s, i) => ({ x: -i * 1.2, y: i * 0.3, age: i * 4, source: s }));
+const TRK = (over = {}) => ({
+  callsign: 'UAL123', identity: 'friend', course: 90, speed: 450,
+  status: {}, fixes: FIXES('multi', 'multi', 'mono', 'reported'),
+  levels: { reported: { value: 350, source: 'mode-c' } },
+  sensors: [{ kind: 'psr', supported: true, age: 3 }, { kind: 'ssr', supported: true, age: 1 }],
+  ...over,
+});
+let el;
+
+// 1. Each fix is drawn with the mark of its source.
+el = make();
+el.track = TRK();
+const fixSrc = [...el.querySelectorAll('.ov-datablock__fix')].map((c) => c.dataset.ovSrc);
+ok('⭐ each fix on the trail carries its source', fixSrc.length === 4 && fixSrc.includes('multi') && fixSrc.includes('mono') && fixSrc.includes('reported'), fixSrc);
+ok('a measured track shows its callsign', txt(el, 'callsign') === 'UAL123', txt(el, 'callsign'));
+ok('a Mode C level sits in the measured slot with the REPORTED mark', txt(el, 'measured') === '350' && q(el, 'measured').querySelector('.ov-datablock__src').dataset.ovSrc === 'reported', [txt(el, 'measured'), q(el, 'measured').querySelector('.ov-datablock__src').dataset.ovSrc]);
+ok('the host is a group whose name opens with its label', el.getAttribute('role') === 'group' && /^SECTOR 12: UAL123, level 350/.test(el.getAttribute('aria-label')), el.getAttribute('aria-label'));
+// ⚠️ FOUR SOURCES, FOUR SHAPES. The first cut drew a dot, a ring with a centre
+// dot, a ring and a dashed ring, and on the page they read as one mark.
+el.track = TRK({ fixes: FIXES('multi', 'mono', 'reported', 'coast') });
+{
+  const marks = [...el.querySelectorAll('.ov-datablock__fix')];
+  const shapes = new Set(marks.map((m) => m.dataset.ovShape));
+  ok('⭐ the four sources draw four different shapes', shapes.size === 4 && ['circle', 'diamond', 'square', 'cross'].every((s) => shapes.has(s)), [...shapes]);
+  ok('...and the outlines really differ, not only their names', new Set(marks.map((m) => m.getAttribute('d').replace(/[-\d.]+/g, '').length + ':' + m.getAttribute('d').replace(/[-\d.\s]+/g, ''))).size === 4, marks.map((m) => m.getAttribute('d').replace(/[-\d.\s]+/g, '')));
+  control('CONTROL: two sources share a shape (must fail)', shapes.size < 4, [...shapes]);
+}
+el.track = TRK();
+
+// 2. Coasting withholds identity.
+el = make();
+el.track = TRK({ status: { coasting: true }, fixes: [...FIXES('coast', 'coast'), { x: -3, y: 0, age: 42, source: 'multi' }] });
+await settle();
+ok('⭐ a coasting track reads CST with its age, not its callsign', /^CST 42s$/.test(txt(el, 'callsign')) && !txt(el, 'id').includes('UAL123'), txt(el, 'callsign'));
+ok('...and says so in its accessible name', /coasting 42s, identity not maintained/.test(el.getAttribute('aria-label')), el.getAttribute('aria-label'));
+ok('coast fixes are drawn as coast', el.querySelectorAll('.ov-datablock__fix[data-ov-src="coast"]').length === 2, el.querySelectorAll('.ov-datablock__fix[data-ov-src="coast"]').length);
+control('CONTROL: the coasting tag still carries UAL123 (must fail)', txt(el, 'callsign') === 'UAL123', txt(el, 'callsign'));
+
+// 3. coast-after: a track not measured for too long coasts whatever its status says.
+el = make({ 'coast-after': '12' });
+el.track = TRK({ fixes: [{ x: 0, y: 0, age: 5, source: 'multi' }, { x: -1, y: 0, age: 9, source: 'multi' }] });
+ok('a fresh track under coast-after is not coasting', txt(el, 'callsign') === 'UAL123', txt(el, 'callsign'));
+const events = [];
+el.addEventListener('ov:datablock', (e) => events.push(e.detail));
+step(10); el.render();
+await settle();
+ok('⭐ past coast-after with no new fix it coasts on its own', /^CST 15s$/.test(txt(el, 'callsign')) && el.report.selfCoast === true, [txt(el, 'callsign'), el.report]);
+ok('...announced once, with an ov:datablock event', said(el) === 'UAL123 coasting, identity not maintained' && events.length === 1 && events[0].self === true, [said(el), events]);
+ok('...and invents no position: the symbol stays on the last measured fix', el.querySelectorAll('.ov-datablock__fix').length === 2 && !!el.querySelector('.ov-datablock__coastring'), el.querySelectorAll('.ov-datablock__fix').length);
+control('CONTROL: the self-coasted track still shows UAL123 (must fail)', txt(el, 'callsign') === 'UAL123', txt(el, 'callsign'));
+
+// 4. A derived level never takes the measured slot.
+el = make();
+el.track = TRK({ levels: { reported: { value: 350, source: 'default' } } });
+ok('⭐ a default-height level reads NO MEASURED LEVEL in the measured slot', txt(el, 'measured') === 'NO MEASURED LEVEL' && q(el, 'measured').dataset.ovTone === 'bad', txt(el, 'measured'));
+ok('...and is printed apart, named by its source', !q(el, 'derived').hidden && txt(el, 'derived') === '350 FROM DEFAULT HEIGHT, NOT MEASURED', txt(el, 'derived'));
+control('CONTROL: the default height sits in the measured slot (must fail)', txt(el, 'measured') === '350', txt(el, 'measured'));
+el.track = TRK({ levels: { reported: { value: 350, source: '3d-radar' } } });
+ok('a 3D radar level is measured, with the MEASURED mark', txt(el, 'measured') === '350' && q(el, 'measured').querySelector('.ov-datablock__src').dataset.ovSrc === 'multi' && q(el, 'derived').hidden, txt(el, 'measured'));
+
+// 5. A level after a start from coast is unvalidated until confirmed.
+el.track = TRK({ status: { fromCoast: true } });
+ok('⭐ a level after a start from coast reads UNVALIDATED', txt(el, 'measured') === '350 UNVALIDATED' && q(el, 'measured').dataset.ovTone === 'note', txt(el, 'measured'));
+control('CONTROL: the level after coast reads plain 350 (must fail)', txt(el, 'measured') === '350', txt(el, 'measured'));
+el.track = TRK({ status: { fromCoast: true }, levels: { reported: { value: 350, source: 'mode-c', validated: true } } });
+ok('...and plain once validated', txt(el, 'measured') === '350', txt(el, 'measured'));
+
+// 6. Sensors: n/a is not fresh.
+el.track = TRK({ sensors: [{ kind: 'psr', supported: true, age: 2 }, { kind: 'ads-b', supported: false, age: 0 }, { kind: 'mlat', supported: true }] });
+const sens = [...el.querySelectorAll('.ov-datablock__sensor')].map((s) => s.textContent);
+ok('⭐ a sensor the system does not have reads n/a, even with an age of 0', sens.includes('ADS-B n/a'), sens);
+ok('a supported sensor with no age reads NO DATA, and one with an age shows it', sens.includes('MLAT NO DATA') && sens.includes('PSR 2s'), sens);
+control('CONTROL: the unsupported sensor reads fresh (must fail)', sens.includes('ADS-B 0s'), sens);
+
+// 7. Cleared, selected, reported.
+el.track = TRK({ levels: { reported: { value: 350, source: 'mode-c' }, cleared: { value: 370 }, selected: { value: 370 } } });
+ok('⭐ a selected level equal to the cleared one does not stand in for a read-back', txt(el, 'cleared') === 'C370 NOT READ BACK' && txt(el, 'selected') === 'S370', [txt(el, 'cleared'), txt(el, 'selected')]);
+control('CONTROL: the matching selected level counts as read back (must fail)', txt(el, 'cleared') === 'C370', txt(el, 'cleared'));
+el.track = TRK({ levels: { reported: { value: 350, source: 'mode-c' }, cleared: { value: 370, readback: true }, selected: { value: 390 } } });
+ok('a selected level that differs from the cleared one is flagged', txt(el, 'flags') === 'SELECTED 390 ≠ CLEARED 370' && q(el, 'selected').dataset.ovTone === 'bad' && txt(el, 'cleared') === 'C370', txt(el, 'flags'));
+
+// 8. Tentative and mono.
+el.track = TRK({ status: { tentative: true, mono: true } });
+ok('a tentative mono-sensor track says both', txt(el, 'quals') === 'TENTATIVE · MONO', txt(el, 'quals'));
+
+// 9. No track, a failed file, malformed fixes, identity.
+el = make();
+ok('no track reads NO TRACK, as a refusal', txt(el, 'none') === 'NO TRACK' && el.getAttribute('data-ov-refusal') === 'unknown', txt(el, 'none'));
+el = make({ src: 'no-such-file.json' });
+await new Promise((r) => setTimeout(r, 300));
+ok('a src that fails to load leaves no track', txt(el, 'none') === 'NO TRACK', txt(el, 'none'));
+el = make();
+el.track = TRK({ identity: undefined, fixes: [...FIXES('multi', 'multi'), { x: 1, source: 'multi' }, { x: 0, y: 0, age: 1, source: 'guess' }] });
+ok('a fix with no position, age or known source is refused and counted', el.report.malformed === 2 && /2 FIXES REFUSED/.test(txt(el, 'foot')), el.report.malformed);
+ok('an unclassified track draws a pending symbol, never a default friend', el.querySelector('.ov-datablock__head [data-ov-identity]')?.dataset.ovIdentity === 'pending', el.querySelector('.ov-datablock__head [data-ov-identity]')?.dataset.ovIdentity);
+
+// 10. Dense by default, and a refusal is never chrome.
+el = make();
+el.track = TRK({ status: { coasting: true }, fixes: FIXES('coast', 'multi') });
+ok('by default the name row is hidden', !paints(q(el, 'head')) || !paints(el.querySelector('.ov-head')), getComputedStyle(el.querySelector('.ov-head')).display);
+ok('...but CST still paints', paints(q(el, 'callsign')), getComputedStyle(q(el, 'callsign')).display);
+
+// 11. Nothing asks for an animation frame.
+{
+  const text = await (await fetch(new URL(SRC, location.href).href)).text();
+  const asks = /requestAnimationFrame/.test(text);
+  ok('the element never asks for an animation frame, anywhere in its source', !asks, asks);
+  control('CONTROL: the element draws on a frame (must fail)', asks, asks);
+}
+
+// 12. Narrow: the tag stays inside the scope.
+el = make();
+el.track = TRK({ callsign: 'SPEEDBIRD 4521', levels: { reported: { value: 350, source: 'default' }, cleared: { value: 370 }, selected: { value: 390 } },
+  sensors: [{ kind: 'psr', supported: true, age: 3 }, { kind: 'ssr', supported: true, age: 1 }, { kind: 'ads-b', supported: false }, { kind: 'mlat', supported: true }] });
+await settle();
+el.render();
+{
+  const s = q(el, 'scope').getBoundingClientRect();
+  const t = q(el, 'tag').getBoundingClientRect();
+  ok('wide, the tag sits wholly inside the scope beside the track', t.left >= s.left - 1 && t.right <= s.right + 1 && t.top >= s.top - 1 && t.bottom <= s.bottom + 1, [t.left, t.right, t.top, t.bottom, s.left, s.right, s.top, s.bottom]);
+}
+stage.style.inlineSize = '360px';
+await settle();
+el.render();
+ok('at 360px nothing overflows sideways', el.scrollWidth <= 361, el.scrollWidth);
+// 🔴 Found on the demo, not by an overflow check: overlaid on a ~300px scope
+// the tag covered the whole trail. Small, it must sit below the picture.
+{
+  const s = q(el, 'scope').getBoundingClientRect();
+  const t = q(el, 'tag').getBoundingClientRect();
+  const h = el.getBoundingClientRect();
+  ok('⭐ at 360px the tag sits below the scope, not over the trail, and inside the element', t.top >= s.bottom - 1 && t.left >= h.left - 1 && t.right <= h.right + 1, [t.top, s.bottom, t.left, t.right, h.left, h.right]);
+  control('CONTROL: the tag overlaps the scope (must fail)', t.top < s.bottom - 1, [t.top, s.bottom]);
+}
+
+const passed = results.filter((x) => x.pass).length;
+const failed = results.length - passed;
+const controlsFailed = controls.filter((x) => !x.pass).length;
+const gate = failed === 0 && controlsFailed === controls.length && controls.length > 0;
+const lines = [
+  ...results.map((x) => `${x.pass ? 'PASS' : 'FAIL'}  ${x.name}${x.pass ? '' : '  got ' + JSON.stringify(x.got)}`),
+  ...controls.map((x) => `${x.pass ? 'CONTROL PASSED (BAD)' : 'CONTROL FAILED (good)'}  ${x.name}`),
+  '',
+  `${passed} passed, ${failed} failed, ${controlsFailed}/${controls.length} controls failed as required`,
+  `GATE: ${gate ? 'PASS' : 'FAIL'}`,
+];
+const out = document.getElementById('out');
+out.textContent = lines.join('\n');
+out.setAttribute('data-gate', gate ? 'pass' : 'fail');
+</script>

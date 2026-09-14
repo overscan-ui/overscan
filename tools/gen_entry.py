@@ -22,12 +22,12 @@ import sys
 
 ORDER = [
     'tokens', 'finish', 'chrome', 'field', 'motion', 'flip', 'layout', 'control',
-    'chart', 'gauge', 'radar', 'track', 'reticle', 'plate', 'wireframe', 'schematic', 'locator', 'horizon', 'match', 'polygon', 'sequence', 'histogram', 'fan', 'donut', 'baseline', 'verifier', 'topology', 'continuity', 'timestack', 'coverage', 'likelihood', 'consistency', 'endurance', 'ladder', 'dose', 'rangebar', 'allocator', 'downlink', 'orbit', 'annunciator', 'procedure', 'countdown', 'timeline', 'segment', 'flap', 'scope',
+    'chart', 'gauge', 'radar', 'track', 'reticle', 'plate', 'wireframe', 'solid', 'schematic', 'locator', 'horizon', 'match', 'polygon', 'sequence', 'histogram', 'fan', 'donut', 'baseline', 'verifier', 'topology', 'continuity', 'timestack', 'coverage', 'likelihood', 'consistency', 'endurance', 'ladder', 'dose', 'rangebar', 'allocator', 'downlink', 'orbit', 'annunciator', 'procedure', 'countdown', 'timeline', 'segment', 'flap', 'scope',
     # The list-4 instruments, placed together at the end of the instrument run
     # rather than beside their nearest kin: none of them is meant to override or
     # be overridden by another component, so the only deliberate answer is a
     # position where nothing above or below has a rule that could reach them.
-    'quorum', 'station', 'mosaic', 'balance', 'position', 'clearance', 'score', 'switch', 'avatar', 'vitals', 'ecg', 'geomap', 'tactical',
+    'quorum', 'station', 'mosaic', 'balance', 'position', 'clearance', 'score', 'switch', 'avatar', 'vitals', 'ecg', 'geomap', 'tactical', 'watchdog', 'authority', 'datablock',
     'ascii', 'graph', 'grid', 'term', 'icon', 'log', 'table', 'aux', 'cli',
     'form', 'bevel', 'surface', 'ornament', 'window', 'fault', 'text',
     'code',
@@ -92,7 +92,9 @@ JS_FIRST = ['ov-core', 'ov-source', 'ov-refusal', 'ov-gl']
 # only a page drawing a world wants, so it stays out of `import 'overscan'` and
 # is imported by name (overscan/countries). It registers nothing, so leaving it
 # out cannot leave a tag unupgraded, which is the hole build_js() closes.
-JS_OPT_IN = ['ov-countries']
+# ov-plans.js is the same kind of file: stock drawings for ov-schematic
+# (overscan/plans), wanted only by a page that asks for one.
+JS_OPT_IN = ['ov-countries', 'ov-plans']
 
 
 def build_js():

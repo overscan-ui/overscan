@@ -10,6 +10,7 @@ export const SHADERS = {
   'ornament': () => import('./ornament.js'),
   'rain': () => import('./rain.js'),
   'scope': () => import('./scope.js'),
+  'solid': () => import('./solid.js'),
   'vision': () => import('./vision.js'),
   'waterfall': () => import('./waterfall.js'),
 };

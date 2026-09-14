@@ -1,12 +1,47 @@
-# Overscan
+<h1><img src="readme/logomark.png" alt="Overscan" width="560"></h1>
 
-A themeable UI kit for building screens that look like they came out of a
-science-fiction film: control panels, dashboards and telemetry. Custom elements
-plus a CSS layer, ten dark themes, no build step required.
+**Sci-fi screens that actually work.**
+
+The screens in science-fiction films are motion graphics: beautiful, and
+showing nothing real. Overscan is that look, built like a real instrument.
+Custom elements and a CSS layer for control panels, dashboards and telemetry,
+ten dark themes, no build step required.
+
+Real instruments say "no reading" instead of making one up, mark a value that
+is old or typed in by hand, and draw the thing they measure. So do these.
+
+<a href="https://overscan.dev/screens/holo"><img src="readme/holo.webp" alt="The holo theme: a transit projection screen with an orbit plot, a wireframe lander, reactor allocation and propellant readouts"></a>
+
+<p>
+<a href="https://overscan.dev/screens/vector"><img src="readme/vector.webp" alt="The vector theme: a powered descent screen with a terrain mesh" width="32%"></a>
+<a href="https://overscan.dev/screens/antiseptic"><img src="readme/antiseptic.webp" alt="The antiseptic theme: a mission status screen" width="32%"></a>
+<a href="https://overscan.dev/screens/terminal"><img src="readme/terminal.webp" alt="The terminal theme: a reactor monitor screen" width="32%"></a>
+</p>
+
+Every screen is built from kit elements only. All ten are at
+[overscan.dev/screens](https://overscan.dev/screens).
+
+## Install
+
+With a bundler:
 
 ```
 npm i overscan
 ```
+
+With a script tag, no install and no bundler:
+
+```html
+<link rel="stylesheet"
+      href="https://cdn.jsdelivr.net/npm/overscan/src/overscan.css">
+<script type="module"
+        src="https://cdn.jsdelivr.net/npm/overscan/src/overscan.js"></script>
+```
+
+No bare specifier ships in the source, so a browser resolves every element from
+that one URL. It is the whole kit, one request per module: point it at
+`src/ov-chart.js` instead to take a single element. It must be
+`type="module"`; a classic script tag will not load it.
 
 ## Use it
 
@@ -129,7 +164,7 @@ to do. What is never hidden is what it measured.
 It is pure CSS with no JavaScript behind it, which is why it does not appear in
 `custom-elements.json`: nothing reads it off an element.
 
-## The thesis: a readout refuses to invent
+## Readouts refuse to invent
 
 Hand a widget a value it cannot draw and it renders a refusal, never a
 different number. A seven-segment display given six digits of room and seven

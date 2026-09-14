@@ -57,6 +57,12 @@ def gz(paths):
     return len(gzip.compress(b''.join(p.read_bytes() for p in paths), 9, mtime=0))
 
 
+def gz_css(paths):
+    from css_strip import strip
+    data = ''.join(strip(p.read_text()) for p in paths).encode()
+    return len(gzip.compress(data, 9, mtime=0))
+
+
 def closure(entry):
     seen, todo = [], [entry.resolve()]
     while todo:
@@ -96,9 +102,12 @@ def measure(root):
     return {
         'kit_js': gz(js),
         **({'opt_in_js': gz(data)} if data else {}),
-        # The same split for CSS: kit_css is what overscan.css pulls in.
-        'kit_css': gz(sorted(p for p in src.glob('*.css') if p.stem not in css_skip)),
-        **({'opt_in_css': gz(sorted(p for p in src.glob('*.css') if p.stem in css_skip))}
+        # The same split for CSS: kit_css is what overscan.css pulls in. Both
+        # are measured WITHOUT COMMENTS, because that is what the package ships
+        # (the publish job runs tools/css_strip.py --apply). Stripping a sheet
+        # that is already stripped changes nothing, so kit and lab agree.
+        'kit_css': gz_css(sorted(p for p in src.glob('*.css') if p.stem not in css_skip)),
+        **({'opt_in_css': gz_css(sorted(p for p in src.glob('*.css') if p.stem in css_skip))}
            if css_skip else {}),
         'radar_closure': closures.get('ov-radar', 0),
         'largest_closure': closures[heaviest],

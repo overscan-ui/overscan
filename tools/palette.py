@@ -677,6 +677,79 @@ def check_bevels():
 SIZES = [10, 11, 12, 14, 16, 20, 28]
 
 
+# Code roles per theme: name, kw, str, punct. A code block is its own surface,
+# so it does NOT take the theme's text palette (in terminal that put t-name on
+# t-kw at ΔE 1.8). The rule that produced them: the theme's --ov-accent plus
+# rotations of 150 and 60 degrees, lightened until each clears 4.5 on
+# --ov-raised; --ov-alarm anchors a theme whose accent has no hue; punct is
+# --ov-faint with the chroma stripped. The values are RECORDED, not re-derived,
+# because they were solved once by hand and a re-derivation that rounds
+# differently would move every block on the site. tools/highlight.py gates
+# them for contrast and separation; check_code_roles() below gates that
+# tokens.css carries them at all.
+CODE_ROLES = {
+    'terminal': ('#fff5aa', '#5dc6ec', '#94c178', '#adadb2'),
+    'industrial': ('#90f19a', '#c1a2ff', '#00cbe0', '#a8b0a9'),
+    'cyber': ('#f0e15f', '#6cbbff', '#37ce95', '#a6a6af'),
+    'antiseptic': ('#72a2ff', '#ff9a53', '#de8ee8', '#7a7a7a'),
+    'esper': ('#fbb240', '#00cbfe', '#89c55d', '#999690'),
+    'neo': ('#92ed94', '#bea3ff', '#00cbdd', '#acb4ae'),
+    'machina': ('#f47c6c', '#00d6ba', '#d7ab1b', '#beb4b2'),
+    'holo': ('#ffd1df', '#74cd9f', '#dea45f', '#a7acb4'),
+    'aegis': ('#5ca7ff', '#ff9563', '#d392f3', '#9aa0a7'),
+    'vector': ('#e07dc5', '#9bc959', '#ff8c68', '#9c979f'),
+}
+CODE_ROLE_NAMES = ('name', 'kw', 'str', 'punct')
+
+
+def code_role_faults(css):
+    """Every theme block in `css` must declare its four code roles, each equal
+    to CODE_ROLES. Returns the faults, empty when the file is whole."""
+    import re
+    faults = []
+    blocks = dict(re.findall(r'\[data-ov-theme="(\w+)"\] \{(.*?)\n\}', css, re.S))
+    for name in THEMES:
+        if name not in blocks:
+            faults.append(f'{name}: no theme block in tokens.css')
+            continue
+        for role, want in zip(CODE_ROLE_NAMES, CODE_ROLES[name]):
+            m = re.search(rf'--ov-code-{role}:\s*(#[0-9a-fA-F]{{6}})\s*;', blocks[name])
+            if not m:
+                faults.append(f'{name}: --ov-code-{role} is missing')
+            elif m.group(1).lower() != want:
+                faults.append(f'{name}: --ov-code-{role} is {m.group(1)}, CODE_ROLES says {want}')
+    return faults
+
+
+def check_code_roles(path='src/tokens.css'):
+    """🔴 THE CODE ROLES ONCE LIVED ONLY IN THE COMMITTED FILE. This script
+    emitted tokens.css without them, so regenerating deleted all forty values
+    and nothing here noticed; highlight.py, which did check them, is not in the
+    release gate. Now this reads the file on disk.
+
+    ⚠️ AND IT PROVES IT CAN FAIL, every run: the same file with one theme's
+    code roles deleted must produce faults, or this check is counted failed."""
+    import re
+    try:
+        css = open(path).read()
+    except FileNotFoundError:
+        print(f'\n  code roles   FAIL: {path} missing')
+        return 1
+    bad = 0
+    print('\n== code roles ==')
+    for fault in code_role_faults(css):
+        bad += 1
+        print(f'  FAIL: {fault}')
+    planted = re.sub(r'--ov-code-kw:[^;]*;', '', css, count=1)
+    if planted == css or not code_role_faults(planted):
+        bad += 1
+        print('  FAIL: a tokens.css missing a code role was not refused')
+    if not bad:
+        print(f'  {len(THEMES)} themes carry all {len(CODE_ROLE_NAMES)} roles; '
+              'a planted deletion was refused   pass')
+    return bad
+
+
 def emit_css(path='src/tokens.css'):
     """Generate tokens.css. Never hand-edit that file; re-run this."""
     colour_keys = ['field', 'panel', 'raised', 'line', 'line_strong',
@@ -702,6 +775,26 @@ def emit_css(path='src/tokens.css'):
         out.append(f"{sel} {{")
         for k in colour_keys:
             out.append(f"  --ov-{k.replace('_', '-')}: {t[k]};")
+        out.append("")
+        if name == 'terminal':
+            out += [
+                "  /* Code roles. A code block is its own surface, so it does NOT inherit this",
+                "     theme's text palette: in a monochrome theme that collapsed t-name onto",
+                "     t-kw at ΔE 1.8 and every block on the site read as one flat colour.",
+                "     ⭐ THE RULE, so this is not forty hand-picked values: the palette is this",
+                "     theme's own --ov-accent plus two fixed rotations of it, 150° and 60°, at a",
+                "     lightness raised until each clears 4.5 on --ov-raised, which is the ground",
+                "     a block actually sits on. Where the accent has no hue to rotate, --ov-alarm",
+                "     supplies the anchor, being the only other hue such a theme states.",
+                "     ⚠️ Punctuation is the exception and carries NO hue: it is structure, not",
+                "     meaning, so it is --ov-faint with the chroma stripped out. That is also",
+                "     what stops it colliding with a rotation, which it did in aegis and vector.",
+                "     Recorded in tools/palette.py and checked by tools/highlight.py. */",
+            ]
+        else:
+            out.append("  /* Code roles, by the rule stated in the terminal block above. */")
+        for role, value in zip(CODE_ROLE_NAMES, CODE_ROLES[name]):
+            out.append(f"  --ov-code-{role}: {value};")
         for k in ('corner', 'bezel', 'rule', 'pad', 'gap'):
             out.append(f"  --ov-{k}: {sc[k]}px;")
         out.append(f"  --ov-shear: {sc['shear']}deg;")
@@ -998,6 +1091,7 @@ def check(fix=False):
                     theme[token] = fixed
     failures += check_bevels()
     failures += check_transparent_controls()
+    failures += check_code_roles()
     return failures
 
 if __name__ == '__main__':

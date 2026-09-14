@@ -1,0 +1,250 @@
+@layer overscan {
+/* Who is flying each system, drawn as lanes over time. See ov-authority.js.
+ *
+ * 🔴 NO CONTROL STATE RESTS ON COLOUR. The LANE a bar sits in says who holds
+ * it, and each controller's bar differs in form too: crew by hand is a heavy
+ * solid bar, crew software a hollow one, remote a dashed one, automation a
+ * thin solid one. NO ONE is a hatched lane in the alarm colour, and a bar in
+ * it is drawn as broken dots. A handover step is plain when announced and a
+ * heavy double alarm rule when not. Ahead of NOW is only ever dotted.
+ */
+
+ov-authority {
+  --ov-au-lane-w: 8ch;
+  --ov-au-gate-w: minmax(11ch, 22ch);
+  display: grid;
+  gap: 8px;
+  min-inline-size: 0;
+  font-family: var(--ov-font-mono);
+  font-size: var(--ov-size-1, 10px);
+  color: var(--ov-ink);
+}
+
+.ov-authority__stamp,
+.ov-authority__foot { color: var(--ov-alarm); letter-spacing: .1em; }
+.ov-authority__stamp:empty,
+.ov-authority__foot:empty { display: none; }
+
+/* ---- the board: lane names | time field | trigger column ------------------ */
+
+.ov-authority__board {
+  display: grid;
+  grid-template-columns: var(--ov-au-lane-w) minmax(0, 1fr) var(--ov-au-gate-w);
+  grid-template-rows: auto auto;
+  column-gap: 6px;
+  min-inline-size: 0;
+}
+.ov-authority__board[hidden] { display: none; }
+
+.ov-authority__axis {
+  grid-column: 2 / 4;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) var(--ov-au-gate-w);
+  column-gap: 6px;
+  block-size: 14px;
+  color: var(--ov-faint);
+  letter-spacing: .08em;
+}
+.ov-authority__axisfield { position: relative; }
+.ov-authority__axisfield i {
+  position: absolute;
+  inset-block-start: 0;
+  font-style: normal;
+  white-space: nowrap;
+  translate: -50% 0;
+}
+.ov-authority__axisfield i:first-child { translate: 0 0; }
+.ov-authority__axisfield i:last-child { translate: -100% 0; }
+.ov-authority__gatehead { color: var(--ov-faint); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.ov-authority__lanes { grid-column: 1; grid-row: 2; display: grid; align-content: start; }
+.ov-authority__lane {
+  display: flex;
+  align-items: center;
+  border-block-end: var(--ov-rule, 1px) solid var(--ov-line);
+  color: var(--ov-faint);
+  letter-spacing: .12em;
+  overflow: hidden;
+}
+.ov-authority__lane[data-ov-lane="none"] { color: var(--ov-alarm); border-block-end: 0; }
+.ov-authority__lane[data-ov-empty="yes"] { opacity: .55; }
+
+.ov-authority__field {
+  grid-column: 2;
+  grid-row: 2;
+  position: relative;
+  min-inline-size: 0;
+  overflow: hidden;
+}
+.ov-authority__bands { position: absolute; inset: 0; }
+.ov-authority__band {
+  position: absolute;
+  inset-inline: 0;
+  border-block-end: var(--ov-rule, 1px) solid var(--ov-line);
+}
+.ov-authority__band[data-ov-lane="none"] {
+  border-block-end: 0;
+  background: repeating-linear-gradient(135deg, transparent 0 6px,
+    color-mix(in srgb, var(--ov-alarm) 14%, transparent) 6px 8px);
+}
+.ov-authority__svg { position: absolute; inset: 0; inline-size: 100%; block-size: 100%; overflow: visible; }
+.ov-authority__svg path { fill: none; vector-effect: non-scaling-stroke; stroke-linecap: butt; }
+
+.ov-authority__now {
+  position: absolute;
+  inset-block: 0;
+  inline-size: 0;
+  border-inline-start: 2px solid var(--ov-accent);
+  box-shadow: 0 0 calc(var(--ov-bloom, .2) * 10px) var(--ov-accent);
+}
+.ov-authority__board[data-ov-stale] .ov-authority__now { border-inline-start: 2px dashed var(--ov-alarm); box-shadow: none; }
+
+/* ---- bars, steps and what lies ahead ------------------------------------ */
+
+.ov-authority__bar { stroke: color-mix(in srgb, var(--ov-accent) 55%, transparent); stroke-width: 10; }
+.ov-authority__bar[data-ov-control="auto"] { stroke-width: 4; stroke: var(--ov-accent); }
+.ov-authority__bar[data-ov-control="crew-manual"] { stroke-width: 10; stroke: var(--ov-accent); }
+.ov-authority__bar[data-ov-control="crew-software"] { stroke-width: 10; stroke: color-mix(in srgb, var(--ov-accent) 30%, transparent); }
+.ov-authority__bar[data-ov-control="remote"] { stroke-width: 8; stroke: var(--ov-accent); stroke-dasharray: 10 5; }
+.ov-authority__bar[data-ov-control="undeclared"] { stroke-width: 6; stroke: var(--ov-alarm); stroke-dasharray: 2 4; }
+.ov-authority__bar[data-ov-refused] { stroke: var(--ov-alarm); stroke-dasharray: 3 3; }
+.ov-authority__step { stroke: var(--ov-accent); stroke-width: 2; }
+.ov-authority__step[data-ov-announced="no"] { stroke: var(--ov-alarm); stroke-width: 5; stroke-dasharray: none; }
+.ov-authority__ahead { stroke: var(--ov-faint); stroke-width: 1; stroke-dasharray: 1 4; }
+.ov-authority__stub { stroke: var(--ov-ink); stroke-width: 2; stroke-dasharray: 6 3; }
+.ov-authority__stub[data-ov-selected-only="yes"] { stroke: var(--ov-faint); stroke-dasharray: 1 3; }
+.ov-authority__overdue { stroke: var(--ov-alarm); stroke-width: 2; }
+
+/* ---- labels on the board ------------------------------------------------ */
+
+.ov-authority__system { display: contents; }
+.ov-authority__tag,
+.ov-authority__modes,
+.ov-authority__sub,
+.ov-authority__next {
+  position: absolute;
+  display: flex;
+  gap: 0 1ch;
+  align-items: baseline;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  line-height: 12px;
+  letter-spacing: .08em;
+}
+/* Behind NOW, right-aligned to it: who this is and who holds it. */
+.ov-authority__tag,
+.ov-authority__sub {
+  inset-inline-end: calc(100% - 45% + 6px);
+  max-inline-size: calc(45% - 8px);
+  justify-content: flex-end;
+}
+.ov-authority__sub { color: var(--ov-faint); }
+/* Ahead of NOW: the modes. */
+.ov-authority__modes {
+  inset-inline-start: calc(45% + 6px);
+  max-inline-size: calc(55% - 8px);
+}
+/* Narrow (the element sets data-ov-narrow under 560px): no room either side
+   of NOW, so every line of words starts at the left and takes the full width. */
+ov-authority[data-ov-narrow] :is(.ov-authority__tag, .ov-authority__sub, .ov-authority__modes) {
+  inset-inline-start: 0;
+  inset-inline-end: auto;
+  max-inline-size: 100%;
+  justify-content: flex-start;
+}
+ov-authority[data-ov-narrow] .ov-authority__next { max-inline-size: 100%; }
+.ov-authority__name { color: var(--ov-ink); letter-spacing: .12em; }
+.ov-authority__control { color: var(--ov-accent); }
+.ov-authority__system[data-ov-control="undeclared"] .ov-authority__control {
+  color: var(--ov-alarm);
+  outline: 2px solid var(--ov-alarm);
+  outline-offset: 1px;
+}
+.ov-authority__by { color: var(--ov-faint); }
+.ov-authority__by:empty,
+.ov-authority__change:empty,
+.ov-authority__owner:empty { display: none; }
+.ov-authority__system[data-ov-mode-fault] .ov-authority__state { color: var(--ov-alarm); }
+.ov-authority__cell b { font-weight: normal; }
+.ov-authority__active b { color: var(--ov-accent); text-shadow: 0 0 calc(var(--ov-bloom, .2) * 10px) currentColor; }
+.ov-authority__armed b { color: var(--ov-ink); }
+.ov-authority__armed b:not(:empty)::before { content: '› '; }
+.ov-authority__armed[data-ov-selected-only] b { color: var(--ov-faint); text-decoration: underline dotted; text-underline-offset: 3px; }
+
+.ov-authority__change { color: var(--ov-accent); }
+.ov-authority__change[data-ov-tone="note"] { color: var(--ov-ink); }
+.ov-authority__change[data-ov-tone="bad"] { color: var(--ov-alarm); font-weight: 600; }
+/* A kept unannounced change: the whole slot's text is outlined, not only a word. */
+.ov-authority__system[data-ov-unannounced] .ov-authority__tag { outline: 3px double var(--ov-alarm); outline-offset: 1px; }
+.ov-authority__system[data-ov-changed] .ov-authority__tag { outline: var(--ov-rule, 1px) solid var(--ov-accent); outline-offset: 1px; }
+
+/* The next action: a diamond on the axis with its words after it. */
+.ov-authority__next {
+  translate: -5px 0;
+  max-inline-size: 55%;
+  color: var(--ov-faint);
+}
+.ov-authority__next[hidden] { display: none; }
+.ov-authority__next[data-ov-flip] { translate: calc(-100% + 5px) 0; flex-direction: row-reverse; }
+.ov-authority__mark {
+  flex: none;
+  inline-size: 7px;
+  block-size: 7px;
+  border: 2px solid var(--ov-accent);
+  rotate: 45deg;
+  align-self: center;
+}
+.ov-authority__owner { color: var(--ov-accent); }
+.ov-authority__action { color: var(--ov-ink); }
+.ov-authority__next[data-ov-where="absent"] .ov-authority__mark { display: none; }
+.ov-authority__next[data-ov-tone="note"] .ov-authority__when { color: var(--ov-ink); }
+.ov-authority__next[data-ov-tone="bad"] :is(.ov-authority__when, .ov-authority__owner) { color: var(--ov-alarm); }
+.ov-authority__next[data-ov-tone="bad"] .ov-authority__mark { border-color: var(--ov-alarm); background: var(--ov-alarm); }
+
+/* ---- the trigger column ------------------------------------------------- */
+
+.ov-authority__gates {
+  grid-column: 3;
+  grid-row: 2;
+  position: relative;
+  min-inline-size: 0;
+  border-inline-start: var(--ov-rule, 1px) dashed var(--ov-line);
+}
+.ov-authority__gate {
+  position: absolute;
+  inset-inline: 4px 0;
+  display: flex;
+  gap: .8ch;
+  align-items: flex-start;
+  line-height: 12px;
+  color: var(--ov-ink);
+  letter-spacing: .06em;
+}
+.ov-authority__gate[hidden] { display: none; }
+/* A gate: two posts and a bar. Inhibited, the bar is gone and the posts lean. */
+.ov-authority__gatemark {
+  flex: none;
+  inline-size: 10px;
+  block-size: 10px;
+  margin-block-start: 1px;
+  border-inline: 2px solid var(--ov-accent);
+  background: linear-gradient(var(--ov-accent), var(--ov-accent)) center / 100% 2px no-repeat;
+}
+.ov-authority__gate[data-ov-inhibited] { color: var(--ov-alarm); text-decoration: line-through; }
+.ov-authority__gate[data-ov-inhibited] .ov-authority__gatemark {
+  border-inline-color: var(--ov-alarm);
+  background: none;
+  transform: skewX(-18deg);
+}
+.ov-authority__gatetext { overflow-wrap: anywhere; min-inline-size: 0; }
+
+.ov-authority__say {
+  position: absolute;
+  inline-size: 1px;
+  block-size: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+}

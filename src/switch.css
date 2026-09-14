@@ -159,6 +159,7 @@ ov-switch[data-ov-kind="rocker"][data-ov-lit] .ov-switch__pos[data-ov-set] {
 
 ov-switch[guard] .ov-switch__plate { margin-block-start: 42px; }
 .ov-switch__guard {
+  font: inherit; border: 0; margin: 0; cursor: pointer;
   position: absolute; z-index: 2;
   inset: -9px auto -5px -6px; inline-size: 56px;
   border-radius: 8px 8px 3px 3px;
@@ -178,22 +179,45 @@ ov-switch[guard] .ov-switch__plate::before {
 }
 /* Open: lifted up and back past the hinge. A guard that is open is still
    there, and the switch below it is plainly uncovered. */
+.ov-switch__guard:hover { background: color-mix(in srgb, var(--ov-alarm) 42%, transparent); }
+.ov-switch__guard:focus-visible { outline: var(--ov-rule, 1px) solid var(--ov-accent); outline-offset: 2px; }
+/* Clicking the open cover closes it again, which is the safe control. */
 ov-switch[data-ov-armed] .ov-switch__guard {
-  transform: translateY(-4px) scaleY(-.45); pointer-events: none;
+  transform: translateY(-4px) scaleY(-.45);
   background: color-mix(in srgb, var(--ov-alarm) 16%, transparent);
 }
 ov-switch[data-ov-armed] .ov-switch__guardword { visibility: hidden; }
 
-.ov-switch__arm { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
-.ov-switch__armed {
-  display: none; color: var(--ov-alarm); letter-spacing: .16em;
-  border: var(--ov-rule, 1px) solid var(--ov-alarm); padding: 1px 5px;
-}
-ov-switch[data-ov-armed] .ov-switch__armed { display: inline-block; }
+/* ---- under the plate: sized once, whatever the state ------------------ */
+/* 🔴 NOTHING UNDER THE PLATE CHANGES SIZE WITH THE STATE. Switches stand in
+ * rows, so a reading that appears or a last command written out must not move
+ * the neighbours or the row. The reading keeps its one line when there is
+ * nothing to say, and a flick switch keeps the line its command is written on. */
+ov-switch[data-ov-kind="flick"] .ov-switch__cmd { display: block; min-block-size: 1lh; white-space: nowrap; inline-size: 0; min-inline-size: 100%; }
 
+/* The reading never wraps, and its width is set once: a hidden copy of the
+   longest word it can say (and on a flick switch the longest last command)
+   shares the word's cell, so a narrow rocker is as wide as NOT IN POSITION.
+   No word runs onto the next switch and no state resizes this one. The
+   explanation takes the width rather than setting it. */
 .ov-switch__out { justify-self: stretch; }
-.ov-switch__why { color: var(--ov-ink); letter-spacing: .06em; line-height: 1.45; overflow-wrap: anywhere; }
+.ov-switch__word { grid-area: 1 / 1; min-block-size: 1lh; white-space: nowrap; }
+.ov-switch__room { visibility: hidden; pointer-events: none; }
+.ov-switch__room--cmd { grid-area: 1 / 1; white-space: nowrap; letter-spacing: .1em; }
+/* With chrome="full" the bar's rule is 3px, or 6px when refusing; the padding
+   gives back the difference, so the tone never changes the switch's width. */
+ov-switch:where([data-ov-chrome="full"], [data-ov-chrome="full"] *) .ov-switch__out.ov-switch__out.ov-switch__out { padding-inline-start: 13px; }
+ov-switch:where([data-ov-chrome="full"], [data-ov-chrome="full"] *) .ov-switch__out.ov-switch__out.ov-switch__out[data-ov-tone="bad"] { padding-inline-start: 10px; }
+/* chrome.css takes an ok box out of the layout, which is what moved a row of
+   switches. Here it keeps its line and paints nothing. Four classes outrank
+   both of that file's ok rules, (0,4,0) and (0,5,0). */
+ov-switch .ov-switch__out.ov-switch__out.ov-switch__out.ov-switch__out[data-ov-tone="ok"] { display: grid; visibility: hidden; }
+/* The explanation, shown only with chrome="full", is one line that keeps its
+   place when there is nothing to explain; a long one ends in an ellipsis and
+   carries the whole sentence as its title. It is prose, never the refusal. */
+.ov-switch__why { grid-row: 2; inline-size: 0; min-inline-size: 100%; color: var(--ov-ink); letter-spacing: .06em; line-height: 1.45; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .ov-switch__why:empty { display: none; }
+ov-switch:where([data-ov-chrome="full"], [data-ov-chrome="full"] *) .ov-switch__why:empty { display: block; min-block-size: 1lh; }
 
 @media (prefers-reduced-motion: reduce) {
   .ov-switch__guard { transition: none; }

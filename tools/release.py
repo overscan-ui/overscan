@@ -132,7 +132,7 @@ def stage_wrappers(g):
 
 KIT_GATES = ['palette.py', 'clearance.py', 'icons.py']
 # The site's modules. The kit repo has none of them, and runs with --kit.
-SITE_GATES = ['themes.py', 'examples.py', 'bundle.py']
+SITE_GATES = ['themes.py', 'examples.py', 'bundle.py', 'motionwiring.py']
 
 
 GLOBAL_DEF = re.compile(r'window\.([A-Z][A-Za-z]+)\s*=(?!=)')
@@ -307,9 +307,16 @@ def read_verdict(text):
 
 
 def stage_pages(g):
-    """Prove it fails: break one refusal; that element's page turns red."""
-    chrome = '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome'
+    """Prove it fails: break one refusal; that element's page turns red.
+
+    Chrome is found at OVERSCAN_CHROME, else the macOS default. A missing
+    browser is a failure that says so, never twenty "no verdict" lines."""
+    chrome = os.environ.get('OVERSCAN_CHROME', '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome')
     pages = sorted((ROOT / 'tools').glob('*-test/index.html'))
+    if not os.access(chrome, os.X_OK):
+        g.check(f'{len(pages)} element harnesses pass', False,
+                f'no Chrome at {chrome}: set OVERSCAN_CHROME to the browser binary')
+        return
     # The server that serves this checkout, as in consumer-test.sh, so a copy
     # of the repo can be tested without touching :8842.
     base = os.environ.get('OVERSCAN_URL', 'http://localhost:8842/')
@@ -341,6 +348,21 @@ def stage_harness_sheets(g):
     r = run([sys.executable, str(ROOT / 'tools' / 'harness_sheets.py')])
     g.check('every element harness loads the sheets for the markup it builds',
             r.returncode == 0, r.stdout + r.stderr)
+
+
+def stage_css_strip(g):
+    """Prove it fails: run `css_strip.py --apply` in a kit checkout, change one
+    declaration in a stripped sheet, and re-run.
+
+    The package ships its CSS without comments; the publish job strips the
+    checkout just before this gate. Where a sheet still matches its committed
+    source (the working repo, or the kit before the strip) this proves the strip would
+    be lossless. Where it differs, the sheet must be exactly its committed
+    source minus the comments, checked by a second method, with none left."""
+    import css_strip
+    bad, plain, stripped = css_strip.check(ROOT)
+    g.check(f'shipped CSS is its source minus comments ({plain} lossless to strip, '
+            f'{stripped} stripped)', not bad, '\n'.join(bad[:20]))
 
 
 def packed_files():
@@ -556,6 +578,11 @@ def selftest():
     import size_budget
     fails += size_budget.selftest()
 
+    # The CSS strip: a shipped sheet that keeps a comment, changes a value or
+    # was stripped by a naive regex must be refused, and unparsable CSS too.
+    import css_strip
+    fails += css_strip.selftest()
+
     return fails
 
 
@@ -593,6 +620,7 @@ def main():
     stage_harness_sheets(g)
 
     print('\n=== tarball ===')
+    stage_css_strip(g)
     pack, err = packed_files()
     if pack is None:
         g.check('npm pack', False, err)

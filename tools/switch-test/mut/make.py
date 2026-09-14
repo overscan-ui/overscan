@@ -53,7 +53,7 @@ mut('g-flick-latches',
     "    r.handle = this.kind() === 'flick' ? this.rest() : r.set;",
     "    r.handle = r.set;  // MUTANT: it stays where it was flicked")
 
-# h: SAFE does not remove the armed condition.
+# h: closing the cover does not remove the armed condition.
 mut('h-safe-keeps-armed',
     "  safe() { this._armed = false;",
     "  safe() { this._armed = this._armed;  // MUTANT")

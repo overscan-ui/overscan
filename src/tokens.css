@@ -39,7 +39,7 @@
      ⚠️ Punctuation is the exception and carries NO hue: it is structure, not
      meaning, so it is --ov-faint with the chroma stripped out. That is also
      what stops it colliding with a rotation, which it did in aegis and vector.
-     Generated and checked by tools/highlight.py; see its selftest. */
+     Recorded in tools/palette.py and checked by tools/highlight.py. */
   --ov-code-name: #fff5aa;
   --ov-code-kw: #5dc6ec;
   --ov-code-str: #94c178;

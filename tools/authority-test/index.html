@@ -1,0 +1,244 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>ov-authority harness</title>
+<!-- The refusal gate for the ov-authority element. Serve the repo root
+     (tools/static_server.py) and open /tools/authority-test/. The last line must read
+     GATE: PASS, and every CONTROL (an assertion false on purpose) must fail. -->
+<link rel="stylesheet" href="../../src/tokens.css">
+<link rel="stylesheet" href="../../src/chrome.css">
+<link rel="stylesheet" href="../../src/authority.css">
+<style>
+  body { background: #06060a; color: #cfe; font: 13px ui-monospace, monospace; padding: 20px; }
+  pre { white-space: pre-wrap; }
+  #stage { max-inline-size: 640px; }
+</style>
+<div id="stage" data-ov-theme="aegis"></div>
+<pre id="out">running...</pre>
+<script>
+  // 🔴 A THROW IS A RED GATE, NOT A HANG.
+  const fatal = (what) => {
+    const out = document.getElementById('out');
+    if (out) out.textContent = `THREW: ${what}\n\nVERDICT: RED`;
+  };
+  addEventListener('error', (e) => fatal(e.error?.stack || e.message || e));
+  addEventListener('unhandledrejection', (e) => fatal(e.reason?.stack || e.reason));
+</script>
+<script type="module">
+// ?src=mut/<mutant>.js runs the same gate against a copy with one refusal
+// broken on purpose: every mutant must turn the gate red.
+const SRC = new URLSearchParams(location.search).get('src') || '../../src/ov-authority.js';
+const { OvAuthority } = await import(new URL(SRC, location.href).href);
+
+const stage = document.getElementById('stage');
+const results = [];
+const ok = (name, cond, got) => results.push({ name, pass: !!cond, got });
+const controls = [];
+const control = (name, cond, got) => controls.push({ name, pass: !!cond, got });
+const settle = () => new Promise((r) => setTimeout(r, 0));
+
+let NOW = 1_800_000_000_000;
+OvAuthority.now = () => NOW;
+const step = (s) => { NOW += s * 1000; };
+
+const make = (attrs = {}) => {
+  const el = document.createElement('ov-authority');
+  for (const [k, v] of Object.entries({ label: 'VEHICLE', ...attrs })) el.setAttribute(k, v);
+  stage.replaceChildren(el);
+  return el;
+};
+const row = (el, id) => el.querySelector(`[data-ov-system="${id}"]`);
+const txt = (el, id, part) => row(el, id)?.querySelector(`.ov-authority__${part}`)?.textContent;
+const said = (el) => el.querySelector('.ov-authority__say').textContent;
+const paints = (x) => !!x && getComputedStyle(x).display !== 'none';
+const ATT = (over = {}) => ({ id: 'attitude', label: 'ATTITUDE', control: 'auto', level: 'full', state: 'running', active: 'HOLD INERTIAL', ...over });
+let el;
+
+// 1. No declared source of control is UNDECLARED, never AUTO.
+el = make();
+el.picture = { mode: 'operational', systems: [ATT({ control: undefined })] };
+ok('⭐ a system with no source of control reads UNDECLARED', txt(el, 'attitude', 'control') === 'UNDECLARED' && row(el, 'attitude').dataset.ovControl === 'undeclared', txt(el, 'attitude', 'control'));
+ok('...and the accessible name says so', /control undeclared on attitude/.test(el.getAttribute('aria-label')), el.getAttribute('aria-label'));
+control('CONTROL: an undeclared system reads AUTO (must fail)', txt(el, 'attitude', 'control') === 'AUTO', txt(el, 'attitude', 'control'));
+el.picture = { mode: 'operational', systems: [ATT()] };
+ok('a declared AUTO reads AUTO', txt(el, 'attitude', 'control') === 'AUTO', txt(el, 'attitude', 'control'));
+
+// 2. The picture's mode is printed; none is MODE NOT STATED; a mixed row is refused.
+el = make();
+el.picture = { systems: [ATT()] };
+ok('a picture with no mode reads MODE NOT STATED, as a refusal', el.querySelector('.ov-authority__modeword').textContent === 'MODE NOT STATED' && el.querySelector('.ov-authority__mode').dataset.ovTone === 'bad', el.querySelector('.ov-authority__modeword').textContent);
+el.picture = { mode: 'simulation', systems: [ATT()] };
+ok('a simulation picture prints SIMULATION as a qualified tone', el.querySelector('.ov-authority__modeword').textContent === 'SIMULATION' && el.querySelector('.ov-authority__mode').dataset.ovTone === 'note', el.querySelector('.ov-authority__mode').dataset.ovTone);
+ok('...and the mode stamp paints in dense', paints(el.querySelector('.ov-authority__mode')), getComputedStyle(el.querySelector('.ov-authority__mode')).display);
+el.picture = { mode: 'operational', systems: [ATT({ mode: 'test' })] };
+ok('⭐ a system in test inside an operational picture is refused on its row', txt(el, 'attitude', 'state') === 'REFUSED · TEST INSIDE OPERATIONAL' && row(el, 'attitude').dataset.ovModeFault === 'yes', txt(el, 'attitude', 'state'));
+control('CONTROL: the mixed row reads RUNNING (must fail)', txt(el, 'attitude', 'state') === 'RUNNING', txt(el, 'attitude', 'state'));
+
+// 3. Announced changes are boxed ten seconds with FROM; unannounced ones are kept.
+el = make();
+el.picture = { mode: 'operational', systems: [ATT()] };
+step(1);
+el.picture = { mode: 'operational', systems: [ATT({ control: 'crew-manual', announced: true, by: { name: 'CDR' } })] };
+ok('an announced control change is boxed with where it came from', row(el, 'attitude').dataset.ovChanged === 'yes' && txt(el, 'attitude', 'change') === 'CONTROL FROM AUTO', txt(el, 'attitude', 'change'));
+ok('...and names who holds it', txt(el, 'attitude', 'by') === '· CDR', txt(el, 'attitude', 'by'));
+step(11); el.render();
+ok('...and the box goes after ten seconds', !row(el, 'attitude').dataset.ovChanged && txt(el, 'attitude', 'change') === '', txt(el, 'attitude', 'change'));
+const events = [];
+el.addEventListener('ov:authority', (e) => events.push(e.detail));
+step(1);
+el.picture = { mode: 'operational', systems: [ATT({ control: 'crew-manual', active: 'RATE DAMP' })] };
+await settle();
+ok('⭐ an unannounced mode change is flagged, not just redrawn', row(el, 'attitude').dataset.ovUnannounced === 'yes' && /^UNANNOUNCED MODE CHANGE · FROM HOLD INERTIAL TO RATE DAMP/.test(txt(el, 'attitude', 'change')), txt(el, 'attitude', 'change'));
+ok('...said aloud once', said(el) === 'ATTITUDE: unannounced mode change, HOLD INERTIAL to RATE DAMP', said(el));
+ok('...and an ov:authority event carries announced: false', events.length === 1 && events[0].announced === false && events[0].to === 'RATE DAMP', events);
+control('CONTROL: the unannounced change is not marked (must fail)', !row(el, 'attitude').dataset.ovUnannounced, row(el, 'attitude').dataset.ovUnannounced);
+step(60); el.render();
+ok('it is KEPT past the ten-second box', row(el, 'attitude').dataset.ovUnannounced === 'yes', row(el, 'attitude').dataset.ovUnannounced);
+ok('an acknowledgement with nobody named is refused', el.acknowledge('attitude') === false && row(el, 'attitude').dataset.ovUnannounced === 'yes', row(el, 'attitude').dataset.ovUnannounced);
+ok('a named acknowledgement clears it', el.acknowledge('attitude', 'CDR') === true && !row(el, 'attitude').dataset.ovUnannounced, row(el, 'attitude').dataset.ovUnannounced);
+
+// 3b. 🔴 A handover changes control AND mode in one report: both are named.
+el = make();
+el.picture = { mode: 'operational', systems: [ATT({ active: 'AUTO APPROACH' })] };
+step(1);
+el.picture = { mode: 'operational', systems: [ATT({ control: 'crew-manual', active: 'MANUAL TRANSLATION', announced: true })] };
+ok('⭐ a report changing control and mode boxes both, the handover first', txt(el, 'attitude', 'change') === 'CONTROL FROM AUTO · MODE FROM AUTO APPROACH', txt(el, 'attitude', 'change'));
+control('CONTROL: only the mode change is named (must fail)', txt(el, 'attitude', 'change') === 'MODE FROM AUTO APPROACH', txt(el, 'attitude', 'change'));
+step(1);
+el.picture = { mode: 'operational', systems: [ATT({ control: 'remote', active: 'REMOTE HOLD' })] };
+ok('two unannounced changes in one report are both kept', /UNANNOUNCED CONTROL CHANGE · FROM CREW MANUAL TO REMOTE/.test(txt(el, 'attitude', 'change')) && /UNANNOUNCED MODE CHANGE · FROM MANUAL TRANSLATION TO REMOTE HOLD/.test(txt(el, 'attitude', 'change')), txt(el, 'attitude', 'change'));
+
+// 4. Reversion and selected-not-armed.
+el = make();
+el.picture = { mode: 'operational', systems: [ATT({ active: 'TRACK TARGET' })] };
+step(1);
+el.picture = { mode: 'operational', systems: [ATT({ active: 'HOLD INERTIAL', reversion: true, announced: true })] };
+ok('⭐ an automatic reversion is named REVERTED FROM the old mode', txt(el, 'attitude', 'change') === 'REVERTED FROM TRACK TARGET', txt(el, 'attitude', 'change'));
+control('CONTROL: the reversion reads as a plain mode change (must fail)', txt(el, 'attitude', 'change') === 'MODE FROM TRACK TARGET', txt(el, 'attitude', 'change'));
+el.picture = { mode: 'operational', systems: [ATT({ selected: 'TRACK TARGET' })] };
+const armedCell = row(el, 'attitude').querySelector('.ov-authority__armed');
+ok('⭐ a mode that was only selected reads SELECTED, NOT ARMED', armedCell.querySelector('b').textContent === 'TRACK TARGET SELECTED, NOT ARMED' && armedCell.dataset.ovSelectedOnly === 'yes', armedCell.querySelector('b').textContent);
+control('CONTROL: the selected mode shows as armed (must fail)', armedCell.querySelector('b').textContent === 'TRACK TARGET', armedCell.querySelector('b').textContent);
+
+// 5. Next actions: owner, time, trigger, inhibited.
+el = make();
+el.picture = { mode: 'operational', systems: [ATT({ next: { action: 'deorbit burn', in: 250 } })] };
+ok('⭐ a next action with no owner reads OWNER NOT STATED, in the refusal tone', txt(el, 'attitude', 'owner') === 'OWNER NOT STATED' && row(el, 'attitude').querySelector('.ov-authority__next').dataset.ovTone === 'bad', txt(el, 'attitude', 'owner'));
+control('CONTROL: the ownerless action is AUTO\'s (must fail)', txt(el, 'attitude', 'owner') === 'AUTO', txt(el, 'attitude', 'owner'));
+el.picture = { mode: 'operational', systems: [ATT({ next: { action: 'deorbit burn', owner: 'crew', in: 250 } })] };
+ok('a crew action counts down to its time', txt(el, 'attitude', 'owner') === 'CREW' && txt(el, 'attitude', 'when') === 'IN 4m 10s', txt(el, 'attitude', 'when'));
+el.picture = { mode: 'operational', systems: [ATT({ next: { action: 'deorbit burn', owner: 'crew', in: 250 } })] };
+step(260); el.render();
+ok('...a repeated picture does not push its time back, and past due it reads OVERDUE', txt(el, 'attitude', 'when') === 'OVERDUE 10s', txt(el, 'attitude', 'when'));
+el.picture = { mode: 'operational', systems: [ATT({ next: { action: 'capture', owner: 'auto', trigger: 'range < 200 m' } })] };
+ok('an action on a trigger reads ON its trigger', txt(el, 'attitude', 'when') === 'ON RANGE < 200 M', txt(el, 'attitude', 'when'));
+el.picture = { mode: 'operational', systems: [ATT({ next: { action: 'capture', owner: 'auto', trigger: 'range < 200 m', inhibited: true } })] };
+ok('⭐ a step behind an inhibited trigger reads WILL RUN AT ONCE', txt(el, 'attitude', 'when') === 'WILL RUN AT ONCE · TRIGGER RANGE < 200 M INHIBITED', txt(el, 'attitude', 'when'));
+control('CONTROL: the inhibited step reads as waiting on its trigger (must fail)', /^ON /.test(txt(el, 'attitude', 'when')), txt(el, 'attitude', 'when'));
+
+// 6. No picture, a failed file, stale, malformed.
+el = make();
+ok('an element with no picture says NO PICTURE, as a refusal', el.querySelector('.ov-authority__modeword').textContent === 'NO PICTURE' && el.getAttribute('data-ov-refusal') === 'unknown', el.querySelector('.ov-authority__modeword').textContent);
+el = make({ src: 'no-such-file.json' });
+await new Promise((r) => setTimeout(r, 300));
+ok('a src that fails to load leaves no picture', el.querySelector('.ov-authority__modeword').textContent === 'NO PICTURE', el.querySelector('.ov-authority__modeword').textContent);
+el = make({ 'max-age': '30' });
+el.picture = { mode: 'operational', systems: [ATT({ next: { action: 'burn', owner: 'crew', in: 100 } })] };
+step(40); el.render();
+ok('a picture older than max-age is STALE with its age', el.querySelector('.ov-authority__stamp').textContent === 'STALE · LAST REPORT 40s AGO' && el.dataset.ovQualified === 'stale', el.querySelector('.ov-authority__stamp').textContent);
+ok('...and its countdown is not counted as live', txt(el, 'attitude', 'when') === 'WAS DUE IN 1m 00s AT LAST REPORT', txt(el, 'attitude', 'when'));
+el.picture = { mode: 'operational', systems: [ATT(), { label: 'NO ID' }, ATT()] };
+ok('a system with no id or a repeated id is refused and counted', el.report.malformed === 2 && /2 SYSTEMS REFUSED/.test(el.textContent), el.report.malformed);
+
+// 7. Dense by default, and a refusal is never chrome.
+el = make();
+el.picture = { mode: 'operational', systems: [ATT({ control: undefined })] };
+ok('by default the name row is hidden', !paints(el.querySelector('.ov-head')), getComputedStyle(el.querySelector('.ov-head')).display);
+ok('...but UNDECLARED still paints', paints(row(el, 'attitude').querySelector('.ov-authority__control')), getComputedStyle(row(el, 'attitude').querySelector('.ov-authority__control')).display);
+el.picture = { mode: 'test', systems: [ATT()] };
+ok('a TEST picture keeps its stamp painted in dense', paints(el.querySelector('.ov-authority__mode')), getComputedStyle(el.querySelector('.ov-authority__mode')).display);
+ok('the host is a group whose name opens with its label', el.getAttribute('role') === 'group' && /^VEHICLE: test, 1 systems/.test(el.getAttribute('aria-label')), el.getAttribute('aria-label'));
+el = make();
+el.picture = { mode: 'operational', systems: [ATT()] };
+ok('⭐ OPERATIONAL is printed in dense too: the mode is always shown', paints(el.querySelector('.ov-authority__mode')) && el.querySelector('.ov-authority__modeword').textContent === 'OPERATIONAL', getComputedStyle(el.querySelector('.ov-authority__mode')).display);
+control('CONTROL: the OPERATIONAL stamp is hidden by density (must fail)', !paints(el.querySelector('.ov-authority__mode')), getComputedStyle(el.querySelector('.ov-authority__mode')).display);
+
+// 7b. 🔴 THE PICTURE, NOT ONLY THE WORDS. Who holds a system is where its bar
+// is drawn, so the lanes themselves are asserted, by position on the page.
+const inLane = (e, id, lane) => {
+  const band = e.querySelector(`.ov-authority__band[data-ov-lane="${lane}"]`).getBoundingClientRect();
+  const tag = row(e, id).querySelector('.ov-authority__tag').getBoundingClientRect();
+  return tag.top >= band.top - 1 && tag.bottom <= band.bottom + 1;
+};
+// Measured at the marker's DIAMOND, its real place on the axis: a label near
+// the right edge ends at the diamond instead of starting there.
+const fieldX = (e, node) => {
+  const f = e.querySelector('.ov-authority__field').getBoundingClientRect();
+  const r = node.getBoundingClientRect();
+  return (r.left + r.width / 2 - f.left) / f.width;
+};
+el = make();
+el.picture = { mode: 'operational', systems: [ATT({ control: undefined }), ATT({ id: 'path', label: 'PATH' })] };
+ok('⭐ an undeclared system is DRAWN in the NO ONE lane', inLane(el, 'attitude', 'none') && row(el, 'attitude').dataset.ovLane === 'none', row(el, 'attitude').dataset.ovLane);
+ok('...and a declared AUTO in the AUTO lane', inLane(el, 'path', 'auto'), row(el, 'path').dataset.ovLane);
+control('CONTROL: the undeclared system sits in the AUTO lane (must fail)', inLane(el, 'attitude', 'auto'), row(el, 'attitude').dataset.ovLane);
+step(1);
+el.picture = { mode: 'operational', systems: [ATT({ control: 'crew-manual', announced: true }), ATT({ id: 'path', label: 'PATH' })] };
+ok('a handover moves the bar into the new lane', inLane(el, 'attitude', 'crew'), row(el, 'attitude').dataset.ovLane);
+const stepPath = el.querySelector('.ov-authority__step[data-ov-step-of="attitude"]');
+ok('⭐ ...and draws the step between lanes, announced', !!stepPath && stepPath.dataset.ovAnnounced === 'yes', stepPath?.outerHTML);
+step(1);
+el.picture = { mode: 'operational', systems: [ATT({ control: 'remote' }), ATT({ id: 'path', label: 'PATH' })] };
+ok('an unannounced handover draws its step in the alarm form', el.querySelectorAll('.ov-authority__step[data-ov-step-of="attitude"][data-ov-announced="no"]').length === 1, el.querySelectorAll('.ov-authority__step').length);
+el = make({ ahead: '300' });
+el.picture = { mode: 'operational', systems: [ATT({ next: { action: 'burn', owner: 'crew', in: 150 } })] };
+const mk = row(el, 'attitude').querySelector('.ov-authority__next');
+const want = 0.45 + 0.55 * 0.5;
+ok('a timed action sits ahead of NOW at its time, in its owner\'s lane', Math.abs(fieldX(el, mk.querySelector('.ov-authority__mark')) - want) < 0.03 && mk.dataset.ovLane === 'crew', [fieldX(el, mk.querySelector('.ov-authority__mark')), want]);
+el.picture = { mode: 'operational', systems: [ATT({ next: { action: 'capture', owner: 'auto', trigger: 'range < 200 m', inhibited: true } })] };
+const mk2 = row(el, 'attitude').querySelector('.ov-authority__next');
+ok('⭐ a step behind an inhibited trigger is drawn AT NOW, not in the trigger column', Math.abs(fieldX(el, mk2.querySelector('.ov-authority__mark')) - 0.45) < 0.03 && !mk2.hidden, fieldX(el, mk2.querySelector('.ov-authority__mark')));
+ok('...and its gate in the column is drawn broken', el.querySelector('[data-ov-gate="attitude"]').dataset.ovInhibited === 'yes' && paints(el.querySelector('[data-ov-gate="attitude"]')), el.querySelector('[data-ov-gate="attitude"]').outerHTML);
+el.picture = { mode: 'operational', systems: [ATT({ next: { action: 'capture', owner: 'auto', trigger: 'range < 200 m' } })] };
+ok('a step waiting on a trigger sits in the ON TRIGGER column, off the time axis', paints(el.querySelector('[data-ov-gate="attitude"]')) && row(el, 'attitude').querySelector('.ov-authority__next').hidden, el.querySelector('[data-ov-gate="attitude"]').textContent);
+el.picture = { mode: 'operational', systems: [ATT({ next: { action: 'restore bus', in: 60 } })] };
+ok('an ownerless action is drawn in the NO ONE lane', row(el, 'attitude').querySelector('.ov-authority__next').dataset.ovLane === 'none', row(el, 'attitude').querySelector('.ov-authority__next').dataset.ovLane);
+
+// 8. Nothing asks for an animation frame.
+{
+  const text = await (await fetch(new URL(SRC, location.href).href)).text();
+  const asks = /requestAnimationFrame/.test(text);
+  ok('the element never asks for an animation frame, anywhere in its source', !asks, asks);
+  control('CONTROL: the element draws on a frame (must fail)', asks, asks);
+}
+
+// 9. Narrow.
+el = make();
+el.picture = { mode: 'operational', systems: [ATT({ control: 'crew-software', by: { name: 'MISSION SPECIALIST 2' }, armed: 'TRACK TARGET', next: { action: 'terminal phase initiation', owner: 'crew', trigger: 'range rate < 0.5 m/s', inhibited: true } })] };
+stage.style.inlineSize = '360px';
+await settle();
+el.render();
+ok('at 360px nothing overflows sideways', el.scrollWidth <= 361, el.scrollWidth);
+// 🔴 Found on the demo, not by the check above: the element did not scroll,
+// but every name behind NOW was cut off at the field's left edge.
+{
+  const fieldR = el.querySelector('.ov-authority__field').getBoundingClientRect();
+  const tagR = row(el, 'attitude').querySelector('.ov-authority__tag').getBoundingClientRect();
+  ok('⭐ at 360px the element goes narrow and no name is cut off at the left', el.dataset.ovNarrow === 'yes' && tagR.left >= fieldR.left - 1, [el.dataset.ovNarrow, tagR.left, fieldR.left]);
+  control('CONTROL: the name starts left of the field (must fail)', tagR.left < fieldR.left - 1, [tagR.left, fieldR.left]);
+}
+
+const passed = results.filter((x) => x.pass).length;
+const failed = results.length - passed;
+const controlsFailed = controls.filter((x) => !x.pass).length;
+const gate = failed === 0 && controlsFailed === controls.length && controls.length > 0;
+const lines = [
+  ...results.map((x) => `${x.pass ? 'PASS' : 'FAIL'}  ${x.name}${x.pass ? '' : '  got ' + JSON.stringify(x.got)}`),
+  ...controls.map((x) => `${x.pass ? 'CONTROL PASSED (BAD)' : 'CONTROL FAILED (good)'}  ${x.name}`),
+  '',
+  `${passed} passed, ${failed} failed, ${controlsFailed}/${controls.length} controls failed as required`,
+  `GATE: ${gate ? 'PASS' : 'FAIL'}`,
+];
+const out = document.getElementById('out');
+out.textContent = lines.join('\n');
+out.setAttribute('data-gate', gate ? 'pass' : 'fail');
+</script>

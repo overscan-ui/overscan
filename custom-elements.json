@@ -260,6 +260,53 @@
         {
           "attributeCollisions": [],
           "attributes": [
+            "ahead",
+            "label",
+            "max-age",
+            "past",
+            "source",
+            "src"
+          ],
+          "attributesComplete": true,
+          "class": "OvAuthority",
+          "events": [
+            "ov:authority"
+          ],
+          "gettersOnly": [
+            "report"
+          ],
+          "marksStale": false,
+          "members": [
+            {
+              "kind": "structured",
+              "name": "picture",
+              "type": "Structured"
+            }
+          ],
+          "module": "src/ov-authority.js",
+          "name": "ov-authority",
+          "wrappers": {
+            "component": "OvAuthority",
+            "react": {
+              "onAuthority": "ov:authority"
+            },
+            "svelte": {
+              "onauthority": "ov:authority"
+            },
+            "vue": {
+              "authority": "ov:authority"
+            }
+          }
+        }
+      ],
+      "kind": "javascript-module",
+      "path": "src/ov-authority.js"
+    },
+    {
+      "declarations": [
+        {
+          "attributeCollisions": [],
+          "attributes": [
             "kind",
             "name",
             "status",
@@ -658,6 +705,51 @@
       ],
       "kind": "javascript-module",
       "path": "src/ov-coverage.js"
+    },
+    {
+      "declarations": [
+        {
+          "attributeCollisions": [],
+          "attributes": [
+            "coast-after",
+            "label",
+            "source",
+            "src"
+          ],
+          "attributesComplete": true,
+          "class": "OvDatablock",
+          "events": [
+            "ov:datablock"
+          ],
+          "gettersOnly": [
+            "report"
+          ],
+          "marksStale": false,
+          "members": [
+            {
+              "kind": "structured",
+              "name": "track",
+              "type": "Structured"
+            }
+          ],
+          "module": "src/ov-datablock.js",
+          "name": "ov-datablock",
+          "wrappers": {
+            "component": "OvDatablock",
+            "react": {
+              "onDatablock": "ov:datablock"
+            },
+            "svelte": {
+              "ondatablock": "ov:datablock"
+            },
+            "vue": {
+              "datablock": "ov:datablock"
+            }
+          }
+        }
+      ],
+      "kind": "javascript-module",
+      "path": "src/ov-datablock.js"
     },
     {
       "declarations": [
@@ -2170,8 +2262,10 @@
           "attributeCollisions": [],
           "attributes": [
             "max-age",
+            "plans",
             "source",
-            "src"
+            "src",
+            "stock"
           ],
           "attributesComplete": true,
           "class": "OvSchematic",
@@ -2365,6 +2459,50 @@
         {
           "attributeCollisions": [],
           "attributes": [
+            "fov",
+            "model",
+            "pitch",
+            "spin",
+            "yaw"
+          ],
+          "attributesComplete": true,
+          "class": "OvSolid",
+          "events": [],
+          "gettersOnly": [
+            "fps",
+            "shaderName"
+          ],
+          "marksStale": false,
+          "members": [
+            {
+              "kind": "structured",
+              "name": "mesh",
+              "type": "Structured"
+            },
+            {
+              "kind": "structured",
+              "name": "survey",
+              "type": "Structured"
+            }
+          ],
+          "module": "src/ov-solid.js",
+          "name": "ov-solid",
+          "wrappers": {
+            "component": "OvSolid",
+            "react": {},
+            "svelte": {},
+            "vue": {}
+          }
+        }
+      ],
+      "kind": "javascript-module",
+      "path": "src/ov-solid.js"
+    },
+    {
+      "declarations": [
+        {
+          "attributeCollisions": [],
+          "attributes": [
             "categories"
           ],
           "attributesComplete": true,
@@ -2465,7 +2603,6 @@
         {
           "attributeCollisions": [],
           "attributes": [
-            "arm-hold",
             "guard",
             "kind",
             "label",
@@ -3044,6 +3181,46 @@
     {
       "declarations": [
         {
+          "attributeCollisions": [],
+          "attributes": [
+            "grace",
+            "guards",
+            "label",
+            "source",
+            "stages"
+          ],
+          "attributesComplete": true,
+          "class": "OvWatchdog",
+          "events": [
+            "ov:watchdog"
+          ],
+          "gettersOnly": [
+            "report"
+          ],
+          "marksStale": false,
+          "members": [],
+          "module": "src/ov-watchdog.js",
+          "name": "ov-watchdog",
+          "wrappers": {
+            "component": "OvWatchdog",
+            "react": {
+              "onWatchdog": "ov:watchdog"
+            },
+            "svelte": {
+              "onwatchdog": "ov:watchdog"
+            },
+            "vue": {
+              "watchdog": "ov:watchdog"
+            }
+          }
+        }
+      ],
+      "kind": "javascript-module",
+      "path": "src/ov-watchdog.js"
+    },
+    {
+      "declarations": [
+        {
           "attributeCollisions": [
             "floor"
           ],
@@ -3211,6 +3388,6 @@
   "wrapperNotes": [
     "A reading is set as a PROPERTY, never an attribute. An attribute is a string, so an array cannot survive one and a null arrives as the word \"null\", which the protocol would read as a value rather than a dropout.",
     "Every ov: event is bound with addEventListener. The colon has no declarative spelling in Svelte 5, where the on: directive is gone and \"onov:commit\" is not an identifier, nor in JSX. Vue can bind it.",
-    "The wrapper applies attributes ITSELF and hands the framework nothing but a ref. All three frameworks set a prop as a property when the name exists on the element, and this kit has 72 getter-only properties across 39 elements. Assigning one throws, and in React it does not degrade: the whole tree fails to render. 13 elements have a getter-only name that is also a real attribute (at, bearing, digits, duration, floor, fov, fresh, hold, lat, lon, period, pitch, range, ring, rings, span, step, sweep, sweeps, traces, value), which are the ones a reader would naturally pass in markup."
+    "The wrapper applies attributes ITSELF and hands the framework nothing but a ref. All three frameworks set a prop as a property when the name exists on the element, and this kit has 77 getter-only properties across 43 elements. Assigning one throws, and in React it does not degrade: the whole tree fails to render. 13 elements have a getter-only name that is also a real attribute (at, bearing, digits, duration, floor, fov, fresh, hold, lat, lon, period, pitch, range, ring, rings, span, step, sweep, sweeps, traces, value), which are the ones a reader would naturally pass in markup."
   ]
 }

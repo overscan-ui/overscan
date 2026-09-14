@@ -34,7 +34,7 @@ ov-schematic {
   border: var(--ov-bezel) solid var(--ov-line-strong);
 }
 
-.ov-schematic__label, .ov-schematic__note, .ov-schematic__plabel, .ov-schematic__xx, .ov-schematic__void {
+.ov-schematic__label, .ov-schematic__note, .ov-schematic__plabel, .ov-schematic__xx, .ov-schematic__void, .ov-schematic__orient {
   font-family: var(--ov-font-mono);
   letter-spacing: 1px;
   text-transform: uppercase;
@@ -42,22 +42,29 @@ ov-schematic {
 .ov-schematic__label { font-size: 10px; fill: var(--ov-ink); }
 .ov-schematic__note { font-size: 9px; fill: var(--ov-dim); }
 .ov-schematic__plabel { font-size: 8px; fill: var(--ov-dim); }
+/* Which way a drawing faces. Quiet, and always there on a plan that gives one. */
+.ov-schematic__orient { font-size: 8px; fill: var(--ov-faint); }
+
+/* An outline (skull, car body, hull) is not a part and claims no state, so it
+ * is a plain line that no state rule can reach. */
+.ov-schematic__hull { fill: none; stroke: var(--ov-line); stroke-width: 1.2; }
+.ov-schematic__lead { stroke: var(--ov-line-strong); stroke-width: 0.8; }
 
 /* Rooms. The fill is the state; a room with no report gets the hatch and no
  * fill at all, so it can never read as a quiet green. */
-.ov-schematic__room rect { stroke: var(--ov-line-strong); stroke-width: 1; fill: transparent; }
-.ov-schematic__room.is-ok rect { fill: color-mix(in srgb, var(--ov-accent) 14%, transparent); }
-.ov-schematic__room.is-caution rect { fill: color-mix(in srgb, var(--ov-accent-2) 22%, transparent); }
-.ov-schematic__room.is-alarm rect { fill: color-mix(in srgb, var(--ov-alarm) 30%, transparent); stroke: var(--ov-alarm); }
+.ov-schematic__room :is(rect, path) { stroke: var(--ov-line-strong); stroke-width: 1; fill: transparent; }
+.ov-schematic__room.is-ok :is(rect, path) { fill: color-mix(in srgb, var(--ov-accent) 14%, transparent); }
+.ov-schematic__room.is-caution :is(rect, path) { fill: color-mix(in srgb, var(--ov-accent-2) 22%, transparent); }
+.ov-schematic__room.is-alarm :is(rect, path) { fill: color-mix(in srgb, var(--ov-alarm) 30%, transparent); stroke: var(--ov-alarm); }
 .ov-schematic__room.is-alarm .ov-schematic__note { fill: var(--ov-alarm); }
-.ov-schematic__room.is-off rect { stroke-dasharray: 3 3; }
-.ov-schematic__room.is-none rect { stroke: var(--ov-alarm); stroke-dasharray: 2 3; }
+.ov-schematic__room.is-off :is(rect, path) { stroke-dasharray: 3 3; }
+.ov-schematic__room.is-none :is(rect, path) { stroke: var(--ov-alarm); stroke-dasharray: 2 3; }
 .ov-schematic__room.is-none .ov-schematic__note { fill: var(--ov-alarm); }
 /* Strong enough to read as a mark, not as texture: this hatch IS the claim. */
 .ov-schematic__hatch { stroke: color-mix(in srgb, var(--ov-alarm) 45%, transparent); stroke-width: 1.2; }
 
 /* Stale: the last state, faded, with its age. A qualifier, not a refusal. */
-.ov-schematic__room.is-stale rect, .ov-schematic__part.is-stale { opacity: 0.45; }
+.ov-schematic__room.is-stale :is(rect, path), .ov-schematic__part.is-stale { opacity: 0.45; }
 .ov-schematic__room.is-stale .ov-schematic__note { fill: var(--ov-alarm); }
 
 /* Parts. */

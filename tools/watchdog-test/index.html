@@ -1,0 +1,219 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>ov-watchdog harness</title>
+<!-- The refusal gate for the ov-watchdog element. Serve the repo root
+     (tools/static_server.py) and open /tools/watchdog-test/. The last line must read
+     GATE: PASS, and every CONTROL (an assertion false on purpose) must fail. -->
+<link rel="stylesheet" href="../../src/tokens.css">
+<link rel="stylesheet" href="../../src/chrome.css">
+<link rel="stylesheet" href="../../src/annunciator.css">
+<link rel="stylesheet" href="../../src/downlink.css">
+<link rel="stylesheet" href="../../src/watchdog.css">
+<style>
+  body { background: #06060a; color: #cfe; font: 13px ui-monospace, monospace; padding: 20px; }
+  pre { white-space: pre-wrap; }
+  #stage { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; max-inline-size: 900px; }
+</style>
+<div id="stage" data-ov-theme="industrial"></div>
+<pre id="out">running...</pre>
+<script>
+  // 🔴 A THROW IS A RED GATE, NOT A HANG.
+  const fatal = (what) => {
+    const out = document.getElementById('out');
+    if (out) out.textContent = `THREW: ${what}\n\nGATE: FAIL`;
+  };
+  addEventListener('error', (e) => fatal(e.error?.stack || e.message || e));
+  addEventListener('unhandledrejection', (e) => fatal(e.reason?.stack || e.reason));
+</script>
+<script type="module">
+// ?src=mut/<mutant>.js runs the same gate against a copy with one
+// refusal broken on purpose: every mutant must turn the gate red.
+const SRC = new URLSearchParams(location.search).get('src') || '../../src/ov-watchdog.js';
+await import('../../src/ov-annunciator.js');
+await import('../../src/ov-downlink.js');
+// ⚠️ `mut/x.js` is a BARE SPECIFIER to the module loader; make it a URL first.
+const { OvWatchdog } = await import(new URL(SRC, location.href).href);
+
+const stage = document.getElementById('stage');
+const results = [];
+const ok = (name, cond, got) => results.push({ name, pass: !!cond, got });
+const controls = [];
+const control = (name, cond, got) => controls.push({ name, pass: !!cond, got });
+const settle = () => new Promise((r) => setTimeout(r, 0));
+
+// Our clock, driven by hand. advance() is one tick per second, so no page gap
+// is ever seen unless a test jumps.
+let NOW = 1_800_000_000_000;
+OvWatchdog.now = () => NOW;
+const advance = (s, el, each) => { for (let i = 0; i < s; i++) { NOW += 1000; if (each) each(i); el.tick(); } };
+
+const make = (tag, attrs = {}) => {
+  const el = document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs)) el.setAttribute(k, v);
+  return el;
+};
+let n = 0;
+const fresh = (attrs = {}) => {
+  const id = `p${++n}`;
+  const panel = make('ov-annunciator', { id, tiles: 'HYD PRESS, CABIN ALT' });
+  const wd = make('ov-watchdog', { label: 'ALARM PATH', guards: id, stages: 'SCAN:2, PROC:1', ...attrs });
+  stage.replaceChildren(wd, panel);
+  panel.conditions = [{ label: 'HYD PRESS', value: false }, { label: 'CABIN ALT', value: false }];
+  wd.render();
+  return { wd, panel };
+};
+const beatAll = (wd, s) => () => { wd.beat('SCAN', ++s.scan); wd.beat('PROC', ++s.proc); };
+const rowState = (wd, name) => wd.querySelector(`[data-ov-stage="${name}"]`)?.getAttribute('data-ov-beat');
+const banner = (el) => el.getAttribute('data-ov-unproven');
+const verdict = (wd) => wd.querySelector('.ov-watchdog__verdictword').textContent;
+const paints = (el) => !!el && getComputedStyle(el).display !== 'none';
+let wd, panel;
+
+// 1. Nothing has beaten: the dark panel is UNPROVEN QUIET, naming the stage.
+({ wd, panel } = fresh());
+ok('before any beat every stage reads NO BEAT', rowState(wd, 'SCAN') === 'none' && rowState(wd, 'PROC') === 'none', [rowState(wd, 'SCAN'), rowState(wd, 'PROC')]);
+ok('...and the path is not proven', wd.getAttribute('data-ov-path') === 'unproven' && verdict(wd) === 'NOT PROVEN', verdict(wd));
+ok('⭐ a dark panel on an unproven path reads UNPROVEN QUIET, naming the first stage', /^UNPROVEN QUIET · SCAN NO BEAT · SINCE \d\d:\d\d:\d\d$/.test(banner(panel) || ''), banner(panel));
+ok('...and is described by the watchdog for a screen reader', (panel.getAttribute('aria-describedby') || '').split(' ').includes(wd.querySelector('.ov-watchdog__desc').id), panel.getAttribute('aria-describedby'));
+ok('the host is a labelled group whose name opens with its label', wd.getAttribute('role') === 'group' && /^ALARM PATH, path not proven, SCAN no beat/.test(wd.getAttribute('aria-label')), wd.getAttribute('aria-label'));
+control('CONTROL: the dark panel carries no mark (must fail)', banner(panel) === null, banner(panel));
+
+// 1b. DENSE IS THE DEFAULT, AND A REFUSAL IS NEVER CHROME.
+ok('by default the name row is hidden', !paints(wd.querySelector('.ov-head')), getComputedStyle(wd.querySelector('.ov-head')).display);
+ok('⭐ ...but NOT PROVEN still paints, with its stage and since', paints(wd.querySelector('.ov-watchdog__verdict')) && paints(wd.querySelector('.ov-watchdog__since')), getComputedStyle(wd.querySelector('.ov-watchdog__verdict')).display);
+control('CONTROL: the refusing verdict is hidden by density (must fail)', !paints(wd.querySelector('.ov-watchdog__verdict')), getComputedStyle(wd.querySelector('.ov-watchdog__verdict')).display);
+
+// 2. Every stage beating and advancing: proven, and the panel may be calm.
+const s = { scan: 0, proc: 0 };
+panel.setAttribute('aria-describedby', 'author-note');   // an author's own description
+wd.render();
+advance(5, wd, beatAll(wd, s));
+ok('advancing beats on every stage prove the path', wd.getAttribute('data-ov-path') === 'live' && verdict(wd) === 'PATH LIVE', wd.getAttribute('data-ov-path'));
+ok('...and the panel is unmarked', banner(panel) === null, banner(panel));
+ok('...keeping the author\'s own aria-describedby', panel.getAttribute('aria-describedby') === 'author-note', panel.getAttribute('aria-describedby'));
+ok('a proven path draws no verdict box in dense (the rings already say it)', !paints(wd.querySelector('.ov-watchdog__verdict')), getComputedStyle(wd.querySelector('.ov-watchdog__verdict')).display);
+
+// 3. RUNNING IS NOT WORKING: fresh beats, counter held.
+advance(3, wd, () => { wd.beat('SCAN', ++s.scan); wd.beat('PROC', s.proc); });
+ok('⭐ a fresh beat whose counter has not moved is STALLED', rowState(wd, 'PROC') === 'stalled', rowState(wd, 'PROC'));
+ok('...saying how long the counter has held', /counter has held at #\d+ for 3s/.test(wd.textContent), wd.querySelector('[data-ov-stage="PROC"] .ov-watchdog__why')?.textContent);
+ok('...and the panel is UNPROVEN QUIET for PROC STALLED', /^UNPROVEN QUIET · PROC STALLED/.test(banner(panel) || ''), banner(panel));
+control('CONTROL: a stage with a held counter reads LIVE (must fail)', rowState(wd, 'PROC') === 'live', rowState(wd, 'PROC'));
+
+// 4. A panel that is showing an alert is not called quiet.
+panel.set('HYD PRESS', true);
+await settle();
+ok('a panel showing an alert reads PATH NOT PROVEN, not quiet', /^PATH NOT PROVEN · NEW ALERTS MAY NOT ARRIVE · PROC STALLED$/.test(banner(panel) || ''), banner(panel));
+control('CONTROL: a panel with a live alert is called UNPROVEN QUIET (must fail)', /QUIET/.test(banner(panel) || ''), banner(panel));
+
+// 5. Beats stop: LATE, and the upstream stage is named first.
+({ wd, panel } = fresh());
+const t = { scan: 0, proc: 0 };
+advance(3, wd, beatAll(wd, t));
+advance(5, wd, () => wd.beat('PROC', ++t.proc));
+ok('a stage with no beat past grace x period is LATE', rowState(wd, 'SCAN') === 'late', rowState(wd, 'SCAN'));
+ok('...with its expected period and how long it has been silent', /expected every 2s, nothing for 5s/.test(wd.textContent), wd.querySelector('[data-ov-stage="SCAN"] .ov-watchdog__why')?.textContent);
+ok('...and named on the panel', /SCAN LATE/.test(banner(panel) || ''), banner(panel));
+
+// 6. A beat with no counter proves running, never working.
+advance(1, wd, () => { wd.beat('SCAN', ++t.scan); wd.beat('PROC'); });
+ok('a beat with no counter is NO COUNTER, and does not prove the path', rowState(wd, 'PROC') === 'uncounted' && wd.getAttribute('data-ov-path') === 'unproven', rowState(wd, 'PROC'));
+
+// 7. A counter that goes back is a restart, not a stall.
+advance(2, wd, () => { wd.beat('SCAN', ++t.scan); wd.beat('PROC', ++t.proc); });
+t.proc = 0;
+advance(2, wd, () => { wd.beat('SCAN', ++t.scan); wd.beat('PROC', ++t.proc); });
+ok('a counter that goes backwards is a live restart, shown', rowState(wd, 'PROC') === 'live' && /restarted 1s ago/.test(wd.textContent), wd.querySelector('[data-ov-stage="PROC"] .ov-watchdog__why')?.textContent);
+ok('...and counted in the report', wd.report.stages.find((r) => r.name === 'PROC').restarts === 1, wd.report.stages);
+
+// 8. A monitor on the feed it guards may not vouch for it.
+const dl = make('ov-downlink', { id: 'dl', label: 'RELAY LOG', source: 'relay-test' });
+const hs = make('ov-watchdog', { label: 'RELAY PATH', guards: 'dl', stages: 'RELAY:1' });
+stage.replaceChildren(hs, dl);
+let r = 0;
+advance(3, hs, () => hs.beat('RELAY', ++r, { feed: 'relay-test' }));
+ok('⭐ a beat on the guarded element\'s own feed is NOT INDEPENDENT', rowState(hs, 'RELAY') === 'shared' && hs.getAttribute('data-ov-path') === 'unproven', rowState(hs, 'RELAY'));
+ok('...and an empty log it guards reads UNPROVEN QUIET', /^UNPROVEN QUIET · RELAY NOT INDEPENDENT/.test(banner(dl) || ''), banner(dl));
+control('CONTROL: the shared stage reads LIVE (must fail)', rowState(hs, 'RELAY') === 'live', rowState(hs, 'RELAY'));
+advance(2, hs, () => hs.beat('RELAY', ++r, { feed: 'relay-watchdog' }));
+ok('the same beats by an independent feed prove it', rowState(hs, 'RELAY') === 'live' && banner(dl) === null, [rowState(hs, 'RELAY'), banner(dl)]);
+
+// 9. Declarations are refused, not guessed.
+({ wd, panel } = fresh({ stages: 'SCAN:2, PROC, :3, SCAN:1' }));
+ok('a stage with no period, no name, or a repeated name is refused and counted', wd.report.malformed === 3 && /3 STAGES REFUSED/.test(wd.textContent), wd.report.malformed);
+ok('a beat for an undeclared stage gets no row and is counted', wd.beat('GHOST', 1) === false && !wd.querySelector('[data-ov-stage="GHOST"]') && /FROM UNDECLARED STAGES: GHOST/.test(wd.textContent), wd.report.undeclared);
+({ wd, panel } = fresh({ stages: '' }));
+ok('no stages at all is not proven', wd.getAttribute('data-ov-path') === 'unproven' && /NO STAGES DECLARED/.test(banner(panel) || ''), banner(panel));
+
+// 10. Heard once, and an event per transition.
+({ wd, panel } = fresh({ stages: 'PROC:1' }));
+const seen = [];
+wd.addEventListener('ov:watchdog', (e) => seen.push(`${e.detail.previous}>${e.detail.proven}`));
+let q = 0;
+advance(2, wd, () => wd.beat('PROC', ++q));
+await settle();
+const saidLive = wd.querySelector('.ov-watchdog__say').textContent;
+advance(3, wd, () => wd.beat('PROC', q));
+await settle();
+const said = wd.querySelector('.ov-watchdog__say').textContent;
+ok('becoming proven is said', saidLive === 'ALARM PATH: path proven live', saidLive);
+ok('going unproven is said once, with the stage', said === 'ALARM PATH: path not proven, PROC stalled', said);
+ok('ov:watchdog fires once per transition', seen.join(',') === 'false>true,true>false', seen);
+control('CONTROL: going unproven is silent (must fail)', said === '', said);
+
+// 11. The page's own row, and a page that did not draw.
+const before = wd.report.page.seq;
+advance(3, wd);
+ok('the page row counts once per tick', wd.report.page.seq === before + 3, wd.report.page.seq);
+ok('...and is kept out of the verdict', wd.report.stages.every((row) => row.name !== 'THIS PAGE'), wd.report.stages.map((row) => row.name));
+NOW += 9000; wd.tick();
+ok('a 9 s gap between ticks is said afterwards', /THIS PAGE DID NOT DRAW FOR 9s/.test(wd.textContent), wd.querySelector('.ov-watchdog__foot').textContent);
+
+// 12. Recovery removes only its own mark.
+({ wd, panel } = fresh());
+const other = make('ov-watchdog', { label: 'OTHER', guards: panel.id, stages: 'X:1' });
+stage.append(other);
+other.render();
+const u = { scan: 0, proc: 0 };
+advance(3, wd, beatAll(wd, u));
+ok('a proven watchdog does not clear another watchdog\'s mark', /X NO BEAT/.test(banner(panel) || ''), banner(panel));
+
+// 13. 🔴 WHAT PAINTS, NOT WHAT .hidden SAYS. A watchdog that guards nothing
+// has no sink, and `hidden` alone loses to the sink's own display.
+wd = make('ov-watchdog', { label: 'ALONE', stages: 'X:1' });
+stage.replaceChildren(wd);
+wd.render();
+const sink = wd.querySelector('.ov-watchdog__sink');
+ok('a watchdog guarding nothing does not paint its sink', sink.hidden && !paints(sink), getComputedStyle(sink).display);
+control('CONTROL: the empty sink paints (must fail)', paints(sink), getComputedStyle(sink).display);
+
+// 14. Nothing asks for an animation frame.
+{
+  const text = await (await fetch(new URL(SRC, location.href).href)).text();
+  const asks = /requestAnimationFrame/.test(text);
+  ok('the element never asks for an animation frame, anywhere in its source', !asks, asks);
+  control('CONTROL: the element draws on a frame (must fail)', asks, asks);
+}
+
+// 15. Narrow: a 360px column does not scroll sideways.
+({ wd, panel } = fresh());
+advance(4, wd, () => wd.beat('PROC', 7));
+stage.style.gridTemplateColumns = '360px';
+await settle();
+ok('at 360px nothing overflows sideways', wd.scrollWidth <= 361, wd.scrollWidth);
+
+const passed = results.filter((x) => x.pass).length;
+const failed = results.length - passed;
+const controlsFailed = controls.filter((x) => !x.pass).length;
+const gate = failed === 0 && controlsFailed === controls.length && controls.length > 0;
+const lines = [
+  ...results.map((x) => `${x.pass ? 'PASS' : 'FAIL'}  ${x.name}${x.pass ? '' : '  got ' + JSON.stringify(x.got)}`),
+  ...controls.map((x) => `${x.pass ? 'CONTROL PASSED (BAD)' : 'CONTROL FAILED (good)'}  ${x.name}`),
+  '',
+  `${passed} passed, ${failed} failed, ${controlsFailed}/${controls.length} controls failed as required`,
+  `GATE: ${gate ? 'PASS' : 'FAIL'}`,
+];
+const out = document.getElementById('out');
+out.textContent = lines.join('\n');
+out.setAttribute('data-gate', gate ? 'pass' : 'fail');
+</script>

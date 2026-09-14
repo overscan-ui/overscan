@@ -392,8 +392,12 @@ def selftest():
     # 48 since ov-downlink (2026-09-11).
     # 53 since ov-orbit (2026-09-11).
     # 81 since ov-geomap and ov-tactical.
-    if len(els) != 81:
-        fails.append(f'expected 81 elements, manifest has {len(els)}')
+    # 82 since ov-watchdog.
+    # 83 since ov-authority.
+    # 84 since ov-solid.
+    # 85 since ov-datablock.
+    if len(els) != 85:
+        fails.append(f'expected 85 elements, manifest has {len(els)}')
 
     # 🔴 The reason wrappers exist. If an element with events came back with
     # none, the wrapper would be a silent pass-through and the colon problem

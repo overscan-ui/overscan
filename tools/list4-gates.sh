@@ -51,7 +51,7 @@
 # each page a budget rather than loosening the rule above.
 set -u
 
-CHROME=${OV_CHROME:-/Applications/Google Chrome.app/Contents/MacOS/Google Chrome}
+CHROME=${OVERSCAN_CHROME:-${OV_CHROME:-/Applications/Google Chrome.app/Contents/MacOS/Google Chrome}}
 BASE=${OV_BASE:-http://127.0.0.1:8842/tools}
 BUDGET=8000
 fails=0
@@ -141,7 +141,7 @@ nl='
 selftest
 printf 'parser ok (10 cases)\n\n'
 
-for n in quorum station mosaic balance position clearance score switch avatar vitals ecg player geomap tactical; do
+for n in quorum station mosaic balance position clearance score switch avatar vitals ecg player geomap tactical watchdog authority datablock; do
   printf '%s\n' "$n"
   check PASS "$n" "$BASE/$n-test/"
   for f in tools/"$n"-test/mut/*.js; do

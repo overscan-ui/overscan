@@ -7,7 +7,9 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 
-const CHROME = process.env.CHROME || '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
+// OVERSCAN_CHROME is the one name the gates share (CI sets it); CHROME still works.
+const CHROME = process.env.OVERSCAN_CHROME || process.env.CHROME
+  || '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
 
 /* puppeteer-core is not a dependency of the kit. Take it from PUPPETEER_CORE,
  * a local install, or a copy npx has cached. */

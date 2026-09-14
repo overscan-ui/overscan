@@ -1,6 +1,6 @@
 {
   "name": "overscan",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "A themeable sci-fi/FUI web component kit for control screens. Custom elements plus a CSS layer, ten dark themes, and readouts that refuse to invent.",
   "license": "MIT",
   "homepage": "https://overscan.dev",

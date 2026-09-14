@@ -1,0 +1,156 @@
+@layer overscan {
+/* A surveillance track whose every field says how it is known. See
+ * ov-datablock.js for the refusal.
+ *
+ * 🔴 NO SOURCE RESTS ON COLOUR. How a fix or a level was known is a SHAPE,
+ * the same shape on the trail and in the tag: a solid circle measured by
+ * several sensors, a solid diamond by one, a hollow square reported by the
+ * aircraft, a cross extrapolated, a dotted ring derived. Four different
+ * outlines, because a dot, a ring and a dashed ring read as one mark.
+ */
+
+ov-datablock {
+  display: grid;
+  gap: 6px;
+  min-inline-size: 0;
+  font-family: var(--ov-font-mono);
+  font-size: var(--ov-size-1, 10px);
+  color: var(--ov-ink);
+}
+
+.ov-datablock__scope {
+  position: relative;
+  min-inline-size: 0;
+  aspect-ratio: 400 / 250;
+  inline-size: 100%;
+  /* The 1px border inside the width: content-box made a 360px scope 362px. */
+  box-sizing: border-box;
+  border: var(--ov-rule, 1px) solid var(--ov-line);
+  background:
+    radial-gradient(circle at 42% 50%, color-mix(in srgb, var(--ov-accent) 6%, transparent), transparent 70%),
+    var(--ov-field);
+  overflow: hidden;
+}
+.ov-datablock__svg { position: absolute; inset: 0; inline-size: 100%; block-size: 100%; }
+
+/* The scope and its tag. A track and a tag, not a radar screen: across a
+   full-width section the scope reached 1653 x 1034px, so the view is capped
+   and the scope's height follows its ratio. */
+ov-datablock { container-type: inline-size; }
+.ov-datablock__view { position: relative; inline-size: min(100%, 560px); }
+
+/* Small: overlaid on a ~300px scope the tag covered the whole trail it was
+   describing, so it leaves the picture and sits below it, with no leader. */
+@container (max-width: 380px) {
+  .ov-datablock__tag.ov-datablock__tag {
+    position: static;
+    max-inline-size: none;
+    margin-block-start: 4px;
+    text-align: start;
+    justify-items: start;
+    border-inline-start: 2px solid var(--ov-accent);
+    border-inline-end: 0;
+  }
+  .ov-datablock__leader { display: none; }
+}
+
+/* ---- the trail ---------------------------------------------------------- */
+
+.ov-datablock__fix { stroke-width: 1.6; fill: none; stroke: var(--ov-accent); stroke-linejoin: round; }
+.ov-datablock__fix[data-ov-src="multi"] { fill: var(--ov-accent); }
+.ov-datablock__fix[data-ov-src="mono"] { fill: var(--ov-accent); fill-opacity: .55; }
+.ov-datablock__fix[data-ov-src="reported"] { stroke: var(--ov-ink); stroke-width: 1.8; }
+.ov-datablock__fix[data-ov-src="coast"] { stroke: var(--ov-alarm); stroke-width: 2; stroke-linecap: round; }
+.ov-datablock__coastring { fill: none; stroke: var(--ov-alarm); stroke-width: 1.4; stroke-dasharray: 3 3; }
+.ov-datablock__leader { stroke: var(--ov-faint); stroke-width: 1; }
+/* Scoped by the TAG, not by .ov-datablock__head: tools/harness_sheets.py
+   reads a rule as ov-track's own unless the selector starts with another
+   element, and then demanded this sheet in ov-track's harness. */
+ov-datablock .ov-track__frame { fill: none; stroke-width: 3.5; }
+ov-datablock [data-ov-hedged] .ov-track__frame { stroke-dasharray: 5 4; }
+ov-datablock .ov-track__leader { stroke-width: 3.5; }
+
+/* ---- the tag ------------------------------------------------------------ */
+
+.ov-datablock__tag {
+  position: absolute;
+  display: grid;
+  gap: 1px;
+  max-inline-size: 58%;
+  padding: 3px 5px;
+  background: color-mix(in srgb, var(--ov-field) 82%, transparent);
+  border-inline-start: 2px solid var(--ov-accent);
+  line-height: 12px;
+  letter-spacing: .06em;
+}
+.ov-datablock__tag[hidden] { display: none; }
+.ov-datablock__tag[data-ov-side="left"] { border-inline-start: 0; border-inline-end: 2px solid var(--ov-accent); text-align: end; justify-items: end; }
+ov-datablock[data-ov-coasting] .ov-datablock__tag { border-color: var(--ov-alarm); border-style: dashed; }
+
+.ov-datablock__id { display: flex; flex-wrap: wrap; gap: 0 1ch; }
+.ov-datablock__callsign { color: var(--ov-accent); font-size: var(--ov-size-2, 12px); letter-spacing: .1em; }
+.ov-datablock__callsign[data-ov-tone="bad"] { color: var(--ov-alarm); }
+.ov-datablock__quals { color: var(--ov-alarm); }
+.ov-datablock__quals:empty,
+.ov-datablock__was:empty,
+.ov-datablock__flags:empty,
+.ov-datablock__sensors:empty,
+.ov-datablock__foot:empty,
+.ov-datablock__none:empty { display: none; }
+.ov-datablock__was { color: var(--ov-faint); }
+
+.ov-datablock__levels { display: flex; flex-wrap: wrap; gap: 0 1.2ch; align-items: center; }
+.ov-datablock__field b { font-weight: normal; }
+.ov-datablock__field b:empty { display: none; }
+.ov-datablock__measured { display: inline-flex; gap: .6ch; align-items: center; }
+.ov-datablock__field[data-ov-tone="note"] b { color: var(--ov-ink); text-decoration: underline dotted; text-underline-offset: 3px; }
+.ov-datablock__field[data-ov-tone="bad"] b { color: var(--ov-alarm); }
+.ov-datablock__derived { display: flex; gap: .6ch; align-items: center; color: var(--ov-faint); }
+.ov-datablock__derived[hidden] { display: none; }
+.ov-datablock__derived b { font-weight: normal; }
+.ov-datablock__flags { color: var(--ov-alarm); }
+
+/* The source mark, the same shape as the trail's. */
+.ov-datablock__src {
+  flex: none;
+  inline-size: 8px;
+  block-size: 8px;
+  border-radius: 50%;
+  border: 1.5px solid var(--ov-accent);
+  box-sizing: border-box;
+}
+.ov-datablock__src[data-ov-src="multi"] { background: var(--ov-accent); }
+.ov-datablock__src[data-ov-src="mono"] { border-radius: 0; rotate: 45deg; background: color-mix(in srgb, var(--ov-accent) 55%, transparent); inline-size: 7px; block-size: 7px; }
+.ov-datablock__src[data-ov-src="reported"] { border-radius: 0; border-color: var(--ov-ink); }
+.ov-datablock__src[data-ov-src="derived"] { border-style: dotted; border-color: var(--ov-faint); }
+.ov-datablock__src[data-ov-src="none"] { border-radius: 0; border-style: dashed; border-color: var(--ov-alarm); }
+
+.ov-datablock__sensors { display: flex; flex-wrap: wrap; gap: 0 1.2ch; color: var(--ov-faint); }
+.ov-datablock__sensor[data-ov-state="unsupported"] { color: var(--ov-line-strong); }
+.ov-datablock__sensor[data-ov-state="none"] { color: var(--ov-alarm); }
+
+.ov-datablock__scale {
+  position: absolute;
+  inset-inline-start: 6px;
+  inset-block-end: 4px;
+  color: var(--ov-faint);
+}
+.ov-datablock__none {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  color: var(--ov-alarm);
+  letter-spacing: .14em;
+}
+.ov-datablock__foot { color: var(--ov-alarm); letter-spacing: .08em; }
+
+.ov-datablock__say {
+  position: absolute;
+  inline-size: 1px;
+  block-size: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+}

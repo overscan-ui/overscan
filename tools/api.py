@@ -657,8 +657,12 @@ def selftest():
     # 53 since ov-orbit (2026-09-11).
     # 79 since ov-player.
     # 81 since ov-geomap and ov-tactical.
-    if len(els) != 81:
-        fails.append(f'expected 81 elements, extracted {len(els)}')
+    # 82 since ov-watchdog.
+    # 83 since ov-authority.
+    # 84 since ov-solid.
+    # 85 since ov-datablock.
+    if len(els) != 85:
+        fails.append(f'expected 85 elements, extracted {len(els)}')
     # ov-gauge gained a staleness() call, so it must now derive True. This
     # assertion was False until that landed and is left pointing at the gauge
     # deliberately: it is the element the derivation was built to get right.
@@ -861,7 +865,7 @@ def selftest():
     # ov:tab above: ov-reveal.js says the first screenful has stopped moving and
     # ov-core.js holds every live loop until it hears it.
     expected = {'ov:acknowledge', 'ov:allocate', 'ov:annunciate', 'ov:arrived', 'ov:baseline', 'ov:verify', 'ov:claim', 'ov:clock', 'ov:complete', 'ov:quorum', 'ov:refuse', 'ov:shelve', 'ov:signal', 'ov:solo', 'ov:station',
-                'ov:arm', 'ov:safe', 'ov:vitals', 'ov:ecg', 'ov:player',
+                'ov:arm', 'ov:safe', 'ov:vitals', 'ov:ecg', 'ov:player', 'ov:watchdog', 'ov:authority', 'ov:datablock',
                 'ov:cancel', 'ov:change', 'ov:chord', 'ov:command', 'ov:commit',
                 'ov:flip', 'ov:key', 'ov:pause', 'ov:play', 'ov:reorder',
                 'ov:resize', 'ov:seek', 'ov:sound', 'ov:tab', 'ov:view'}

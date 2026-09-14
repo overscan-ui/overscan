@@ -12,7 +12,7 @@
  *   rocker  two halves with the positions printed on them, such as I and O
  *
  * A toggle or flick rod is `look="rounded"` (the default) or `look="triangle"`,
- * a flat blade. Any kind can carry a GUARD, lifted by an `ov-hold`.
+ * a flat blade. Any kind can carry a GUARD: a cover, lifted by clicking it.
  *
  *   <ov-switch positions="REL,OFF,LAT" set="OFF" transit="8"
  *              guard="IRREVERSIBLE" label="MRL"></ov-switch>
@@ -59,11 +59,11 @@
  * 3. A GUARDED SWITCH NEEDS TWO INDEPENDENT ACTIONS, AND ARMED IS ITSELF SHOWN.
  *    F.4.3.2: "The system must require at least 2 independent commands to
  *    activate/execute mission critical and safety critical controls."
- *    "Commands with an arm control must be accompanied by a safe control
- *    (that removes the armed condition) located to the right or beneath the
- *    arm control." HIDH 10.4.6 names "switch guards, covers" among the
- *    protective measures. The arm is an `ov-hold`, so lifting the guard is
- *    itself deliberate and has its price on it; SAFE sits to its right.
+ *    HIDH 10.4.6 names "switch guards, covers" among the protective measures.
+ *    The cover is the part that does it, as it is on a panel: the first
+ *    action lifts the cover and the second throws the switch. The open cover
+ *    is the armed state, drawn, and closing it is the safe control, so there
+ *    is no separate ARM or SAFE button to find or to disagree with the cover.
  * 4. A FLICK SWITCH SPRINGS BACK, so its handle is drawn at rest whatever was
  *    commanded, and the last command is written out because that line is the
  *    only copy of it. On a flick switch the talkback is the only thing that
@@ -81,9 +81,11 @@
  */
 
 import { define, whenArrived } from '../../../src/ov-core.js';
-import '../../../src/ov-hold.js';
 
 const KINDS = new Set(['toggle', 'flick', 'lever', 'rocker']);
+// The longest word the reading can say. The switch is always as wide as this,
+// so no word runs onto the next switch and no word resizes the switch.
+const ROOM = 'NOT IN POSITION';
 const LOOKS = new Set(['rounded', 'triangle']);
 
 const setText = (el, t) => { if (el && el.textContent !== t) el.textContent = t; };
@@ -106,14 +108,11 @@ export class OvSwitch extends HTMLElement {
     this._armed = false;
 
     this.addEventListener('click', (e) => {
-      const b = e.target.closest('.ov-switch__pos, .ov-switch__safe');
+      const b = e.target.closest('.ov-switch__pos, .ov-switch__guard');
       if (!b || b.closest('ov-switch') !== this) return;
-      if (b.classList.contains('ov-switch__safe')) this.safe();
+      // The cover: a shut one lifts and arms, an open one closes and safes.
+      if (b.classList.contains('ov-switch__guard')) { if (this._armed) this.safe(); else this.arm(); }
       else this.command(b.dataset.ovPos);
-    });
-    // The guard lifts only on a completed hold, never on a press.
-    this.addEventListener('ov:commit', (e) => {
-      if (e.target.classList?.contains('ov-switch__armhold') && e.target.closest('ov-switch') === this) this.arm();
     });
   }
 
@@ -329,7 +328,6 @@ export class OvSwitch extends HTMLElement {
     setAttr(this, 'data-ov-kind', kind);
     // A look shapes a rod, so only the kinds that have one take it.
     setAttr(this, 'data-ov-look', kind === 'toggle' || kind === 'flick' ? this.look() : null);
-    const hold = this.getAttribute('arm-hold');
     this.innerHTML = `
       <div class="ov-head">
         <span class="ov-aside ov-head__name ov-switch__label"></span>
@@ -339,15 +337,13 @@ export class OvSwitch extends HTMLElement {
       <div class="ov-switch__plate" role="radiogroup" style="--ov-sw-n:${pos.length}">
         <span class="ov-switch__mech" aria-hidden="true"><i class="ov-switch__pivot"></i><i class="ov-switch__bat"></i><i class="ov-switch__tip"></i></span>
         ${pos.map((p) => `<button type="button" class="ov-switch__pos" role="radio" data-ov-pos="${esc(p)}">${esc(p)}</button>`).join('')}
-        ${guard ? '<span class="ov-switch__guard" aria-hidden="true"><span class="ov-switch__guardword">GUARD</span></span>' : ''}
+        ${guard ? '<button type="button" class="ov-switch__guard"><span class="ov-switch__guardword" aria-hidden="true">GUARD</span></button>' : ''}
       </div>
       <div class="ov-switch__cmd"></div>
-      ${guard ? `<div class="ov-switch__arm">`
-        + `<ov-hold class="ov-switch__armhold" label="ARM" price="${esc(this.getAttribute('guard') || 'GUARDED')}"${hold ? ` hold="${esc(hold)}"` : ''}></ov-hold>`
-        + `<button type="button" class="ov-btn ov-switch__safe">SAFE</button>`
-        + `<span class="ov-switch__armed">ARMED</span></div>` : ''}
       <div class="ov-state ov-state--bar ov-switch__out">
         <span class="ov-state__word ov-switch__word"></span>
+        <span class="ov-switch__room ov-state__word ov-switch__word" aria-hidden="true">${ROOM}</span>${kind === 'flick'
+          ? `<span class="ov-switch__room ov-switch__room--cmd" aria-hidden="true">LAST COMMAND ${esc(pos.reduce((a, b) => (b.length > a.length ? b : a)))}</span>` : ''}
         <span class="ov-aside ov-switch__why"></span>
       </div>`;
   }
@@ -390,12 +386,20 @@ export class OvSwitch extends HTMLElement {
       setAttr(b, 'data-ov-set', w === r.set && this.kind() !== 'flick' ? '' : null);
       b.disabled = locked;
     }
+    const cover = q('.ov-switch__guard');
+    if (cover) {
+      const why = this.getAttribute('guard') || 'GUARDED';
+      setAttr(cover, 'aria-pressed', String(this._armed));
+      setAttr(cover, 'aria-label', `${this.label()} guard cover, ${why}: ${this._armed ? 'open, close to make safe' : 'shut, lift to arm'}`);
+      setAttr(cover, 'title', `${why}: ${this._armed ? 'close the cover to make safe' : 'lift the cover to arm'}`);
+    }
     setText(q('.ov-switch__cmd'), this.kind() === 'flick' && r.set !== null ? `LAST COMMAND ${r.set}` : '');
 
     const out = q('.ov-switch__out');
     setAttr(out, 'data-ov-tone', tone);
     setText(q('.ov-switch__word'), r.word);
     setText(q('.ov-switch__why'), r.why);
+    setAttr(q('.ov-switch__why'), 'title', r.why || null);
 
     this.setAttribute('aria-label', `${this.label()}: set ${r.set ?? 'nowhere'}, talkback ${shown ?? 'barberpole'}`
       + `${r.word ? `, ${r.word.toLowerCase()}` : ''}${this.hasAttribute('data-ov-lit') ? ', lamp lit' : ''}`

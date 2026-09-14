@@ -36,7 +36,10 @@ echo '=== types compile against the PACKAGED .d.ts ==='
 node_modules/.bin/tsc --noEmit --lib es2022,dom --strict tmp/consumer/node_modules/overscan/types/overscan.d.ts
 echo 'OK  packaged types compile'
 
-CHROME='/Applications/Google Chrome.app/Contents/MacOS/Google Chrome'
+# OVERSCAN_CHROME names the browser binary (CI sets it); the default is macOS's.
+CHROME="${OVERSCAN_CHROME:-/Applications/Google Chrome.app/Contents/MacOS/Google Chrome}"
+[ -x "$CHROME" ] || { echo "REFUSED: no Chrome at $CHROME (set OVERSCAN_CHROME)"; exit 1; }
+export OVERSCAN_CHROME="$CHROME"
 # The server that serves this checkout. Same variable as tools/release.py, so
 # a copy of the repo elsewhere can be tested without touching :8842.
 BASE_URL="${OVERSCAN_URL:-http://localhost:8842/}"

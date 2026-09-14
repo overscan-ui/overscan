@@ -24,13 +24,32 @@
  *
  * Input, both structured, as properties or from `src` (a JSON file of both):
  *   plan    { width, height,
- *             rooms: [{ id, label, x, y, w, h }],
+ *             rooms: [{ id, label, x, y, w, h }                a rectangle, or
+ *                     { id, label, d, lx, ly, anchor, lead }], a path, labelled
+ *                                                              at lx, ly, with an
+ *                                                              optional lead line
+ *                                                              [x1, y1, x2, y2]
  *             parts: [{ id, label, kind, x, y, source }],   kind: tank | pump |
  *                                                           valve | exchanger | node
- *             pipes: [{ from, to, via: [[x, y], ...] }] }
+ *             pipes: [{ from, to, via: [[x, y], ...] }],
+ *             outline: [path, ...],   drawn unlit under everything; not a part
+ *             orient: 'which way the drawing faces', printed on it }
  *   states  [{ id, state, note, age }]   age in seconds, as every reading here.
  *           Rooms: ok | caution | alarm | off. Parts: open | closed | running |
  *           stopped | ok | fault. `source` names an Overscan source of states.
+ *
+ * STOCK PLANS. `stock="body"` (or head, vehicle, ship) draws a plan from
+ * ov-plans.js, which the kit does not load for you: set
+ * `OvSchematic.plans = plans` once, or name the module on the element with
+ * `plans="…/ov-plans.js"`. Asked for and absent is a refusal that says which
+ * (PLANS NOT LOADED, LOADING, FAILED TO LOAD, UNREADABLE, NO STOCK PLAN), never
+ * an empty frame. A stock name AND a plan of the element's own are two answers
+ * to one question, and neither is picked.
+ *
+ * ⭐ A REPORT FOR A PART THE PLAN DOES NOT HAVE IS COUNTED, NEVER MATCHED. A
+ * stock plan's ids are fixed, so `left_arm` sent to a body whose id is `arm_l`
+ * would otherwise vanish while the arm it meant sits hatched as XX. The readout
+ * names every such id.
  */
 
 import { define, Overscan } from './ov-core.js';
@@ -39,10 +58,35 @@ import './ov-source.js';
 /* A part passes flow in these states and blocks it in the rest. */
 const PASSES = new Set(['open', 'running', 'ok']);
 const ROOM_STATES = new Set(['ok', 'caution', 'alarm', 'off']);
+const ANCHORS = new Set(['start', 'middle', 'end']);
 const schematicText = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
+const finite = (...v) => v.every((n) => Number.isFinite(n));
+
+/* ── stock plans, shared by every schematic on the page ─────────────────── */
+
+const stock = { data: null, listeners: new Set(), byUrl: new Map() };
+const tellStock = () => { for (const fn of [...stock.listeners]) fn(); };
+const isPlan = (p) => !!p && typeof p === 'object' && (Array.isArray(p.rooms) || Array.isArray(p.parts));
+const isPlans = (d) => !!d && typeof d === 'object' && Object.keys(d).length > 0 && Object.values(d).every(isPlan);
+
+function loadPlans(url) {
+  const href = new URL(url, document.baseURI).href;
+  let e = stock.byUrl.get(href);
+  if (e) return e;
+  e = { state: 'loading', data: null, url };
+  stock.byUrl.set(href, e);
+  import(/* @vite-ignore */ href)
+    .then((m) => { if (isPlans(m.default)) { e.state = 'ready'; e.data = m.default; } else e.state = 'unreadable'; },
+      () => { e.state = 'failed'; })
+    .finally(tellStock);
+  return e;
+}
 
 class OvSchematic extends HTMLElement {
-  static observedAttributes = ['src', 'source', 'max-age'];
+  static observedAttributes = ['src', 'source', 'max-age', 'stock', 'plans'];
+
+  static get plans() { return stock.data; }
+  static set plans(d) { stock.data = d ?? null; tellStock(); }
 
   connectedCallback() {
     this._plan = this._plan || null;
@@ -52,12 +96,17 @@ class OvSchematic extends HTMLElement {
     this.svg = this.querySelector('svg');
     this.readout = this.querySelector('.ov-schematic__readout');
     this.hatch = `ov-sch-${Math.random().toString(36).slice(2, 8)}`;
+    this.onStock = () => this.paint();
+    stock.listeners.add(this.onStock);
     this.bind();
     this.fetchSrc();
     this.paint();
   }
 
-  disconnectedCallback() { if (this.unsub) this.unsub(); }
+  disconnectedCallback() {
+    if (this.unsub) this.unsub();
+    stock.listeners.delete(this.onStock);
+  }
 
   attributeChangedCallback(n) {
     if (!this.svg) return;
@@ -96,6 +145,28 @@ class OvSchematic extends HTMLElement {
     this.paint();
   }
 
+  /* The plan to draw, or the words for why there is none. */
+  resolve() {
+    const name = this.getAttribute('stock');
+    if (name === null) return this._plan ? { plan: this._plan } : { refusal: 'NO PLAN' };
+    if (this._plan) return { refusal: 'TWO PLANS GIVEN: A STOCK PLAN AND ONE OF ITS OWN' };
+    const url = this.getAttribute('plans');
+    const e = url ? loadPlans(url)
+      : stock.data === null ? { state: 'missing' }
+        : isPlans(stock.data) ? { state: 'ready', data: stock.data } : { state: 'unreadable' };
+    switch (e.state) {
+      case 'missing': return { refusal: 'STOCK PLANS NOT LOADED' };
+      case 'loading': return { refusal: 'STOCK PLANS LOADING' };
+      case 'failed': return { refusal: `STOCK PLANS FAILED TO LOAD: ${url}` };
+      case 'unreadable': return { refusal: 'STOCK PLANS UNREADABLE: not plan data' };
+      default: break;
+    }
+    if (!Object.hasOwn(e.data, name)) {
+      return { refusal: `NO STOCK PLAN "${name}": ${Object.keys(e.data).join(', ')}`.toUpperCase() };
+    }
+    return { plan: e.data[name] };
+  }
+
   /* fresh | stale | none, and the reading behind it. */
   tier(id) {
     const r = this.byId.get(id);
@@ -107,12 +178,12 @@ class OvSchematic extends HTMLElement {
   }
 
   /* Pipes reachable from the sources, passing parts that satisfy `ok`. */
-  reach(pipes, ok) {
+  reach(parts, pipes, ok) {
     const out = new Map();
     for (const p of pipes) (out.get(p.from) || out.set(p.from, []).get(p.from)).push(p);
     const seen = new Set();
     const lit = new Set();
-    const queue = this._plan.parts.filter((p) => p.source && ok(p.id)).map((p) => p.id);
+    const queue = parts.filter((p) => p.source && ok(p.id)).map((p) => p.id);
     while (queue.length) {
       const id = queue.shift();
       if (seen.has(id)) continue;
@@ -125,17 +196,22 @@ class OvSchematic extends HTMLElement {
     return lit;
   }
 
+  refuse(words) {
+    // A refusal, never an empty frame. The box grows to hold the words.
+    this.setAttribute('data-ov-refusal', 'unknown');
+    const w = Math.max(200, Math.ceil(words.length * 7.6) + 24);
+    this.svg.setAttribute('viewBox', `0 0 ${w} 60`);
+    this.svg.innerHTML = `<text class="ov-schematic__void" x="${w / 2}" y="34" text-anchor="middle">${schematicText(words)}</text>`;
+    this.svg.setAttribute('aria-label', `Schematic, no reading: ${words.toLowerCase()}`);
+    this.readout.textContent = '';
+  }
+
   paint() {
     if (!this.svg) return;
-    const P = this._plan;
     this.removeAttribute('data-ov-refusal');
-    if (!P || !Array.isArray(P.parts) && !Array.isArray(P.rooms)) {
-      // No plan: a refusal, never an empty frame.
-      this.setAttribute('data-ov-refusal', 'unknown');
-      this.svg.setAttribute('viewBox', '0 0 200 60');
-      this.svg.innerHTML = '<text class="ov-schematic__void" x="100" y="34" text-anchor="middle">NO PLAN</text>';
-      this.svg.setAttribute('aria-label', 'Schematic, no reading');
-      this.readout.textContent = '';
+    const { plan: P, refusal } = this.resolve();
+    if (refusal || !isPlan(P)) {
+      this.refuse(refusal || 'NO PLAN');
       return;
     }
     const rooms = P.rooms || [];
@@ -151,6 +227,11 @@ class OvSchematic extends HTMLElement {
       + `<marker id="${this.hatch}-a" viewBox="0 0 6 6" refX="3" refY="3" markerWidth="5" markerHeight="5" orient="auto-start-reverse">`
       + `<path d="M0,0 L6,3 L0,6 z" class="ov-schematic__arrow"/></marker></defs>`;
 
+    // The outline claims nothing: no state, no hatch, not counted.
+    for (const d of Array.isArray(P.outline) ? P.outline : []) {
+      g += `<path class="ov-schematic__hull" d="${schematicText(d)}"/>`;
+    }
+
     const count = { fresh: 0, stale: 0, none: 0 };
     const tag = (t) => (t.tier === 'none' ? 'XX' : t.tier === 'stale' ? `STALE ${Math.round(t.r.age)}s` : '');
 
@@ -159,14 +240,27 @@ class OvSchematic extends HTMLElement {
       count[t.tier] += 1;
       const state = t.tier === 'none' ? 'none' : (ROOM_STATES.has(t.r.state) ? t.r.state : 'caution');
       const note = t.r && t.r.note ? t.r.note : '';
+      // ⚠️ An inline STYLE, not a fill attribute: a CSS rule beats an SVG
+      // presentation attribute, and `.ov-schematic__room rect` sets a fill,
+      // so the hatch as an attribute was never painted. The first test only
+      // checked the attribute existed and passed on an invisible hatch.
+      const hatch = t.tier === 'none' ? ` style="fill:url(#${this.hatch})"` : '';
+      let lx = room.x + 6, ly = room.y + 14, anchor = 'start';
+      let shape = `<rect x="${room.x}" y="${room.y}" width="${room.w}" height="${room.h}"${hatch}/>`;
+      if (typeof room.d === 'string') {
+        shape = `<path d="${schematicText(room.d)}"${hatch}/>`;
+        const first = /(\d*\.?\d+)[\s,]+(\d*\.?\d+)/.exec(room.d);
+        lx = first ? Number(first[1]) + 6 : 6;
+        ly = first ? Number(first[2]) + 14 : 14;
+      }
+      if (finite(room.lx, room.ly)) { lx = room.lx; ly = room.ly; }
+      if (ANCHORS.has(room.anchor)) anchor = room.anchor;
+      const lead = Array.isArray(room.lead) && room.lead.length === 4 && finite(...room.lead)
+        ? `<line class="ov-schematic__lead" x1="${room.lead[0]}" y1="${room.lead[1]}" x2="${room.lead[2]}" y2="${room.lead[3]}"/>` : '';
       g += `<g class="ov-schematic__room is-${state} is-${t.tier}">`
-        // ⚠️ An inline STYLE, not a fill attribute: a CSS rule beats an SVG
-        // presentation attribute, and `.ov-schematic__room rect` sets a fill,
-        // so the hatch as an attribute was never painted. The first test only
-        // checked the attribute existed and passed on an invisible hatch.
-        + `<rect x="${room.x}" y="${room.y}" width="${room.w}" height="${room.h}"${t.tier === 'none' ? ` style="fill:url(#${this.hatch})"` : ''}/>`
-        + `<text x="${room.x + 6}" y="${room.y + 14}" class="ov-schematic__label">${schematicText(room.label || room.id)}</text>`
-        + ((note || tag(t)) ? `<text x="${room.x + 6}" y="${room.y + 28}" class="ov-schematic__note">${schematicText([note, tag(t)].filter(Boolean).join(' · '))}</text>` : '')
+        + shape + lead
+        + `<text x="${lx}" y="${ly}" text-anchor="${anchor}" class="ov-schematic__label">${schematicText(room.label || room.id)}</text>`
+        + ((note || tag(t)) ? `<text x="${lx}" y="${ly + 14}" text-anchor="${anchor}" class="ov-schematic__note">${schematicText([note, tag(t)].filter(Boolean).join(' · '))}</text>` : '')
         + `</g>`;
     }
 
@@ -174,8 +268,8 @@ class OvSchematic extends HTMLElement {
     const partTier = new Map(parts.map((p) => [p.id, this.tier(p.id)]));
     const known = (id) => { const t = partTier.get(id); return !!t && t.tier === 'fresh' && PASSES.has(t.r.state); };
     const possible = (id) => { const t = partTier.get(id); return !t || t.tier !== 'fresh' || PASSES.has(t.r.state); };
-    const flowing = this.reach(pipes, known);
-    const maybe = this.reach(pipes, possible);
+    const flowing = this.reach(parts, pipes, known);
+    const maybe = this.reach(parts, pipes, possible);
     const at = new Map(parts.map((p) => [p.id, p]));
     let nFlow = 0, nDry = 0, nOpen = 0;
     for (const pipe of pipes) {
@@ -215,8 +309,14 @@ class OvSchematic extends HTMLElement {
         + `<text x="${x}" y="${y + 22}" text-anchor="middle" class="ov-schematic__plabel">${schematicText(part.label || part.id)}`
         + (t.tier === 'stale' ? ` ${Math.round(t.r.age)}s` : '') + `</text></g>`;
     }
+
+    if (typeof P.orient === 'string' && P.orient) {
+      g += `<text x="6" y="${H - 5}" class="ov-schematic__orient">${schematicText(P.orient)}</text>`;
+    }
     this.svg.innerHTML = g;
 
+    const ids = new Set([...rooms, ...parts].map((x) => x.id));
+    const stray = [...this.byId.keys()].filter((id) => !ids.has(id));
     const total = rooms.length + parts.length;
     const words = [`${count.fresh} of ${total} reporting`];
     if (count.stale) words.push(`${count.stale} stale`);
@@ -224,9 +324,13 @@ class OvSchematic extends HTMLElement {
     const flowWords = pipes.length
       ? `flow determined on ${nFlow + nDry} of ${pipes.length} pipes` + (nOpen ? `, ${nOpen} undetermined` : '')
       : '';
+    const strayWords = stray.length
+      ? `${stray.length} ${stray.length === 1 ? 'report names' : 'reports name'} no part of this plan: ${stray.join(', ')}`
+      : '';
     this.readout.innerHTML = `<span${count.none || count.stale ? ' class="is-doubt"' : ''}>${words.join(', ')}</span>`
-      + (flowWords ? `<span${nOpen ? ' class="is-doubt"' : ''}>${flowWords}</span>` : '');
-    this.svg.setAttribute('aria-label', `Schematic, ${words.join(', ')}${flowWords ? `; ${flowWords}` : ''}`);
+      + (flowWords ? `<span${nOpen ? ' class="is-doubt"' : ''}>${flowWords}</span>` : '')
+      + (strayWords ? `<span class="is-doubt ov-schematic__stray">${schematicText(strayWords)}</span>` : '');
+    this.svg.setAttribute('aria-label', `Schematic, ${words.join(', ')}${flowWords ? `; ${flowWords}` : ''}${strayWords ? `; ${strayWords}` : ''}`);
   }
 }
 

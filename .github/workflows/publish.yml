@@ -14,22 +14,85 @@
 # runs, and its export writes it to .github/workflows/ in the kit repo only.
 name: Publish to npm
 
+#
+# Run it by hand from the Actions tab (workflow_dispatch) to try the gates job
+# on main: the publish job runs only for a v* tag, so nothing is staged.
 on:
   push:
     tags: ['v*']
+  workflow_dispatch:
 
+# contents: write lets the job create the DRAFT GitHub release at the end. A
+# release made with this job's token starts no new workflow run.
 permissions:
-  contents: read
+  contents: write
   id-token: write
 
 jobs:
+  # The full gate and the consumer test need a desktop Chrome, which GitHub's
+  # macOS images carry (free for a public repo). Order matters: the full gate,
+  # whose fixpoint regenerates tracked files, runs on the COMMENTED checkout;
+  # only then is the CSS stripped and the packed tarball tested as it ships.
+  gates:
+    runs-on: macos-latest
+    env:
+      OVERSCAN_URL: http://127.0.0.1:8842/
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+
+      - run: npm install -g npm@12
+
+      - run: npm ci
+
+      - name: Find Chrome
+        run: |
+          c="/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
+          if [ ! -x "$c" ]; then echo "::error::Google Chrome not found at $c"; exit 1; fi
+          "$c" --version
+          echo "OVERSCAN_CHROME=$c" >> "$GITHUB_ENV"
+
+      # 127.0.0.1, not localhost: the server binds IPv4 only, and localhost can
+      # resolve to ::1 first on macOS.
+      - name: Serve the checkout
+        run: |
+          nohup python3 tools/static_server.py 8842 > "$RUNNER_TEMP/server.log" 2>&1 &
+          for i in $(seq 1 60); do
+            curl -sf -o /dev/null http://127.0.0.1:8842/package.json && exit 0
+            sleep 0.5
+          done
+          echo "::error::the static server did not answer"; cat "$RUNNER_TEMP/server.log"; exit 1
+
+      - name: Full release gate, on the commented source
+        run: python3 tools/release.py --kit
+
+      - name: Strip comments from the CSS, as the package ships it
+        run: python3 tools/css_strip.py --apply
+
+      # puppeteer-core is not a kit dependency (tools/consumer/browser.cjs takes
+      # it from a local install); pinned to the version the gates were proven on.
+      - name: puppeteer-core for the real-renderer check
+        run: npm i --no-save --no-audit --no-fund puppeteer-core@24.33.1
+
+      - name: Consumer test on the stripped tarball
+        run: zsh tools/consumer-test.sh
+
   publish:
+    needs: gates
+    if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     # A protection rule on this environment (required reviewers) makes every
     # publish wait for the owner's approval in GitHub.
     environment: npm
     steps:
+      # Full history and tags: the release notes read every commit since the
+      # previous version's tag.
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - uses: actions/setup-node@v4
         with:
@@ -48,7 +111,19 @@ jobs:
             exit 1
           fi
 
+      # Written before anything is staged, so notes that fail their name scan
+      # stop the run while nothing has reached npm.
+      - name: Release notes
+        run: python3 tools/release_notes.py "$GITHUB_REF_NAME" | tee "$RUNNER_TEMP/notes.md"
+
       - run: npm ci
+
+      # The package ships its CSS without comments (about 60% of the CSS
+      # transfer). Only this checkout is rewritten: the repo stays commented,
+      # because the site's CSS reference is built from those comments. The gate
+      # below then checks these exact bytes against the committed source.
+      - name: Strip comments from the CSS being published
+        run: python3 tools/css_strip.py --apply
 
       # Quick mode: the browser harnesses need a desktop Chrome and run before a
       # release is tagged. Everything about the tarball itself is checked here.
@@ -57,3 +132,12 @@ jobs:
 
       # Plain `npm publish` is refused: this publisher is configured stage-only.
       - run: npm stage publish --provenance
+
+      # A DRAFT, so the notes never front a version that is not live: the owner
+      # approves the staged version on npm, then publishes this draft.
+      - name: Draft the GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: >
+          gh release create "$GITHUB_REF_NAME" --draft --verify-tag
+          --title "Overscan ${GITHUB_REF_NAME#v}" --notes-file "$RUNNER_TEMP/notes.md"

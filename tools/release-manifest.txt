@@ -5,6 +5,7 @@ package.json
 src/allocator.css
 src/annunciator.css
 src/ascii.css
+src/authority.css
 src/aux.css
 src/avatar.css
 src/balance.css
@@ -20,6 +21,7 @@ src/continuity.css
 src/control.css
 src/countdown.css
 src/coverage.css
+src/datablock.css
 src/donut.css
 src/dose.css
 src/downlink.css
@@ -53,6 +55,7 @@ src/ov-allocator.js
 src/ov-annunciator.js
 src/ov-ansi.js
 src/ov-ascii.js
+src/ov-authority.js
 src/ov-avatar.js
 src/ov-balance.js
 src/ov-baseline.js
@@ -65,6 +68,7 @@ src/ov-core.js
 src/ov-countdown.js
 src/ov-countries.js
 src/ov-coverage.js
+src/ov-datablock.js
 src/ov-dial.js
 src/ov-donut.js
 src/ov-dose.js
@@ -98,6 +102,7 @@ src/ov-modal.js
 src/ov-mosaic.js
 src/ov-orbit.js
 src/ov-ornament.js
+src/ov-plans.js
 src/ov-plate.js
 src/ov-player.js
 src/ov-polygon.js
@@ -114,6 +119,7 @@ src/ov-scope.js
 src/ov-score.js
 src/ov-segment.js
 src/ov-sequence.js
+src/ov-solid.js
 src/ov-sound-switch.js
 src/ov-sound.js
 src/ov-source.js
@@ -133,6 +139,7 @@ src/ov-transport.js
 src/ov-tree.js
 src/ov-verifier.js
 src/ov-vitals.js
+src/ov-watchdog.js
 src/ov-waterfall.js
 src/ov-wave.js
 src/ov-window.js
@@ -155,6 +162,7 @@ src/react/index.js
 src/react/OvAllocator.js
 src/react/OvAnnunciator.js
 src/react/OvAnsi.js
+src/react/OvAuthority.js
 src/react/OvBalance.js
 src/react/OvBaseline.js
 src/react/OvCellbar.js
@@ -165,6 +173,7 @@ src/react/OvConsistency.js
 src/react/OvContinuity.js
 src/react/OvCountdown.js
 src/react/OvCoverage.js
+src/react/OvDatablock.js
 src/react/OvDial.js
 src/react/OvDonut.js
 src/react/OvDose.js
@@ -210,6 +219,7 @@ src/react/OvScore.js
 src/react/OvSegment.js
 src/react/OvSequence.js
 src/react/OvSocket.js
+src/react/OvSolid.js
 src/react/OvSoundSwitch.js
 src/react/OvSpark.js
 src/react/OvSplit.js
@@ -226,6 +236,7 @@ src/react/OvTrack.js
 src/react/OvTransport.js
 src/react/OvTree.js
 src/react/OvVerifier.js
+src/react/OvWatchdog.js
 src/react/OvWaterfall.js
 src/react/OvWave.js
 src/react/OvWindow.js
@@ -237,6 +248,7 @@ src/scope.css
 src/score.css
 src/segment.css
 src/sequence.css
+src/solid.css
 src/shaders/beam.glsl
 src/shaders/fault.glsl
 src/shaders/field.glsl
@@ -256,6 +268,8 @@ src/shaders/index.js
 src/shaders/ornament.js
 src/shaders/rain.js
 src/shaders/scope.js
+src/shaders/solid.glsl
+src/shaders/solid.js
 src/shaders/vision.js
 src/shaders/waterfall.js
 src/station.css
@@ -321,6 +335,7 @@ src/svelte/OvScore.svelte
 src/svelte/OvSegment.svelte
 src/svelte/OvSequence.svelte
 src/svelte/OvSocket.svelte
+src/svelte/OvSolid.svelte
 src/svelte/OvSoundSwitch.svelte
 src/svelte/OvSpark.svelte
 src/svelte/OvSplit.svelte
@@ -343,6 +358,9 @@ src/svelte/OvWave.svelte
 src/svelte/OvWindow.svelte
 src/svelte/OvWireframe.svelte
 src/svelte/index.js
+src/svelte/OvAuthority.svelte
+src/svelte/OvDatablock.svelte
+src/svelte/OvWatchdog.svelte
 src/table.css
 src/tactical.css
 src/term.css
@@ -360,6 +378,7 @@ src/vue/index.js
 src/vue/OvAllocator.js
 src/vue/OvAnnunciator.js
 src/vue/OvAnsi.js
+src/vue/OvAuthority.js
 src/vue/OvBalance.js
 src/vue/OvBaseline.js
 src/vue/OvCellbar.js
@@ -370,6 +389,7 @@ src/vue/OvConsistency.js
 src/vue/OvContinuity.js
 src/vue/OvCountdown.js
 src/vue/OvCoverage.js
+src/vue/OvDatablock.js
 src/vue/OvDial.js
 src/vue/OvDonut.js
 src/vue/OvDose.js
@@ -415,6 +435,7 @@ src/vue/OvScore.js
 src/vue/OvSegment.js
 src/vue/OvSequence.js
 src/vue/OvSocket.js
+src/vue/OvSolid.js
 src/vue/OvSoundSwitch.js
 src/vue/OvSpark.js
 src/vue/OvSplit.js
@@ -431,12 +452,14 @@ src/vue/OvTrack.js
 src/vue/OvTransport.js
 src/vue/OvTree.js
 src/vue/OvVerifier.js
+src/vue/OvWatchdog.js
 src/vue/OvWaterfall.js
 src/vue/OvWave.js
 src/vue/OvWindow.js
 src/vue/OvWireframe.js
 src/vue/runtime.js
 src/vitals.css
+src/watchdog.css
 src/window.css
 src/wireframe.css
 types/overscan.d.ts
