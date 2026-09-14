@@ -307,11 +307,36 @@ def read_verdict(text):
     return None
 
 
+def sort_pages(outcomes, unverified, names):
+    """(bad, notes) from {page: failure text or None} and the names listed as
+    unverified here.
+
+    🔴 UNVERIFIED IS NOT PASSED. A listed page that fails is reported as a NOTE
+    saying it could not be verified in this environment, and it must still pass
+    wherever the full gate runs on a desktop (the pre-tag checklist). Every page
+    NOT listed fails exactly as before, and a listed name that is not a harness
+    is itself a failure, so a typo cannot quietly exempt the wrong page."""
+    bad, notes = [], []
+    for name in sorted(set(unverified) - set(names)):
+        bad.append(f'{name}: listed in OVERSCAN_UNVERIFIED but no such harness')
+    for name in sorted(outcomes):
+        failure = outcomes[name]
+        if name in unverified:
+            notes.append(f'{name}: UNVERIFIED here ({failure})' if failure else f'{name}: passed here')
+        elif failure:
+            bad.append(f'{name}: {failure}')
+    return bad, notes
+
+
 def stage_pages(g):
     """Prove it fails: break one refusal; that element's page turns red.
 
     Chrome is found at OVERSCAN_CHROME, else the macOS default. A missing
-    browser is a failure that says so, never twenty "no verdict" lines."""
+    browser is a failure that says so, never twenty "no verdict" lines.
+
+    OVERSCAN_UNVERIFIED names pages (comma separated) whose checks depend on
+    real timing and cannot be trusted in a slow CI runner's headless browser.
+    CI sets it; a desktop run never should. See sort_pages."""
     chrome = os.environ.get('OVERSCAN_CHROME', '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome')
     pages = sorted((ROOT / 'tools').glob('*-test/index.html'))
     if not os.access(chrome, os.X_OK):
@@ -321,7 +346,8 @@ def stage_pages(g):
     # The server that serves this checkout, as in consumer-test.sh, so a copy
     # of the repo can be tested without touching :8842.
     base = os.environ.get('OVERSCAN_URL', 'http://localhost:8842/')
-    bad = []
+    unverified = {n.strip() for n in os.environ.get('OVERSCAN_UNVERIFIED', '').split(',') if n.strip()}
+    outcomes = {}
     for page in pages:
         name = page.parent.name
         r = run([chrome, '--headless=new', '--disable-gpu',
@@ -329,11 +355,14 @@ def stage_pages(g):
                  f'{base}tools/{name}/'])
         text = re.sub(r'<script\b.*?</script>', '', r.stdout, flags=re.S)
         verdict = read_verdict(text)
-        if verdict is None:
-            bad.append(f'{name}: no verdict (page did not finish, or threw)')
-        elif verdict is not True:
-            bad.append(f'{name}: {verdict}')
-    g.check(f'{len(pages)} element harnesses pass', not bad, '\n'.join(bad))
+        outcomes[name] = ('no verdict (page did not finish, or threw)' if verdict is None
+                          else None if verdict is True else str(verdict))
+    bad, notes = sort_pages(outcomes, unverified, {p.parent.name for p in pages})
+    for note in notes:
+        print(f'NOTE  {note}')
+    g.check(f'{len(pages) - len(unverified & set(outcomes))} element harnesses pass'
+            + (f' ({len(unverified & set(outcomes))} unverified here)' if unverified else ''),
+            not bad, '\n'.join(bad))
 
 
 def stage_harness_sheets(g):
@@ -576,6 +605,22 @@ def selftest():
             fails.append(f'verdict parser failed a passing page {text!r}: {got!r}')
         elif want is False and got in (True, None):
             fails.append(f'verdict parser passed a FAILING page {text!r}: {got!r}')
+
+    # Unverified harnesses: listed and failing is a note, never a pass of the
+    # gate for anything unlisted, and a listed name that is no harness fails.
+    outcomes = {'a-test': 'GATE FAIL', 'b-test': None, 'c-test': '4/8 passed'}
+    names = set(outcomes)
+    bad, notes = sort_pages(outcomes, set(), names)
+    if bad != ['a-test: GATE FAIL', 'c-test: 4/8 passed'] or notes:
+        fails.append(f'with nothing unverified, every failing page must fail: {bad} {notes}')
+    bad, notes = sort_pages(outcomes, {'a-test', 'b-test'}, names)
+    if bad != ['c-test: 4/8 passed']:
+        fails.append(f'an unlisted failing page must still fail the stage: {bad}')
+    if notes != ['a-test: UNVERIFIED here (GATE FAIL)', 'b-test: passed here']:
+        fails.append(f'listed pages must be reported, failing ones as UNVERIFIED: {notes}')
+    bad, _ = sort_pages({'b-test': None}, {'b-tset'}, {'b-test'})
+    if bad != ['b-tset: listed in OVERSCAN_UNVERIFIED but no such harness']:
+        fails.append(f'a mistyped unverified name must fail rather than exempt nothing: {bad}')
 
     # The size budget: an over-budget measure must fail, one inside the margin
     # must not, and the import closure must follow static imports only.

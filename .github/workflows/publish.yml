@@ -37,6 +37,12 @@ jobs:
     runs-on: macos-latest
     env:
       OVERSCAN_URL: http://127.0.0.1:8842/
+      # These harnesses assert on real timing (a 16 ms mid-flip, wall-clock
+      # waits, GSAP timelines) and failed on the first macOS runner while
+      # passing on a desktop. Here they are reported UNVERIFIED, never passed;
+      # the pre-tag checklist runs them in full. Every other harness still fails
+      # the job. A name that is not a harness fails it too.
+      OVERSCAN_UNVERIFIED: flap-test,flip-test,redraw-test,reveal-test,verifier-test
     steps:
       - uses: actions/checkout@v4
 

@@ -16,10 +16,12 @@
 <div data-ov-reveal-hold id="region"><div data-ov-reveal class="t" id="held">held: the page releases it</div></div>
 <div data-ov-reveal-hold id="stuck"><div data-ov-reveal class="t" id="capped">capped: nobody releases it</div></div>
 <pre id="out">running...</pre>
-<!-- The harness tests the REAL path, so it loads what a page would load. -->
-<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.15.0/gsap.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.15.0/Flip.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.15.0/CustomEase.min.js"></script>
+<!-- The harness tests the REAL path, so it loads what a page would load: the
+     same GSAP 3.15.0 files, taken from the pinned devDependency rather than a
+     CDN, so the gate needs no network and cannot fail on a slow fetch. -->
+<script src="../../node_modules/gsap/dist/gsap.min.js"></script>
+<script src="../../node_modules/gsap/dist/Flip.min.js"></script>
+<script src="../../node_modules/gsap/dist/CustomEase.min.js"></script>
 <script type="module">
 // Importing starts the reveal at once (the document has finished parsing), so
 // every check below runs after start() has queued and swept.
