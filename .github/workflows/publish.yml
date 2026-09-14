@@ -1,4 +1,4 @@
-# Publish to npm when a version tag is pushed.
+# Stage a release on npm when a version tag is pushed.
 #
 #   git tag v0.1.1 && git push origin v0.1.1
 #
@@ -6,6 +6,9 @@
 # publishing), so no npm token exists anywhere: the job gets a short-lived
 # credential from GitHub for this one run, and npm attaches provenance because
 # the repository is public.
+#
+# The trusted publisher may only STAGE. A staged version is invisible until a
+# maintainer approves it with 2FA, on npmjs.com or with `npm stage approve`.
 #
 # The working repo keeps this file at tools/kit-ci/publish.yml, where it never
 # runs, and its export writes it to .github/workflows/ in the kit repo only.
@@ -33,7 +36,7 @@ jobs:
           node-version: '24'
           registry-url: 'https://registry.npmjs.org'
 
-      # Trusted publishing needs npm 11.5.1 or later.
+      # `npm stage` needs npm 11.15.0 or later.
       - run: npm install -g npm@latest
 
       - name: The tag names the version being published
@@ -51,6 +54,5 @@ jobs:
       - name: Release gate
         run: python3 tools/release.py --kit --quick
 
-      # Refused by npm while package.json says "private": true, which is the
-      # interlock: publishing starts with the owner changing that line.
-      - run: npm publish
+      # Plain `npm publish` is refused: this publisher is configured stage-only.
+      - run: npm stage publish --provenance

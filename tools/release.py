@@ -8,9 +8,9 @@
                                         to decide a release
 
 🔴 THIS SCRIPT DOES NOT PUBLISH. It proves a tarball is fit to publish and
-then stops. `npm publish` is the owner's, run from the package's own npm
-account: no session holds a publish token, and `private: true` in
-package.json is the interlock.
+then stops. A pushed version tag makes the kit's publish workflow STAGE the
+release on npm, and nothing is public until the owner approves it with 2FA:
+no session holds a publish token, and none can approve.
 
 🔴 EVERY STAGE MUST BE ABLE TO FAIL, and the way to prove each one is written
 beside it. A gate nobody has watched go red is a gate that proves nothing
