@@ -344,10 +344,16 @@ def stage_harness_sheets(g):
 
 
 def packed_files():
+    """npm 10 and 11 print a list of packs; npm 12 prints an object keyed by
+    package name. Anything other than exactly one pack is refused."""
     r = run(['npm', 'pack', '--dry-run', '--json'])
     if r.returncode != 0:
         return None, r.stderr
-    return json.loads(r.stdout)[0], ''
+    out = json.loads(r.stdout)
+    packs = out if isinstance(out, list) else list(out.values())
+    if len(packs) != 1 or not isinstance(packs[0], dict) or 'files' not in packs[0]:
+        return None, f'npm pack --json printed an unexpected shape: {r.stdout[:200]}'
+    return packs[0], ''
 
 
 def stage_manifest(g, pack):
